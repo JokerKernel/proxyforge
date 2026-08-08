@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -27,14 +28,16 @@ func (allowTarget) Validate(context.Context, string, string, string) ([]string, 
 }
 
 type fakeRunner struct {
-	mu             sync.Mutex
-	calls          []string
-	port           int
-	failRestart    bool
-	failRemove     bool
-	missingBinary  bool
-	keyGeneration  int
-	serviceStopped bool
+	mu               sync.Mutex
+	calls            []string
+	port             int
+	failRestart      bool
+	failRemove       bool
+	incompleteRemove bool
+	missingBinary    bool
+	unitRemoved      bool
+	keyGeneration    int
+	serviceStopped   bool
 }
 
 func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
@@ -61,6 +64,12 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte
 		}
 		return []byte("Xray 25.1.1\n"), nil
 	}
+	if name == "systemctl" && len(args) > 0 && args[0] == "show" && strings.Contains(strings.Join(args, " "), "LoadState") {
+		if f.unitRemoved {
+			return []byte("not-found\n"), nil
+		}
+		return []byte("loaded\n"), nil
+	}
 	if name == "systemctl" && len(args) > 0 && args[0] == "show" {
 		return []byte("root\n"), nil
 	}
@@ -86,8 +95,16 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte
 		f.serviceStopped = false
 		return nil, nil
 	}
-	if (name == "dpkg" || name == "rpm") && f.failRemove {
-		return nil, errors.New("injected package removal failure")
+	if name == "dpkg" || name == "rpm" {
+		if f.failRemove {
+			return nil, errors.New("injected package removal failure")
+		}
+		if !f.incompleteRemove {
+			f.missingBinary = true
+			f.unitRemoved = true
+			f.serviceStopped = true
+		}
+		return nil, nil
 	}
 	if name == "sh" {
 		return nil, errors.New("not installed")
@@ -117,6 +134,14 @@ func testApp(t *testing.T, runner *fakeRunner) (*App, string) {
 	a.Targets = allowTarget{}
 	a.PortFree = func(int) error { return nil }
 	a.Listening = func(context.Context, int, time.Duration) error { return nil }
+	a.LookPath = func(name string) (string, error) {
+		runner.mu.Lock()
+		defer runner.mu.Unlock()
+		if runner.missingBinary {
+			return "", exec.ErrNotFound
+		}
+		return "/usr/bin/" + name, nil
+	}
 	return a, root
 }
 
@@ -369,6 +394,72 @@ func TestUninstallFailureKeepsManagedConfigAndState(t *testing.T) {
 	}
 	if _, loadErr := a.Store.Load(domain.CoreSingBox); loadErr != nil {
 		t.Fatalf("state was removed after failed uninstall: %v", loadErr)
+	}
+}
+
+func TestUninstallVerificationFailureKeepsManagedConfigAndState(t *testing.T) {
+	r := &fakeRunner{incompleteRemove: true}
+	a, root := testApp(t, r)
+	writeSupportedPlatform(t, root)
+	config := []byte("managed config")
+	configPath := a.Layout.Resolve(singbox.New().ConfigPath())
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, config, 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := domain.NodeSpec{ManagedBy: "proxyforge", Core: domain.CoreSingBox, ConfigSHA256: system.SHA256(config)}
+	if err := a.Store.Save(state); err != nil {
+		t.Fatal(err)
+	}
+
+	err := a.Uninstall(context.Background(), domain.CoreSingBox, install.Options{})
+	if err == nil || !strings.Contains(err.Error(), "卸载后核验失败") {
+		t.Fatalf("error=%v, want verification failure", err)
+	}
+	for _, want := range []string{"二进制 sing-box", "systemd unit sing-box.service", "状态=active"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error=%v, want remaining artifact %q", err, want)
+		}
+	}
+	if got, readErr := os.ReadFile(configPath); readErr != nil || !bytes.Equal(got, config) {
+		t.Fatalf("config=%q error=%v", got, readErr)
+	}
+	if _, loadErr := a.Store.Load(domain.CoreSingBox); loadErr != nil {
+		t.Fatalf("state was removed after failed verification: %v", loadErr)
+	}
+}
+
+func TestUninstallAlreadyAbsentSkipsInstallerAndCleansManagedData(t *testing.T) {
+	r := &fakeRunner{missingBinary: true, unitRemoved: true, serviceStopped: true}
+	a, root := testApp(t, r)
+	writeSupportedPlatform(t, root)
+	config := []byte("managed xray config")
+	configPath := a.Layout.Resolve(xray.New().ConfigPath())
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, config, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Store.Save(domain.NodeSpec{
+		ManagedBy: "proxyforge", Core: domain.CoreXray, ConfigSHA256: system.SHA256(config),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.Uninstall(context.Background(), domain.CoreXray, install.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(r.callLog(), "bash ") {
+		t.Fatalf("official installer should be skipped when already absent: %s", r.callLog())
+	}
+	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+		t.Fatalf("managed config still exists: %v", err)
+	}
+	if _, err := a.Store.Load(domain.CoreXray); !errors.Is(err, system.ErrNoState) {
+		t.Fatalf("state error = %v, want ErrNoState", err)
 	}
 }
 

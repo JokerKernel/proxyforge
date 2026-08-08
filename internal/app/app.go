@@ -39,6 +39,7 @@ type App struct {
 	Progress  io.Writer
 	Now       func() time.Time
 	RootCheck func() error
+	LookPath  func(string) (string, error)
 	PortFree  func(int) error
 	Listening func(context.Context, int, time.Duration) error
 }
@@ -48,7 +49,7 @@ func New(reg *provider.Registry, runner provider.Runner, layout system.Layout, o
 		Registry: reg, Runner: runner, Layout: layout, Store: system.StateStore{Layout: layout},
 		Services: system.ServiceManager{Runner: runner}, Installer: install.Installer{Runner: runner, Layout: layout, Output: out},
 		Targets: NetworkTargetValidator{}, Out: out, Progress: out, Now: time.Now,
-		RootCheck: RequireRoot, PortFree: checkPortFree, Listening: waitListening,
+		RootCheck: RequireRoot, LookPath: exec.LookPath, PortFree: checkPortFree, Listening: waitListening,
 	}
 }
 
@@ -81,7 +82,7 @@ func (a *App) Install(ctx context.Context, core string, opts install.Options) er
 	}
 	resultAction := "安装"
 	previousVersion := ""
-	if _, lookErr := exec.LookPath(p.Binary()); lookErr == nil {
+	if _, lookErr := a.lookPath(p.Binary()); lookErr == nil {
 		resultAction = "升级"
 		previousVersion, _ = p.Version(ctx, a.Runner)
 	}
@@ -181,6 +182,14 @@ func (a *App) Uninstall(ctx context.Context, core string, opts install.Options) 
 	if err != nil {
 		return err
 	}
+	before, err := a.inspectUninstallArtifacts(ctx, p)
+	if err != nil {
+		return err
+	}
+	alreadyUninstalled := !before.binary && !before.unit && !before.serviceRunning
+	if alreadyUninstalled {
+		a.progressf("未检测到 %s 二进制、systemd unit 或运行中的服务；跳过重复卸载", core)
+	}
 
 	configPath := a.Layout.Resolve(p.ConfigPath())
 	config, readErr := os.ReadFile(configPath)
@@ -203,9 +212,15 @@ func (a *App) Uninstall(ctx context.Context, core string, opts install.Options) 
 		}
 	}
 
-	a.progressf("停止服务并卸载内核和 systemd unit")
-	if err := a.Installer.Uninstall(ctx, p, opts); err != nil {
-		return err
+	if !alreadyUninstalled {
+		a.progressf("停止服务并卸载内核和 systemd unit")
+		if err := a.Installer.Uninstall(ctx, p, opts); err != nil {
+			return err
+		}
+		a.progressf("核验二进制、systemd unit 和服务状态")
+		if err := a.verifyUninstalled(ctx, p); err != nil {
+			return err
+		}
 	}
 	if managedConfig {
 		a.progressf("删除受管活动配置 %s", configPath)
@@ -221,6 +236,74 @@ func (a *App) Uninstall(ctx context.Context, core string, opts install.Options) 
 	}
 	fmt.Fprintf(a.Out, "%s 已卸载；历史备份和安装脚本信任记录已保留。\n", core)
 	return nil
+}
+
+type uninstallArtifacts struct {
+	binary         bool
+	unit           bool
+	serviceRunning bool
+	unitLoadState  string
+	serviceState   string
+}
+
+func (a *App) inspectUninstallArtifacts(ctx context.Context, p provider.CoreProvider) (uninstallArtifacts, error) {
+	var result uninstallArtifacts
+	path, lookErr := a.lookPath(p.Binary())
+	if lookErr == nil || path != "" {
+		result.binary = true
+	} else if !errors.Is(lookErr, exec.ErrNotFound) {
+		return result, fmt.Errorf("检查二进制 %s: %w", p.Binary(), lookErr)
+	}
+	loadState, err := a.Services.UnitLoadState(ctx, p.ServiceName())
+	if err != nil {
+		return result, err
+	}
+	result.unitLoadState = loadState
+	result.unit = loadState != "not-found"
+	status, statusErr := a.Services.IsActive(ctx, p.ServiceName())
+	result.serviceState = strings.TrimSpace(status.Detail)
+	switch result.serviceState {
+	case "inactive", "failed", "unknown":
+		// systemctl uses a non-zero exit status for these normal non-running states.
+	case "":
+		if statusErr != nil && result.unit {
+			return result, fmt.Errorf("检查 %s 服务状态: %w", p.ServiceName(), statusErr)
+		}
+	default:
+		result.serviceRunning = true
+	}
+	if status.Active {
+		result.serviceRunning = true
+	}
+	return result, nil
+}
+
+func (a *App) verifyUninstalled(ctx context.Context, p provider.CoreProvider) error {
+	artifacts, err := a.inspectUninstallArtifacts(ctx, p)
+	if err != nil {
+		return fmt.Errorf("卸载命令已完成，但无法完成卸载后核验；活动配置和 ProxyForge 状态已保留: %w", err)
+	}
+	var remaining []string
+	if artifacts.binary {
+		remaining = append(remaining, "二进制 "+p.Binary())
+	}
+	if artifacts.unit {
+		remaining = append(remaining, fmt.Sprintf("systemd unit %s（LoadState=%s）", p.ServiceName(), artifacts.unitLoadState))
+	}
+	if artifacts.serviceRunning {
+		remaining = append(remaining, fmt.Sprintf("服务 %s（状态=%s）", p.ServiceName(), artifacts.serviceState))
+	}
+	if len(remaining) > 0 {
+		return fmt.Errorf("卸载命令已完成，但卸载后核验失败，仍存在：%s；活动配置和 ProxyForge 状态已保留", strings.Join(remaining, "、"))
+	}
+	return nil
+}
+
+func (a *App) lookPath(name string) (string, error) {
+	if a.LookPath != nil {
+		return a.LookPath(name)
+	}
+	return exec.LookPath(name)
 }
 
 func (a *App) Cleanup(ctx context.Context, target string) error {

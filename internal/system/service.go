@@ -40,6 +40,18 @@ func (m ServiceManager) IsActive(ctx context.Context, service string) (domain.Se
 	return domain.ServiceStatus{Active: detail == "active", Detail: detail}, nil
 }
 
+func (m ServiceManager) UnitLoadState(ctx context.Context, service string) (string, error) {
+	b, err := m.Runner.Run(ctx, "systemctl", "show", service, "-p", "LoadState", "--value")
+	if err != nil {
+		return "", fmt.Errorf("检查 systemd unit %s: %w", service, err)
+	}
+	state := strings.TrimSpace(string(b))
+	if state == "" {
+		return "", fmt.Errorf("检查 systemd unit %s: systemctl 返回了空 LoadState", service)
+	}
+	return state, nil
+}
+
 func (m ServiceManager) User(ctx context.Context, service string) string {
 	b, err := m.Runner.Run(ctx, "systemctl", "show", service, "-p", "User", "--value")
 	if err != nil || strings.TrimSpace(string(b)) == "" {

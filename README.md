@@ -58,7 +58,7 @@ proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
 sudo proxyforge install sing-box --yes --trust-script-sha256 <64位哈希>
 ```
 
-卸载必须交互确认，自动化时必须显式提供 `--yes`。卸载前会备份当前服务端配置；受管配置和状态会删除，外部修改或非受管配置、历史备份及脚本信任记录会保留。Xray 卸载仍会执行其官方管理脚本，因此非交互模式还必须提供当前脚本哈希：
+卸载必须交互确认，自动化时必须显式提供 `--yes`。卸载前会备份当前服务端配置；卸载命令完成后会核验二进制、systemd unit 和服务状态，核验通过后才删除受管配置和状态，核验失败时保留两者并报告残留项。若三项均已不存在，会跳过重复卸载并清理受管数据。外部修改或非受管配置、历史备份及脚本信任记录始终保留。Xray 卸载仍会执行其官方管理脚本，因此非交互模式还必须提供当前脚本哈希（已确认内核不存在并跳过官方脚本时除外）：
 
 ```bash
 sudo proxyforge uninstall sing-box --yes
