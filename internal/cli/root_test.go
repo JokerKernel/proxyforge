@@ -64,11 +64,61 @@ func TestFillResetDefaultsTargetToNewSNI(t *testing.T) {
 		out:    &out,
 	}
 	opts := domain.ResetOptions{}
-	if err := c.fillReset(domain.CoreSingBox, &opts); err != nil {
+	if err := c.fillReset(context.Background(), domain.CoreSingBox, &opts); err != nil {
 		t.Fatal(err)
 	}
 	if opts.SNI != "new.example.com" || opts.Target != "new.example.com:443" {
 		t.Fatalf("reset options = %#v", opts)
+	}
+}
+
+func TestFillResetUsesSameAutomaticSNICandidatesAsGenerate(t *testing.T) {
+	store := system.StateStore{Layout: system.Layout{Root: t.TempDir()}}
+	if err := store.Save(domain.NodeSpec{ManagedBy: "proxyforge", Core: domain.CoreSingBox, Server: "server.example.com", SNI: "old.example.com", Target: "old.example.com:443"}); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	c := &commandSet{
+		app:    &app.App{Store: store},
+		reader: bufio.NewReader(strings.NewReader("\n\n\n")),
+		out:    &out,
+		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
+			if len(candidates) < 10 || server != "server.example.com" || limit != 10 {
+				t.Fatalf("probe candidates=%d server=%q limit=%d", len(candidates), server, limit)
+			}
+			return []app.SNICandidate{{Domain: "new.example.com", Latency: 4 * time.Millisecond, TLSVersion: "1.3", ALPN: "h2", CertificateSANs: []string{"new.example.com"}, CDN: "未发现明显特征"}}, nil
+		},
+		randomIndex: func(size int) int { return 0 },
+	}
+	opts := domain.ResetOptions{}
+	if err := c.fillReset(context.Background(), domain.CoreSingBox, &opts); err != nil {
+		t.Fatal(err)
+	}
+	if opts.SNI != "new.example.com" || opts.Target != "new.example.com:443" {
+		t.Fatalf("reset options = %#v", opts)
+	}
+	if !strings.Contains(out.String(), "TLS=1.3") || !strings.Contains(out.String(), "证书 SAN=new.example.com") {
+		t.Fatalf("candidate output=%q", out.String())
+	}
+}
+
+func TestConfirmCredentialOnlyResetPreservesTarget(t *testing.T) {
+	store := system.StateStore{Layout: system.Layout{Root: t.TempDir()}}
+	if err := store.Save(domain.NodeSpec{ManagedBy: "proxyforge", Core: domain.CoreXray, SNI: "keep.example.com", Target: "origin.example.com:443"}); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	c := &commandSet{
+		app:    &app.App{Store: store},
+		reader: bufio.NewReader(strings.NewReader("yes\n")),
+		out:    &out,
+	}
+	confirmed, err := c.confirmCredentialOnlyReset(domain.CoreXray)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !confirmed || !strings.Contains(out.String(), "SNI 和 target 保持不变：keep.example.com，origin.example.com:443") {
+		t.Fatalf("confirmed=%v output=%q", confirmed, out.String())
 	}
 }
 
