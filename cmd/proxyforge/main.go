@@ -5,12 +5,11 @@ import (
 	"os"
 
 	"proxyforge/internal/cli"
+	"proxyforge/internal/version"
 )
 
-var version = "dev"
-
 func main() {
-	if err := cli.New(version).Execute(); err != nil {
+	if err := cli.New(version.String()).Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "错误:", err)
 		os.Exit(1)
 	}

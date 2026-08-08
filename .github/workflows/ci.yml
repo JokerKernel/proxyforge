@@ -30,7 +30,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - run: go build -trimpath -o proxyforge-linux-${{ matrix.arch }} ./cmd/proxyforge
+      - run: ./scripts/build.sh
         env:
           GOOS: linux
           GOARCH: ${{ matrix.arch }}
+          OUTPUT: proxyforge-linux-${{ matrix.arch }}

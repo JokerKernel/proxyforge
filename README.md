@@ -7,8 +7,29 @@ ProxyForge 是一个面向 Linux/systemd 的 Go 单二进制管理器，用来�
 ## 构建
 
 ```bash
-go build -trimpath -ldflags "-s -w" -o proxyforge ./cmd/proxyforge
+./scripts/build.sh
 go test ./...
+```
+
+构建脚本会从 Git 自动取得版本和提交号，并注入 UTC 构建时间；`make build` 是它的快捷入口。可以通过环境变量显式覆盖，便于发布流水线构建可复现版本：
+
+```bash
+VERSION=v1.0.0 COMMIT=abc1234 BUILD_DATE=2026-08-08T12:00:00Z ./scripts/build.sh
+./proxyforge --version
+```
+
+不使用 Make 时，对应的直接构建命令为：
+
+```bash
+VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
+COMMIT="${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
+BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+
+go build -trimpath -ldflags="-s -w \
+  -X proxyforge/internal/version.Version=${VERSION} \
+  -X proxyforge/internal/version.Commit=${COMMIT} \
+  -X proxyforge/internal/version.BuildDate=${BUILD_DATE}" \
+  -o proxyforge ./cmd/proxyforge
 ```
 
 无参数运行会进入中文数字菜单：
