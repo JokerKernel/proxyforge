@@ -19,9 +19,9 @@ trap 'rm -rf -- "${smoke_tmp}"' EXIT
 "${proxyforge_bin}" install sing-box --yes --trust-script-sha256 "${PROXYFORGE_SING_SCRIPT_SHA256}"
 "${proxyforge_bin}" install xray --yes --trust-script-sha256 "${PROXYFORGE_XRAY_SCRIPT_SHA256}"
 
-"${proxyforge_bin}" config generate sing-box --yes --take-over \
+"${proxyforge_bin}" config generate sing-box --yes \
   --server "${PROXYFORGE_SMOKE_SERVER}" --port 443 --sni "${PROXYFORGE_SMOKE_SNI}" --target "${target}"
-"${proxyforge_bin}" config generate xray --yes --take-over \
+"${proxyforge_bin}" config generate xray --yes \
   --server "${PROXYFORGE_SMOKE_SERVER}" --port 8443 --sni "${PROXYFORGE_SMOKE_SNI}" --target "${target}"
 
 "${proxyforge_bin}" config client sing-box --output "${smoke_tmp}/sing-box-client.json"

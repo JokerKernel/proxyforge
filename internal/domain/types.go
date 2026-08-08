@@ -35,7 +35,6 @@ type GenerateOptions struct {
 	UserName          string
 	InboundTag        string
 	RotateCredentials bool
-	TakeOver          bool
 	NonInteractive    bool
 }
 

@@ -400,10 +400,6 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if err != nil {
 		return n, err
 	}
-	managedConfig := hasOld && hadConfig && old.ConfigSHA256 != "" && system.SHA256(oldConfig) == old.ConfigSHA256
-	if hadConfig && !managedConfig && !opts.TakeOver {
-		return n, fmt.Errorf("发现非 ProxyForge 管理或已被外部修改的配置 %s；确认后使用 --take-over", p.ConfigPath())
-	}
 	a.progressf("使用 %s 原生命令校验候选配置", core)
 	if err := validateRendered(ctx, p, a.Runner, configPath, config); err != nil {
 		return n, err

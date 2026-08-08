@@ -141,7 +141,7 @@ func writeSupportedPlatform(t *testing.T, root string) {
 	}
 }
 
-func TestGenerateTakeoverPreserveRotateAndRollback(t *testing.T) {
+func TestGenerateOverwritePreserveRotateAndRollback(t *testing.T) {
 	r := &fakeRunner{port: freePort(t)}
 	defer r.close()
 	a, root := testApp(t, r)
@@ -152,7 +152,7 @@ func TestGenerateTakeoverPreserveRotateAndRollback(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte("foreign config"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	o := domain.GenerateOptions{Server: "server.example.com", Port: r.port, SNI: "www.example.com", Target: "www.example.com:443", UserName: "phone", InboundTag: "phone-in", TakeOver: true, NonInteractive: true}
+	o := domain.GenerateOptions{Server: "server.example.com", Port: r.port, SNI: "www.example.com", Target: "www.example.com:443", UserName: "phone", InboundTag: "phone-in", NonInteractive: true}
 	first, err := a.Generate(context.Background(), domain.CoreSingBox, o)
 	if err != nil {
 		t.Fatal(err)
@@ -167,7 +167,6 @@ func TestGenerateTakeoverPreserveRotateAndRollback(t *testing.T) {
 	if b, _ := os.ReadFile(backups[0]); string(b) != "foreign config" {
 		t.Fatalf("backup=%q", b)
 	}
-	o.TakeOver = false
 	second, err := a.Generate(context.Background(), domain.CoreSingBox, o)
 	if err != nil {
 		t.Fatal(err)

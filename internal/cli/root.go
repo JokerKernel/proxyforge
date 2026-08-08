@@ -189,7 +189,7 @@ func (c *commandSet) generateCommand() *cobra.Command {
 					return err
 				}
 			}
-			err := c.runGenerate(cmd.Context(), args[0], o, interactive)
+			err := c.runGenerate(cmd.Context(), args[0], o)
 			if errors.Is(err, errReturnToMenu) {
 				fmt.Fprintln(c.out, "已取消生成服务端配置。")
 				return nil
@@ -204,7 +204,9 @@ func (c *commandSet) generateCommand() *cobra.Command {
 	cmd.Flags().StringVar(&o.UserName, "user-name", "", "服务端用户名称（默认 proxyforge-user）")
 	cmd.Flags().StringVar(&o.InboundTag, "inbound-tag", "", "入站标签（默认按内核自动生成）")
 	cmd.Flags().BoolVar(&o.RotateCredentials, "rotate-credentials", false, "轮换 UUID、密钥和 short ID，使旧客户端失效")
-	cmd.Flags().BoolVar(&o.TakeOver, "take-over", false, "备份并接管现有未知配置")
+	cmd.Flags().Bool("take-over", false, "兼容旧版本；当前始终备份并完整覆盖现有配置")
+	_ = cmd.Flags().MarkDeprecated("take-over", "当前生成流程会自动备份并完整覆盖现有配置，无需此参数")
+	_ = cmd.Flags().MarkHidden("take-over")
 	return cmd
 }
 
@@ -396,19 +398,8 @@ func (c *commandSet) selectPhysicalPublicAddress(addresses []app.PublicInterface
 	return addresses[choice-1].Address, nil
 }
 
-func (c *commandSet) runGenerate(ctx context.Context, core string, o domain.GenerateOptions, interactive bool) error {
+func (c *commandSet) runGenerate(ctx context.Context, core string, o domain.GenerateOptions) error {
 	n, err := c.app.Generate(ctx, core, o)
-	if err != nil && interactive && !o.TakeOver && strings.Contains(err.Error(), "--take-over") {
-		fmt.Fprintln(c.errOut, err)
-		ok, confirmErr := c.confirmCancelable("是否备份并接管现有配置？输入 yes/y 继续，输入 q 返回主菜单")
-		if confirmErr != nil {
-			return confirmErr
-		}
-		if ok {
-			o.TakeOver = true
-			n, err = c.app.Generate(ctx, core, o)
-		}
-	}
 	if err != nil {
 		return err
 	}
@@ -534,7 +525,7 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		case 1:
 			o := domain.GenerateOptions{}
 			if err = c.fillGenerate(ctx, core, &o); err == nil {
-				err = c.runGenerate(ctx, core, o, true)
+				err = c.runGenerate(ctx, core, o)
 			}
 			if errors.Is(err, errReturnToMenu) {
 				fmt.Fprintln(c.out, "已取消生成服务端配置。")
