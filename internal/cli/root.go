@@ -376,7 +376,13 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 		shouldPause := true
 		switch choice {
 		case 1:
-			err = c.app.Install(ctx, core, install.Options{Confirm: c.confirm})
+			var confirmed bool
+			confirmed, err = c.confirmInstall(core)
+			if err == nil && confirmed {
+				err = c.app.Install(ctx, core, install.Options{Confirm: c.confirm})
+			} else if err == nil {
+				fmt.Fprintln(c.out, "已取消安装/升级。")
+			}
 		case 2:
 			shouldPause = false
 			err = c.serverConfigMenu(ctx, core)
@@ -501,6 +507,12 @@ func (c *commandSet) confirmUninstall(core string) (bool, error) {
 	fmt.Fprintf(c.out, "即将停止并卸载 %s，删除其 ProxyForge 状态和受管活动配置。\n", core)
 	fmt.Fprintln(c.out, "客户端将立即失效；历史备份和安装脚本信任记录会保留。")
 	return c.confirm("确认卸载？输入 yes/y 继续")
+}
+
+func (c *commandSet) confirmInstall(core string) (bool, error) {
+	fmt.Fprintf(c.out, "即将安装或升级 %s。\n", core)
+	fmt.Fprintln(c.out, "此操作会下载并执行官方安装方式，可能修改内核二进制、软件包文件和 systemd unit；现有配置会先备份。")
+	return c.confirm("确认安装/升级？输入 yes/y 继续")
 }
 
 func (c *commandSet) confirmCleanup(target string) (bool, error) {

@@ -171,6 +171,34 @@ func TestUninstallConfirmationDescribesRetainedRecoveryData(t *testing.T) {
 	}
 }
 
+func TestInstallConfirmationDescribesSystemChanges(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{reader: bufio.NewReader(strings.NewReader("yes\n")), out: &out}
+	ok, err := c.confirmInstall(domain.CoreSingBox)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"安装或升级 sing-box", "内核二进制", "systemd unit", "现有配置会先备份"} {
+		if !ok || !strings.Contains(out.String(), want) {
+			t.Fatalf("confirmed=%v output missing %q: %q", ok, want, out.String())
+		}
+	}
+}
+
+func TestCoreMenuCanCancelInstallBeforeCallingApp(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{
+		reader: bufio.NewReader(strings.NewReader("1\nn\n\n")),
+		out:    &out,
+	}
+	if err := c.coreMenu(context.Background(), domain.CoreSingBox); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "已取消安装/升级") {
+		t.Fatalf("cancel output=%q", out.String())
+	}
+}
+
 func TestConfirmAcceptsGlobalAffirmativeForms(t *testing.T) {
 	for _, input := range []string{"yes\n", "y\n", "Y\n", "YES\n"} {
 		t.Run(strings.TrimSpace(input), func(t *testing.T) {
