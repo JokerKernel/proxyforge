@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/spf13/cobra"
 
@@ -23,6 +24,8 @@ import (
 )
 
 var errReturnToMenu = errors.New("返回主菜单")
+
+const menuDisplayWidth = 40
 
 type confirmationSection struct {
 	title string
@@ -674,7 +677,7 @@ func (c *commandSet) clientMenu(ctx context.Context, core string) (bool, error) 
 func (c *commandSet) printCoreMenu(core string) {
 	fmt.Fprintln(c.out)
 	fmt.Fprintln(c.out, "========================================")
-	fmt.Fprintf(c.out, "       %s 管理菜单\n", core)
+	fmt.Fprintln(c.out, centerDisplayText(core+" 管理菜单", menuDisplayWidth))
 	fmt.Fprintln(c.out, "========================================")
 	fmt.Fprintln(c.out, "1) 安装/升级内核")
 	fmt.Fprintln(c.out, "2) 服务端配置管理")
@@ -874,7 +877,7 @@ func (c *commandSet) runCredentialReset(ctx context.Context, core string, opts d
 func (c *commandSet) selectCore() (string, bool, error) {
 	c.clearScreen()
 	fmt.Fprintln(c.out, "========================================")
-	fmt.Fprintln(c.out, "       ProxyForge 双内核代理管理器")
+	fmt.Fprintln(c.out, centerDisplayText("ProxyForge 双内核代理管理器", menuDisplayWidth))
 	fmt.Fprintln(c.out, "========================================")
 	fmt.Fprintln(c.out, "请选择要管理的内核")
 	fmt.Fprintln(c.out, "1) sing-box")
@@ -1255,4 +1258,29 @@ func netJoinHostPort(host, port string) string {
 		return "[" + host + "]:" + port
 	}
 	return host + ":" + port
+}
+
+func centerDisplayText(value string, width int) string {
+	valueWidth := terminalDisplayWidth(value)
+	if valueWidth >= width {
+		return value
+	}
+	return strings.Repeat(" ", (width-valueWidth)/2) + value
+}
+
+func terminalDisplayWidth(value string) int {
+	width := 0
+	for _, char := range value {
+		switch {
+		case unicode.Is(unicode.Mn, char), unicode.Is(unicode.Me, char):
+			// Combining marks occupy the same cell as the preceding rune.
+		case char <= unicode.MaxASCII:
+			width++
+		default:
+			// Menu titles currently contain CJK text, which occupies two
+			// terminal cells in the supported Linux locales.
+			width += 2
+		}
+	}
+	return width
 }

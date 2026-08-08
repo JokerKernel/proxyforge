@@ -376,6 +376,26 @@ func TestCoreMenuMergesUninstallAndCleanup(t *testing.T) {
 	}
 }
 
+func TestCoreMenuTitlesUseDisplayWidthCentering(t *testing.T) {
+	for _, tt := range []struct {
+		core string
+		want string
+	}{
+		{core: domain.CoreXray, want: strings.Repeat(" ", 13) + "xray 管理菜单"},
+		{core: domain.CoreSingBox, want: strings.Repeat(" ", 11) + "sing-box 管理菜单"},
+	} {
+		var out bytes.Buffer
+		c := &commandSet{out: &out}
+		c.printCoreMenu(tt.core)
+		if !strings.Contains(out.String(), "\n"+tt.want+"\n") {
+			t.Fatalf("core=%s menu output=%q, want centered title %q", tt.core, out.String(), tt.want)
+		}
+	}
+	if got := terminalDisplayWidth("xray 管理菜单"); got != 13 {
+		t.Fatalf("display width=%d, want 13", got)
+	}
+}
+
 func TestInstallConfirmationDescribesSystemChanges(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{reader: bufio.NewReader(strings.NewReader("yes\n")), out: &out}
