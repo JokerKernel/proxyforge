@@ -17,7 +17,13 @@ import (
 	"proxyforge/internal/domain"
 	"proxyforge/internal/install"
 	"proxyforge/internal/provider"
+	"proxyforge/internal/provider/mihomo"
 	"proxyforge/internal/system"
+)
+
+const (
+	ClientFormatNative = "native"
+	ClientFormatClash  = "clash"
 )
 
 type App struct {
@@ -447,10 +453,24 @@ func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.Res
 }
 
 func (a *App) Client(ctx context.Context, core, output string, force bool) ([]byte, error) {
-	a.progressf("开始生成 %s 客户端配置", core)
+	return a.ClientConfig(ctx, core, ClientFormatNative, output, force)
+}
+
+func (a *App) ClientConfig(ctx context.Context, core, format, output string, force bool) ([]byte, error) {
 	if err := a.RootCheck(); err != nil {
 		return nil, err
 	}
+	format = strings.ToLower(strings.TrimSpace(format))
+	if format == "" {
+		format = ClientFormatNative
+	}
+	if format == "mihomo" || format == "clash-meta" {
+		format = ClientFormatClash
+	}
+	if format != ClientFormatNative && format != ClientFormatClash {
+		return nil, fmt.Errorf("不支持的客户端格式 %q（可选 native 或 clash）", format)
+	}
+	a.progressf("开始生成 %s 客户端配置（格式：%s）", core, format)
 	p, err := a.Registry.Get(core)
 	if err != nil {
 		return nil, err
@@ -460,31 +480,40 @@ func (a *App) Client(ctx context.Context, core, output string, force bool) ([]by
 	if err != nil {
 		return nil, err
 	}
-	b, err := p.RenderClient(n)
-	if err != nil {
-		return nil, err
-	}
-	tmp, err := os.CreateTemp("", "proxyforge-client-*.json")
-	if err != nil {
-		return nil, err
-	}
-	path := tmp.Name()
-	defer os.Remove(path)
-	if err := tmp.Chmod(0600); err == nil {
-		_, err = tmp.Write(b)
-	}
-	if closeErr := tmp.Close(); err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return nil, err
-	}
-	a.progressf("使用 %s 原生命令校验客户端配置", core)
-	if err := p.ValidateConfig(ctx, a.Runner, path); err != nil {
-		return nil, err
+	var b []byte
+	if format == ClientFormatClash {
+		b, err = mihomo.RenderClient(n)
+		if err != nil {
+			return nil, err
+		}
+		a.progressf("已生成 Mihomo/Clash Meta YAML；不使用 %s 校验非原生格式", core)
+	} else {
+		b, err = p.RenderClient(n)
+		if err != nil {
+			return nil, err
+		}
+		tmp, createErr := os.CreateTemp("", "proxyforge-client-*.json")
+		if createErr != nil {
+			return nil, createErr
+		}
+		path := tmp.Name()
+		defer os.Remove(path)
+		if err = tmp.Chmod(0600); err == nil {
+			_, err = tmp.Write(b)
+		}
+		if closeErr := tmp.Close(); err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			return nil, err
+		}
+		a.progressf("使用 %s 原生命令校验客户端配置", core)
+		if err = p.ValidateConfig(ctx, a.Runner, path); err != nil {
+			return nil, err
+		}
 	}
 	if output == "" {
-		a.progressf("客户端配置校验完成，将 JSON 输出到 stdout")
+		a.progressf("客户端配置生成完成，将 %s 输出到 stdout", clientFormatLabel(format))
 		return b, nil
 	}
 	a.progressf("以 0600 权限写入客户端配置 %s", output)
@@ -505,6 +534,13 @@ func (a *App) Client(ctx context.Context, core, output string, force bool) ([]by
 		err = closeErr
 	}
 	return b, err
+}
+
+func clientFormatLabel(format string) string {
+	if format == ClientFormatClash {
+		return "YAML"
+	}
+	return "JSON"
 }
 
 func (a *App) Service(ctx context.Context, core, action string) ([]byte, error) {

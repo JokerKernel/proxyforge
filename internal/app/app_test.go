@@ -459,6 +459,48 @@ func TestClientOutputPermissionsAndForce(t *testing.T) {
 	}
 }
 
+func TestClashClientOutput(t *testing.T) {
+	r := &fakeRunner{}
+	a, _ := testApp(t, r)
+	n := domain.NodeSpec{
+		ManagedBy: "proxyforge", Core: domain.CoreXray, Server: "server.example.com", Port: 8443,
+		SNI: "www.example.com", UUID: "123e4567-e89b-42d3-a456-426614174000",
+		PrivateKey: "must-not-leak", PublicKey: "public", ShortID: "0123456789abcdef",
+	}
+	if err := a.Store.Save(n); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "clash.yaml")
+	b, err := a.ClientConfig(context.Background(), domain.CoreXray, ClientFormatClash, path, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "type: vless") || !strings.Contains(string(b), `public-key: "public"`) {
+		t.Fatalf("unexpected Clash output:\n%s", b)
+	}
+	if strings.Contains(string(b), n.PrivateKey) {
+		t.Fatal("Clash output leaked private key")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("mode=%o", info.Mode().Perm())
+	}
+	if strings.Contains(r.callLog(), "xray run -test") {
+		t.Fatal("Xray validator was incorrectly used for Clash YAML")
+	}
+}
+
+func TestClientRejectsUnknownFormat(t *testing.T) {
+	r := &fakeRunner{}
+	a, _ := testApp(t, r)
+	if _, err := a.ClientConfig(context.Background(), domain.CoreSingBox, "legacy-clash", "", false); err == nil || !strings.Contains(err.Error(), "native 或 clash") {
+		t.Fatalf("error=%v, want supported formats", err)
+	}
+}
+
 func TestClientRequiresRoot(t *testing.T) {
 	a := &App{RootCheck: func() error { return errors.New("root required") }}
 	if _, err := a.Client(context.Background(), domain.CoreSingBox, "", false); err == nil || !strings.Contains(err.Error(), "root required") {

@@ -45,7 +45,7 @@ proxyforge install <sing-box|xray> [--version VERSION]
 proxyforge uninstall <sing-box|xray> [--yes]
 proxyforge cleanup <sing-box|xray|all> [--yes]
 proxyforge config generate <sing-box|xray> --server HOST --port PORT --sni DOMAIN [--target HOST:PORT]
-proxyforge config client <sing-box|xray> [--output FILE] [--force]
+proxyforge config client <sing-box|xray> [--format native|clash] [--output FILE] [--force]
 proxyforge config reset <sing-box|xray> [--sni DOMAIN] [--target HOST:PORT] [--yes]
 proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
 ```
@@ -91,9 +91,10 @@ sudo proxyforge config generate xray \
 
 sudo proxyforge config client sing-box --output ./sing-box-client.json
 sudo proxyforge config client xray --output ./xray-client.json
+sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 ```
 
-客户端文件以 `0600` 创建；stdout 输出前也会调用对应内核的原生配置校验。sing-box 客户端提供 `127.0.0.1:2080` mixed 入站，Xray 客户端提供 `127.0.0.1:10808` SOCKS 与 `127.0.0.1:10809` HTTP 入站。
+客户端文件以 `0600` 创建。`--format native` 是默认值，输出前会调用对应内核的原生配置校验：sing-box 客户端提供 `127.0.0.1:2080` mixed 入站，Xray 客户端提供 `127.0.0.1:10808` SOCKS 与 `127.0.0.1:10809` HTTP 入站。`--format clash` 输出带 `mixed-port: 7890`、`PROXY` 策略组和 `MATCH` 规则的完整 Mihomo/Clash Meta YAML；由于传统 Clash 不支持 VLESS REALITY，不能使用该文件，且 ProxyForge 不会用 sing-box/Xray 二进制校验这种非原生格式。
 
 ## 文件与安全边界
 

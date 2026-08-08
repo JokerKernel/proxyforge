@@ -193,11 +193,12 @@ func (c *commandSet) generateCommand() *cobra.Command {
 
 func (c *commandSet) clientCommand() *cobra.Command {
 	var output string
+	var format string
 	var force bool
 	cmd := &cobra.Command{
-		Use: "client <sing-box|xray>", Short: "输出完整客户端 JSON", Args: cobra.ExactArgs(1),
+		Use: "client <sing-box|xray>", Short: "输出原生 JSON 或 Clash YAML 客户端配置", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			b, err := c.app.Client(cmd.Context(), args[0], output, force)
+			b, err := c.app.ClientConfig(cmd.Context(), args[0], format, output, force)
 			if err != nil {
 				return err
 			}
@@ -209,6 +210,7 @@ func (c *commandSet) clientCommand() *cobra.Command {
 			return err
 		},
 	}
+	cmd.Flags().StringVar(&format, "format", app.ClientFormatNative, "客户端格式：native 或 clash（Mihomo/Clash Meta）")
 	cmd.Flags().StringVarP(&output, "output", "o", "", "写入文件（默认 stdout）")
 	cmd.Flags().BoolVar(&force, "force", false, "覆盖已有输出文件")
 	return cmd
@@ -344,11 +346,7 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 				err = c.runGenerate(ctx, core, o, true)
 			}
 		case 3:
-			var b []byte
-			b, err = c.app.Client(ctx, core, "", false)
-			if err == nil {
-				_, err = c.out.Write(b)
-			}
+			shouldPause, err = c.clientMenu(ctx, core)
 		case 4:
 			shouldPause, err = c.resetMenu(ctx, core)
 		case 5:
@@ -378,6 +376,30 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 			c.pauseForMenu()
 		}
 	}
+}
+
+func (c *commandSet) clientMenu(ctx context.Context, core string) (bool, error) {
+	c.clearScreen()
+	fmt.Fprintf(c.out, "查看客户端配置：%s\n\n", core)
+	fmt.Fprintln(c.out, "1) 内核原生 JSON")
+	fmt.Fprintln(c.out, "2) Clash YAML（Mihomo/Clash Meta）")
+	fmt.Fprintln(c.out, "0) 返回内核菜单")
+	choice, err := c.chooseNumber("请选择", 0, 2, 1)
+	if err != nil {
+		return false, err
+	}
+	if choice == 0 {
+		return false, nil
+	}
+	format := app.ClientFormatNative
+	if choice == 2 {
+		format = app.ClientFormatClash
+	}
+	b, err := c.app.ClientConfig(ctx, core, format, "", false)
+	if err == nil {
+		_, err = c.out.Write(b)
+	}
+	return true, err
 }
 
 func (c *commandSet) printCoreMenu(core string) {
