@@ -32,6 +32,7 @@ type fakeRunner struct {
 	port          int
 	failRestart   bool
 	failRemove    bool
+	missingBinary bool
 	keyGeneration int
 }
 
@@ -41,6 +42,9 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte
 	call := name + " " + strings.Join(args, " ")
 	f.calls = append(f.calls, call)
 	if name == "sing-box" && len(args) > 0 && args[0] == "version" {
+		if f.missingBinary {
+			return nil, errors.New("sing-box not found")
+		}
 		return []byte("sing-box version 1.14.0\n"), nil
 	}
 	if name == "sing-box" && len(args) > 1 && args[0] == "generate" {
@@ -51,6 +55,9 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte
 		return nil, nil
 	}
 	if name == "xray" && len(args) > 0 && args[0] == "version" {
+		if f.missingBinary {
+			return nil, errors.New("xray not found")
+		}
 		return []byte("Xray 25.1.1\n"), nil
 	}
 	if name == "systemctl" && len(args) > 0 && args[0] == "show" {
@@ -313,6 +320,119 @@ func TestUninstallPreservesExternallyModifiedConfig(t *testing.T) {
 	}
 	if _, err := a.Store.Load(domain.CoreSingBox); !errors.Is(err, system.ErrNoState) {
 		t.Fatalf("state error = %v, want ErrNoState", err)
+	}
+}
+
+func TestCleanupRemovesOnlySelectedCoreResidue(t *testing.T) {
+	r := &fakeRunner{missingBinary: true}
+	a, root := testApp(t, r)
+	singPaths := []string{
+		a.Layout.Resolve("/etc/sing-box/config.json"),
+		a.Layout.Resolve("/var/lib/sing-box/cache.db"),
+		a.Layout.StatePath(domain.CoreSingBox),
+		a.Layout.TrustPath(domain.CoreSingBox),
+		filepath.Join(a.Layout.BackupRoot(domain.CoreSingBox), "old", "config.json"),
+	}
+	for _, path := range singPaths {
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("residue"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	xrayState := a.Layout.StatePath(domain.CoreXray)
+	if err := os.MkdirAll(filepath.Dir(xrayState), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(xrayState, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	clientExport := filepath.Join(root, "user-client.json")
+	if err := os.WriteFile(clientExport, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.Cleanup(context.Background(), domain.CoreSingBox); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range singPaths {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("residue still exists at %s: %v", path, err)
+		}
+	}
+	for _, path := range []string{xrayState, clientExport} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("unrelated file was removed at %s: %v", path, err)
+		}
+	}
+}
+
+func TestCleanupAllRemovesBothCoresAndProxyForgeData(t *testing.T) {
+	r := &fakeRunner{missingBinary: true}
+	a, _ := testApp(t, r)
+	paths := []string{
+		a.Layout.Resolve("/etc/sing-box/config.json"),
+		a.Layout.Resolve("/var/lib/sing-box/cache.db"),
+		a.Layout.Resolve("/usr/local/etc/xray/config.json"),
+		a.Layout.Resolve("/var/log/xray/access.log"),
+		a.Layout.StatePath(domain.CoreSingBox),
+		a.Layout.TrustPath(domain.CoreXray),
+		filepath.Join(a.Layout.BackupRoot(domain.CoreXray), "old", "config.json"),
+	}
+	for _, path := range paths {
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("residue"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := a.Cleanup(context.Background(), "all"); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range paths {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("residue still exists at %s: %v", path, err)
+		}
+	}
+	if _, err := os.Stat(a.Layout.Resolve("/var/lib/proxyforge")); !os.IsNotExist(err) {
+		t.Fatalf("ProxyForge data root still exists: %v", err)
+	}
+}
+
+func TestCleanupRejectsUnknownTargetBeforeDeleting(t *testing.T) {
+	r := &fakeRunner{missingBinary: true}
+	a, root := testApp(t, r)
+	marker := filepath.Join(root, "marker")
+	if err := os.WriteFile(marker, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Cleanup(context.Background(), "unknown"); err == nil {
+		t.Fatal("expected unsupported target error")
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("marker changed after rejected cleanup: %v", err)
+	}
+}
+
+func TestCleanupRefusesInstalledCoreBeforeDeleting(t *testing.T) {
+	r := &fakeRunner{}
+	a, _ := testApp(t, r)
+	marker := a.Layout.Resolve("/etc/sing-box/config.json")
+	if err := os.MkdirAll(filepath.Dir(marker), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(marker, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	err := a.Cleanup(context.Background(), domain.CoreSingBox)
+	if err == nil || !strings.Contains(err.Error(), "请先执行 uninstall") {
+		t.Fatalf("error=%v, want uninstall requirement", err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("installed core data was removed: %v", err)
 	}
 }
 

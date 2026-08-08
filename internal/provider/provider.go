@@ -28,6 +28,7 @@ type CoreProvider interface {
 	InstallArgs(version string, upgrade bool) []string
 	PackageName() string
 	UninstallArgs() []string
+	CleanupPaths() []string
 	Version(context.Context, Runner) (string, error)
 	GenerateKeyPair(context.Context, Runner) (domain.KeyPair, error)
 	RenderServer(domain.NodeSpec) ([]byte, error)

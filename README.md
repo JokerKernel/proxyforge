@@ -44,6 +44,7 @@ sudo ./proxyforge
 proxyforge install <sing-box|xray> [--version VERSION]
 proxyforge upgrade <sing-box|xray> [--version VERSION]
 proxyforge uninstall <sing-box|xray> [--yes]
+proxyforge cleanup <sing-box|xray|all> [--yes]
 proxyforge config generate <sing-box|xray> --server HOST --port PORT --sni DOMAIN [--target HOST:PORT]
 proxyforge config client <sing-box|xray> [--output FILE] [--force]
 proxyforge config reset <sing-box|xray> [--sni DOMAIN] [--target HOST:PORT] [--yes]
@@ -61,6 +62,13 @@ sudo proxyforge install sing-box --yes --trust-script-sha256 <64位哈希>
 ```bash
 sudo proxyforge uninstall sing-box --yes
 sudo proxyforge uninstall xray --yes --trust-script-sha256 <64位哈希>
+```
+
+需要彻底删除卸载后保留的数据时，可使用清理命令。程序检测到内核仍安装时会拒绝清理，必须先执行 `uninstall`。清理不会创建新备份，会永久删除所选内核的配置目录、运行数据、文件日志、ProxyForge 状态、信任记录和历史备份；`all` 会先确认两个内核均已卸载，再同时清理。程序不会删除 systemd journal，也不会记录或删除此前导出到用户指定位置的客户端配置。
+
+```bash
+sudo proxyforge cleanup sing-box
+sudo proxyforge cleanup all --yes
 ```
 
 首次交互安装会展示来源、最终重定向地址、大小、危险操作摘要和 SHA-256，输入 `yes`、`y` 或 `Y` 才执行；该规则适用于所有交互确认。脚本变化后，非交互执行会被阻止，必须重新进行交互确认。安装器下载受限临时文件，不使用 `curl | sh`，并检查 HTTPS 主机白名单、重定向、HTTP 状态、大小、shebang、NUL/文本格式和 `bash -n`。执行安装脚本时会实时转发 stdout/stderr，并保留最近 64 KiB 输出用于失败诊断。

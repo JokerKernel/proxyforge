@@ -31,6 +31,7 @@ func (*Provider) InstallArgs(version string, _ bool) []string {
 }
 func (*Provider) PackageName() string     { return "sing-box" }
 func (*Provider) UninstallArgs() []string { return nil }
+func (*Provider) CleanupPaths() []string  { return []string{"/etc/sing-box", "/var/lib/sing-box"} }
 
 func (*Provider) Version(ctx context.Context, r provider.Runner) (string, error) {
 	b, err := r.Run(ctx, "sing-box", "version")

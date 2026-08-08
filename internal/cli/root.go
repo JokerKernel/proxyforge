@@ -55,7 +55,7 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 	root.SetErr(os.Stderr)
 	root.SetIn(os.Stdin)
 	root.PersistentFlags().BoolVarP(&c.yes, "yes", "y", false, "非交互模式（执行下载的管理脚本仍必须提供 SHA-256）")
-	root.AddCommand(c.installCommand(false), c.installCommand(true), c.uninstallCommand(), c.configCommand(), c.serviceCommand())
+	root.AddCommand(c.installCommand(false), c.installCommand(true), c.uninstallCommand(), c.cleanupCommand(), c.configCommand(), c.serviceCommand())
 	return root
 }
 
@@ -85,6 +85,27 @@ func (c *commandSet) uninstallCommand() *cobra.Command {
 	cmd.Flags().StringVar(&trust, "trust-script-sha256", "", "非交互卸载 Xray 时固定的官方脚本 SHA-256")
 	cmd.Flags().StringVar(&scriptURL, "script-url", "", "Xray 官方管理脚本地址（高级选项，仍受主机白名单限制）")
 	return cmd
+}
+
+func (c *commandSet) cleanupCommand() *cobra.Command {
+	return &cobra.Command{
+		Use: "cleanup <sing-box|xray|all>", Short: "直接删除卸载残留", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !c.yes {
+				if !readerInteractive(c.in) {
+					return fmt.Errorf("非交互模式清理必须显式提供 --yes")
+				}
+				confirmed, err := c.confirmCleanup(args[0])
+				if err != nil {
+					return err
+				}
+				if !confirmed {
+					return fmt.Errorf("用户取消清理")
+				}
+			}
+			return c.app.Cleanup(cmd.Context(), args[0])
+		},
+	}
 }
 
 func (c *commandSet) installCommand(upgrade bool) *cobra.Command {
@@ -282,7 +303,7 @@ func (c *commandSet) menu(ctx context.Context) error {
 	for {
 		c.clearScreen()
 		c.printMainMenu()
-		choice, err := c.chooseNumber("请选择", 0, 7, 0)
+		choice, err := c.chooseNumber("请选择", 0, 8, 0)
 		if err != nil {
 			if err == io.EOF {
 				return nil
@@ -341,6 +362,14 @@ func (c *commandSet) menu(ctx context.Context) error {
 			} else if err == nil {
 				fmt.Fprintln(c.out, "已取消卸载。")
 			}
+		case 8:
+			var confirmed bool
+			confirmed, err = c.confirmCleanup(core)
+			if err == nil && confirmed {
+				err = c.app.Cleanup(ctx, core)
+			} else if err == nil {
+				fmt.Fprintln(c.out, "已取消清理。")
+			}
 		}
 		if err != nil {
 			c.printMenuError(err)
@@ -363,6 +392,7 @@ func (c *commandSet) printMainMenu() {
 	fmt.Fprintln(c.out, "5) 重置节点/凭证")
 	fmt.Fprintln(c.out, "6) 管理服务")
 	fmt.Fprintln(c.out, "7) 卸载内核")
+	fmt.Fprintln(c.out, "8) 清理卸载残留")
 	fmt.Fprintln(c.out, "0) 退出")
 	fmt.Fprintln(c.out, "----------------------------------------")
 }
@@ -371,6 +401,12 @@ func (c *commandSet) confirmUninstall(core string) (bool, error) {
 	fmt.Fprintf(c.out, "即将停止并卸载 %s，删除其 ProxyForge 状态和受管活动配置。\n", core)
 	fmt.Fprintln(c.out, "客户端将立即失效；历史备份和安装脚本信任记录会保留。")
 	return c.confirm("确认卸载？输入 yes/y 继续")
+}
+
+func (c *commandSet) confirmCleanup(target string) (bool, error) {
+	fmt.Fprintf(c.out, "即将直接清理 %s 的卸载残留，不会创建新备份。\n", target)
+	fmt.Fprintln(c.out, "配置目录、运行数据、文件日志、ProxyForge 状态、信任记录和历史备份都会永久删除。")
+	return c.confirm("确认清理？输入 yes/y 继续")
 }
 
 func (c *commandSet) resetMenu(ctx context.Context, core string) (bool, error) {

@@ -167,6 +167,65 @@ func (a *App) Uninstall(ctx context.Context, core string, opts install.Options) 
 	return nil
 }
 
+func (a *App) Cleanup(ctx context.Context, target string) error {
+	if err := a.RootCheck(); err != nil {
+		return err
+	}
+	cores := []string{target}
+	if target == "all" {
+		cores = a.Registry.Names()
+	}
+	providers := make([]provider.CoreProvider, 0, len(cores))
+	for _, core := range cores {
+		p, err := a.Registry.Get(core)
+		if err != nil {
+			return err
+		}
+		providers = append(providers, p)
+	}
+	for _, p := range providers {
+		if version, err := p.Version(ctx, a.Runner); err == nil {
+			return fmt.Errorf("仍检测到已安装的 %s（%s）；请先执行 uninstall", p.Name(), version)
+		}
+	}
+
+	var cleanupErrors []error
+	for _, p := range providers {
+		paths := []string{
+			a.Layout.StatePath(p.Name()),
+			a.Layout.TrustPath(p.Name()),
+			a.Layout.BackupRoot(p.Name()),
+		}
+		for _, path := range p.CleanupPaths() {
+			paths = append(paths, a.Layout.Resolve(path))
+		}
+		for _, path := range paths {
+			if err := removeCleanupPath(path); err != nil {
+				cleanupErrors = append(cleanupErrors, fmt.Errorf("删除 %s: %w", path, err))
+			}
+		}
+	}
+	if target == "all" {
+		path := a.Layout.Resolve("/var/lib/proxyforge")
+		if err := removeCleanupPath(path); err != nil {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("删除 %s: %w", path, err))
+		}
+	}
+	if len(cleanupErrors) != 0 {
+		return fmt.Errorf("清理未完全完成: %w", errors.Join(cleanupErrors...))
+	}
+	fmt.Fprintf(a.Out, "%s 的卸载残留已清理。\n", target)
+	return nil
+}
+
+func removeCleanupPath(path string) error {
+	clean := filepath.Clean(path)
+	if !filepath.IsAbs(clean) || clean == "/" {
+		return fmt.Errorf("拒绝不安全的清理路径 %q", path)
+	}
+	return os.RemoveAll(clean)
+}
+
 func installedServiceRunning(status domain.ServiceStatus, checkErr error) (bool, error) {
 	detail := strings.TrimSpace(status.Detail)
 	if status.Active || detail == "active" {

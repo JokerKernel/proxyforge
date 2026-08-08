@@ -17,7 +17,7 @@ import (
 
 func TestStableCommandTree(t *testing.T) {
 	root := New("test")
-	for _, args := range [][]string{{"install"}, {"upgrade"}, {"uninstall"}, {"config", "generate"}, {"config", "client"}, {"config", "reset"}, {"service"}} {
+	for _, args := range [][]string{{"install"}, {"upgrade"}, {"uninstall"}, {"cleanup"}, {"config", "generate"}, {"config", "client"}, {"config", "reset"}, {"service"}} {
 		cmd, remaining, err := root.Find(args)
 		if err != nil {
 			t.Fatalf("find %v: %v", args, err)
@@ -28,6 +28,17 @@ func TestStableCommandTree(t *testing.T) {
 		if cmd.Name() != args[len(args)-1] {
 			t.Fatalf("find %v got %s", args, cmd.Name())
 		}
+	}
+}
+
+func TestCleanupCommandRequiresYesWhenNonInteractive(t *testing.T) {
+	input := strings.NewReader("")
+	c := &commandSet{in: input, reader: bufio.NewReader(input), out: io.Discard}
+	cmd := c.cleanupCommand()
+	cmd.SetArgs([]string{"all"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--yes") {
+		t.Fatalf("error = %v, want --yes requirement", err)
 	}
 }
 
@@ -73,6 +84,18 @@ func TestConfirmAcceptsGlobalAffirmativeForms(t *testing.T) {
 				t.Fatalf("input=%q confirmed=%v error=%v", input, ok, err)
 			}
 		})
+	}
+}
+
+func TestCleanupConfirmationWarnsNoBackup(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{reader: bufio.NewReader(strings.NewReader("Y\n")), out: &out}
+	ok, err := c.confirmCleanup("all")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || !strings.Contains(out.String(), "不会创建新备份") || !strings.Contains(out.String(), "永久删除") {
+		t.Fatalf("confirmed=%v output=%q", ok, out.String())
 	}
 }
 
