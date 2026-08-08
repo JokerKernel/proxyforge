@@ -139,8 +139,8 @@ func TestFillGenerateSelectsRandomDefaultFromFastCandidates(t *testing.T) {
 				t.Fatalf("probe candidates=%d server=%q limit=%d", len(candidates), server, limit)
 			}
 			return []app.SNICandidate{
-				{Domain: "fast.example.com", Latency: 5 * time.Millisecond},
-				{Domain: "second.example.com", Latency: 8 * time.Millisecond},
+				{Domain: "fast.example.com", Latency: 5 * time.Millisecond, TLSVersion: "1.3", ALPN: "h2", CertificateSANs: []string{"fast.example.com", "*.example.com"}, CDN: "Akamai（CNAME）"},
+				{Domain: "second.example.com", Latency: 8 * time.Millisecond, TLSVersion: "1.2", ALPN: "http/1.1", CertificateSANs: []string{"second.example.com"}, CDN: "未发现明显特征"},
 			}, nil
 		},
 		randomIndex: func(size int) int {
@@ -157,8 +157,17 @@ func TestFillGenerateSelectsRandomDefaultFromFastCandidates(t *testing.T) {
 	if opts.SNI != "second.example.com" || opts.Target != "second.example.com:443" {
 		t.Fatalf("generate options=%#v", opts)
 	}
-	if !strings.Contains(out.String(), "最快的候选域名") || !strings.Contains(out.String(), "[2]") {
+	if !strings.Contains(out.String(), "最快的候选域名") || !strings.Contains(out.String(), "[2]") ||
+		!strings.Contains(out.String(), "TLS=1.3") || !strings.Contains(out.String(), "ALPN=h2") ||
+		!strings.Contains(out.String(), "证书 SAN=fast.example.com, *.example.com") || !strings.Contains(out.String(), "CDN=Akamai（CNAME）") {
 		t.Fatalf("candidate menu output=%q", out.String())
+	}
+}
+
+func TestFormatCertificateSANsLimitsLongCertificates(t *testing.T) {
+	got := formatCertificateSANs([]string{"one.example", "two.example", "three.example", "four.example"}, 3)
+	if got != "one.example, two.example, three.example（另有 1 项）" {
+		t.Fatalf("SAN summary=%q", got)
 	}
 }
 

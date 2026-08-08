@@ -17,58 +17,96 @@ type TargetValidator interface {
 
 type NetworkTargetValidator struct{ Timeout time.Duration }
 
+type targetTLSInspection struct {
+	TLSVersion      uint16
+	ALPN            string
+	CertificateSANs []string
+	IPs             []net.IPAddr
+	CanonicalName   string
+}
+
 func (v NetworkTargetValidator) Validate(ctx context.Context, target, sni, server string) ([]string, error) {
-	if err := system.ValidateTarget(target); err != nil {
+	inspection, err := inspectNetworkTarget(ctx, target, sni, server, v.Timeout)
+	if err != nil {
 		return nil, err
 	}
+	warnings := []string{"REALITY 会把未认证的回落连接转发到 target；若目标使用 CDN，流量可能到达第三方基础设施"}
+	if len(inspection.IPs) > 2 {
+		warnings = append(warnings, "target 解析到多个地址，可能使用 CDN；REALITY 回落流量可能被转发到未认证的第三方站点")
+	}
+	return warnings, nil
+}
+
+func inspectNetworkTarget(ctx context.Context, target, sni, server string, timeout time.Duration) (targetTLSInspection, error) {
+	var inspection targetTLSInspection
+	if err := system.ValidateTarget(target); err != nil {
+		return inspection, err
+	}
 	host, _, _ := net.SplitHostPort(target)
-	timeout := v.Timeout
 	if timeout == 0 {
 		timeout = 8 * time.Second
 	}
+	probeCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	ctx = probeCtx
 	r := net.Resolver{}
 	ips, err := r.LookupIPAddr(ctx, host)
 	if err != nil {
-		return nil, fmt.Errorf("解析 REALITY target %s: %w", host, err)
+		return inspection, fmt.Errorf("解析 REALITY target %s: %w", host, err)
 	}
 	if len(ips) == 0 {
-		return nil, fmt.Errorf("REALITY target 未解析到地址")
+		return inspection, fmt.Errorf("REALITY target 未解析到地址")
 	}
+	inspection.IPs = ips
 	serverIPs, _ := r.LookupIPAddr(ctx, server)
 	local := localIPs()
 	for _, item := range ips {
 		ip := item.IP
 		if forbiddenTargetIP(ip) {
-			return nil, fmt.Errorf("REALITY target %s 解析到私网/本机/保留地址 %s", host, ip)
+			return inspection, fmt.Errorf("REALITY target %s 解析到私网/本机/保留地址 %s", host, ip)
 		}
 		for _, own := range local {
 			if own.Equal(ip) {
-				return nil, fmt.Errorf("REALITY target 解析到本机地址 %s", ip)
+				return inspection, fmt.Errorf("REALITY target 解析到本机地址 %s", ip)
 			}
 		}
 		for _, own := range serverIPs {
 			if own.IP.Equal(ip) {
-				return nil, fmt.Errorf("REALITY target 解析到服务器自身地址 %s", ip)
+				return inspection, fmt.Errorf("REALITY target 解析到服务器自身地址 %s", ip)
 			}
 		}
 	}
 	dialer := &net.Dialer{Timeout: timeout}
-	conn, err := tls.DialWithDialer(dialer, "tcp", target, &tls.Config{ServerName: sni, MinVersion: tls.VersionTLS12})
+	rawConn, err := dialer.DialContext(ctx, "tcp", target)
 	if err != nil {
-		return nil, fmt.Errorf("REALITY target TLS/证书名称校验失败: %w", err)
+		return inspection, fmt.Errorf("REALITY target TCP 连接失败: %w", err)
 	}
+	conn := tls.Client(rawConn, &tls.Config{
+		ServerName: sni,
+		MinVersion: tls.VersionTLS12,
+		NextProtos: []string{"h2", "http/1.1"},
+	})
 	defer conn.Close()
+	if err := conn.HandshakeContext(ctx); err != nil {
+		return inspection, fmt.Errorf("REALITY target TLS/证书名称校验失败: %w", err)
+	}
 	if err := conn.VerifyHostname(sni); err != nil {
-		return nil, fmt.Errorf("REALITY target 证书不包含 SNI %s: %w", sni, err)
+		return inspection, fmt.Errorf("REALITY target 证书不包含 SNI %s: %w", sni, err)
 	}
-	warnings := []string{"REALITY 会把未认证的回落连接转发到 target；若目标使用 CDN，流量可能到达第三方基础设施"}
-	if len(ips) > 2 {
-		warnings = append(warnings, "target 解析到多个地址，可能使用 CDN；REALITY 回落流量可能被转发到未认证的第三方站点")
+	state := conn.ConnectionState()
+	inspection.TLSVersion = state.Version
+	inspection.ALPN = state.NegotiatedProtocol
+	if len(state.PeerCertificates) > 0 {
+		certificate := state.PeerCertificates[0]
+		inspection.CertificateSANs = append(inspection.CertificateSANs, certificate.DNSNames...)
+		for _, ip := range certificate.IPAddresses {
+			inspection.CertificateSANs = append(inspection.CertificateSANs, ip.String())
+		}
 	}
-	if strings.HasPrefix(strings.ToLower(conn.ConnectionState().NegotiatedProtocol), "h3") {
-		warnings = append(warnings, "target 偏好 HTTP/3；请确认 TCP TLS 回落长期可用")
+	if canonicalName, lookupErr := r.LookupCNAME(ctx, host); lookupErr == nil {
+		inspection.CanonicalName = strings.TrimSuffix(strings.ToLower(canonicalName), ".")
 	}
-	return warnings, nil
+	return inspection, nil
 }
 
 func localIPs() []net.IP {
