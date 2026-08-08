@@ -46,7 +46,7 @@ func (i Installer) Run(ctx context.Context, p provider.CoreProvider, opts Option
 
 func (i Installer) Uninstall(ctx context.Context, p provider.CoreProvider, opts Options) error {
 	if packageName := p.PackageName(); packageName != "" {
-		return system.RemovePackage(ctx, i.Runner, i.Layout, packageName)
+		return system.RemovePackage(ctx, i.Runner, i.Layout, packageName, i.Output)
 	}
 	args := p.UninstallArgs()
 	if len(args) == 0 {
@@ -69,7 +69,7 @@ func (i Installer) runScript(ctx context.Context, p provider.CoreProvider, opts 
 	if err := validateScript(body); err != nil {
 		return "", err
 	}
-	if err := bashSyntax(ctx, body); err != nil {
+	if err := bashSyntaxLogged(ctx, body, i.Output); err != nil {
 		return "", err
 	}
 	hash := system.SHA256(body)
@@ -318,6 +318,10 @@ func validShellShebang(line string) bool {
 }
 
 func bashSyntax(ctx context.Context, b []byte) error {
+	return bashSyntaxLogged(ctx, b, nil)
+}
+
+func bashSyntaxLogged(ctx context.Context, b []byte, output io.Writer) error {
 	dir, err := os.MkdirTemp("", "proxyforge-check-*")
 	if err != nil {
 		return err
@@ -327,9 +331,18 @@ func bashSyntax(ctx context.Context, b []byte) error {
 	if err := os.WriteFile(path, b, 0600); err != nil {
 		return err
 	}
+	if output != nil {
+		fmt.Fprintf(output, "[命令] 执行命令：bash -n %s\n", path)
+	}
 	cmd := exec.CommandContext(ctx, "bash", "-n", path)
 	if out, err := cmd.CombinedOutput(); err != nil {
+		if output != nil {
+			fmt.Fprintln(output, "[命令] 命令失败：bash")
+		}
 		return fmt.Errorf("安装脚本 bash -n 校验失败: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	if output != nil {
+		fmt.Fprintln(output, "[命令] 命令完成：bash")
 	}
 	return nil
 }

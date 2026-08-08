@@ -29,6 +29,7 @@ type App struct {
 	Installer install.Installer
 	Targets   TargetValidator
 	Out       io.Writer
+	Progress  io.Writer
 	Now       func() time.Time
 	RootCheck func() error
 	PortFree  func(int) error
@@ -39,9 +40,16 @@ func New(reg *provider.Registry, runner provider.Runner, layout system.Layout, o
 	return &App{
 		Registry: reg, Runner: runner, Layout: layout, Store: system.StateStore{Layout: layout},
 		Services: system.ServiceManager{Runner: runner}, Installer: install.Installer{Runner: runner, Layout: layout, Output: out},
-		Targets: NetworkTargetValidator{}, Out: out, Now: time.Now,
+		Targets: NetworkTargetValidator{}, Out: out, Progress: out, Now: time.Now,
 		RootCheck: RequireRoot, PortFree: checkPortFree, Listening: waitListening,
 	}
+}
+
+func (a *App) progressf(format string, args ...any) {
+	if a.Progress == nil {
+		return
+	}
+	fmt.Fprintf(a.Progress, "[步骤] "+format+"\n", args...)
 }
 
 func RequireRoot() error {
@@ -52,9 +60,15 @@ func RequireRoot() error {
 }
 
 func (a *App) Install(ctx context.Context, core string, opts install.Options) error {
+	operation := "安装"
+	if opts.Upgrade {
+		operation = "升级"
+	}
+	a.progressf("开始%s %s", operation, core)
 	if err := a.RootCheck(); err != nil {
 		return err
 	}
+	a.progressf("检查运行平台和 systemd 环境")
 	if err := system.CheckPlatform(a.Layout); err != nil {
 		return err
 	}
@@ -63,12 +77,17 @@ func (a *App) Install(ctx context.Context, core string, opts install.Options) er
 		return err
 	}
 	config := a.Layout.Resolve(p.ConfigPath())
-	if _, err := system.BackupFile(config, a.Layout.BackupRoot(core), a.Now()); err != nil {
+	a.progressf("检查并备份现有配置 %s", config)
+	if backup, err := system.BackupFile(config, a.Layout.BackupRoot(core), a.Now()); err != nil {
 		return err
+	} else if backup != "" {
+		a.progressf("现有配置已备份到 %s", backup)
 	}
+	a.progressf("下载、校验并执行官方管理脚本")
 	if _, err := a.Installer.Run(ctx, p, opts); err != nil {
 		return err
 	}
+	a.progressf("检测已安装版本和 REALITY/Vision 能力")
 	version, err := p.Version(ctx, a.Runner)
 	if err != nil {
 		return fmt.Errorf("安装后能力检测失败: %w", err)
@@ -106,6 +125,7 @@ func (a *App) Install(ctx context.Context, core string, opts install.Options) er
 	if _, err := a.Runner.Run(ctx, "systemctl", "cat", p.ServiceName()); err != nil {
 		return fmt.Errorf("未找到 systemd unit %s: %w", p.ServiceName(), err)
 	}
+	a.progressf("检查 systemd 服务状态")
 	status, statusErr := a.Services.IsActive(ctx, p.ServiceName())
 	running, err := installedServiceRunning(status, statusErr)
 	if err != nil {
@@ -121,12 +141,14 @@ func (a *App) Install(ctx context.Context, core string, opts install.Options) er
 }
 
 func (a *App) Uninstall(ctx context.Context, core string, opts install.Options) error {
+	a.progressf("开始卸载 %s", core)
 	if err := a.RootCheck(); err != nil {
 		return err
 	}
 	if err := system.CheckPlatform(a.Layout); err != nil {
 		return err
 	}
+	a.progressf("检查现有配置和 ProxyForge 管理状态")
 	p, err := a.Registry.Get(core)
 	if err != nil {
 		return err
@@ -145,21 +167,27 @@ func (a *App) Uninstall(ctx context.Context, core string, opts install.Options) 
 	}
 	managedConfig := hasManagedState && hadConfig && state.ConfigSHA256 != "" && system.SHA256(config) == state.ConfigSHA256
 	if hadConfig {
-		if _, err := system.BackupFile(configPath, a.Layout.BackupRoot(core), a.Now()); err != nil {
+		a.progressf("卸载前备份配置 %s", configPath)
+		if backup, err := system.BackupFile(configPath, a.Layout.BackupRoot(core), a.Now()); err != nil {
 			return err
+		} else if backup != "" {
+			a.progressf("配置已备份到 %s", backup)
 		}
 	}
 
+	a.progressf("停止服务并卸载内核和 systemd unit")
 	if err := a.Installer.Uninstall(ctx, p, opts); err != nil {
 		return err
 	}
 	if managedConfig {
+		a.progressf("删除受管活动配置 %s", configPath)
 		if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("内核已卸载，但删除受管配置失败: %w", err)
 		}
 	} else if hadConfig {
 		fmt.Fprintf(a.Out, "检测到非受管或已被外部修改的配置，已保留：%s\n", p.ConfigPath())
 	}
+	a.progressf("删除 %s 的 ProxyForge 状态", core)
 	if err := a.Store.Delete(core); err != nil {
 		return fmt.Errorf("内核已卸载，但删除 ProxyForge 状态失败: %w", err)
 	}
@@ -168,6 +196,7 @@ func (a *App) Uninstall(ctx context.Context, core string, opts install.Options) 
 }
 
 func (a *App) Cleanup(ctx context.Context, target string) error {
+	a.progressf("开始清理 %s 的卸载残留", target)
 	if err := a.RootCheck(); err != nil {
 		return err
 	}
@@ -184,9 +213,11 @@ func (a *App) Cleanup(ctx context.Context, target string) error {
 		providers = append(providers, p)
 	}
 	for _, p := range providers {
+		a.progressf("确认 %s 已卸载", p.Name())
 		if version, err := p.Version(ctx, a.Runner); err == nil {
 			return fmt.Errorf("仍检测到已安装的 %s（%s）；请先执行 uninstall", p.Name(), version)
 		}
+		a.progressf("未检测到 %s，继续清理", p.Name())
 	}
 
 	var cleanupErrors []error
@@ -200,6 +231,7 @@ func (a *App) Cleanup(ctx context.Context, target string) error {
 			paths = append(paths, a.Layout.Resolve(path))
 		}
 		for _, path := range paths {
+			a.progressf("删除残留路径 %s", path)
 			if err := removeCleanupPath(path); err != nil {
 				cleanupErrors = append(cleanupErrors, fmt.Errorf("删除 %s: %w", path, err))
 			}
@@ -207,6 +239,7 @@ func (a *App) Cleanup(ctx context.Context, target string) error {
 	}
 	if target == "all" {
 		path := a.Layout.Resolve("/var/lib/proxyforge")
+		a.progressf("删除 ProxyForge 数据根目录 %s", path)
 		if err := removeCleanupPath(path); err != nil {
 			cleanupErrors = append(cleanupErrors, fmt.Errorf("删除 %s: %w", path, err))
 		}
@@ -244,6 +277,7 @@ func installedServiceRunning(status domain.ServiceStatus, checkErr error) (bool,
 }
 
 func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOptions) (domain.NodeSpec, error) {
+	a.progressf("开始生成并应用 %s 服务端配置", core)
 	if err := a.RootCheck(); err != nil {
 		return domain.NodeSpec{}, err
 	}
@@ -257,6 +291,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if opts.Target == "" {
 		opts.Target = net.JoinHostPort(opts.SNI, "443")
 	}
+	a.progressf("验证服务地址、端口、SNI 和 REALITY target")
 	warnings, err := a.Targets.Validate(ctx, opts.Target, opts.SNI, opts.Server)
 	if err != nil {
 		return domain.NodeSpec{}, err
@@ -277,18 +312,22 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		return domain.NodeSpec{}, fmt.Errorf("端口 %d 已由受管的 %s 节点使用", opts.Port, other)
 	}
 	if !hasOld || old.Port != opts.Port {
+		a.progressf("检查监听端口 %d 是否可用", opts.Port)
 		if err := a.PortFree(opts.Port); err != nil {
 			return domain.NodeSpec{}, err
 		}
 	}
+	a.progressf("检测 %s 版本和配置能力", core)
 	version, err := p.Version(ctx, a.Runner)
 	if err != nil {
 		return domain.NodeSpec{}, fmt.Errorf("内核不可用或不支持所需能力: %w", err)
 	}
 	n := domain.NodeSpec{ManagedBy: "proxyforge", Core: core, Server: opts.Server, Port: opts.Port, SNI: opts.SNI, Target: opts.Target, CoreVersion: version, UpdatedAt: a.Now().UTC()}
 	if hasOld && !opts.RotateCredentials {
+		a.progressf("保留现有 UUID、REALITY 密钥和 short ID")
 		n.UUID, n.PrivateKey, n.PublicKey, n.ShortID = old.UUID, old.PrivateKey, old.PublicKey, old.ShortID
 	} else {
+		a.progressf("生成新的 UUID、REALITY 密钥和 short ID")
 		if n.UUID, err = system.UUID(); err != nil {
 			return n, err
 		}
@@ -323,23 +362,30 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if hadConfig && !managedConfig && !opts.TakeOver {
 		return n, fmt.Errorf("发现非 ProxyForge 管理或已被外部修改的配置 %s；确认后使用 --take-over", p.ConfigPath())
 	}
+	a.progressf("使用 %s 原生命令校验候选配置", core)
 	if err := validateRendered(ctx, p, a.Runner, configPath, config); err != nil {
 		return n, err
 	}
 	if hadConfig {
-		if _, err := system.BackupFile(configPath, a.Layout.BackupRoot(core), a.Now()); err != nil {
+		a.progressf("备份现有服务端配置 %s", configPath)
+		if backup, err := system.BackupFile(configPath, a.Layout.BackupRoot(core), a.Now()); err != nil {
 			return n, err
+		} else if backup != "" {
+			a.progressf("现有配置已备份到 %s", backup)
 		}
 	}
+	a.progressf("原子写入服务端配置 %s", configPath)
 	if err := system.AtomicWrite(configPath, config, 0600); err != nil {
 		return n, err
 	}
 	serviceUser := a.Services.User(ctx, p.ServiceName())
+	a.progressf("按 systemd 服务用户 %s 设置配置权限", serviceUser)
 	if err := secureConfigForUser(configPath, serviceUser); err != nil {
 		_ = restoreFile(configPath, oldConfig, hadConfig, oldMetadata)
 		return n, err
 	}
 	rollback := func(cause error) error {
+		a.progressf("操作失败，正在恢复旧配置、状态和服务")
 		restoreErr := restoreFile(configPath, oldConfig, hadConfig, oldMetadata)
 		if hasOld {
 			_ = a.Store.Save(old)
@@ -352,9 +398,11 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		}
 		return fmt.Errorf("%v；已恢复旧配置和状态", cause)
 	}
+	a.progressf("重启 systemd 服务 %s", p.ServiceName())
 	if err := a.Services.Restart(ctx, p.ServiceName()); err != nil {
 		return n, rollback(fmt.Errorf("重启 %s 失败: %w", p.ServiceName(), err))
 	}
+	a.progressf("确认服务 active 并监听端口 %d", opts.Port)
 	status, err := a.Services.IsActive(ctx, p.ServiceName())
 	if err != nil || !status.Active {
 		return n, rollback(fmt.Errorf("%s 未进入 active 状态: %s: %w", p.ServiceName(), status.Detail, err))
@@ -362,6 +410,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if err := a.Listening(ctx, opts.Port, 4*time.Second); err != nil {
 		return n, rollback(err)
 	}
+	a.progressf("保存 ProxyForge 节点状态")
 	if err := a.Store.Save(n); err != nil {
 		return n, rollback(fmt.Errorf("保存状态失败: %w", err))
 	}
@@ -372,6 +421,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 // ResetCredentials atomically rotates every client credential, optionally
 // changing SNI and target while preserving the node's address and port.
 func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.ResetOptions) (domain.NodeSpec, error) {
+	a.progressf("开始重置 %s 节点凭据", core)
 	if err := a.RootCheck(); err != nil {
 		return domain.NodeSpec{}, err
 	}
@@ -401,6 +451,7 @@ func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.Res
 }
 
 func (a *App) Client(ctx context.Context, core, output string, force bool) ([]byte, error) {
+	a.progressf("开始生成 %s 客户端配置", core)
 	if err := a.RootCheck(); err != nil {
 		return nil, err
 	}
@@ -408,6 +459,7 @@ func (a *App) Client(ctx context.Context, core, output string, force bool) ([]by
 	if err != nil {
 		return nil, err
 	}
+	a.progressf("读取受管节点状态并渲染客户端配置")
 	n, err := a.Store.Load(core)
 	if err != nil {
 		return nil, err
@@ -431,12 +483,15 @@ func (a *App) Client(ctx context.Context, core, output string, force bool) ([]by
 	if err != nil {
 		return nil, err
 	}
+	a.progressf("使用 %s 原生命令校验客户端配置", core)
 	if err := p.ValidateConfig(ctx, a.Runner, path); err != nil {
 		return nil, err
 	}
 	if output == "" {
+		a.progressf("客户端配置校验完成，将 JSON 输出到 stdout")
 		return b, nil
 	}
+	a.progressf("以 0600 权限写入客户端配置 %s", output)
 	flags := os.O_WRONLY | os.O_CREATE
 	if force {
 		flags |= os.O_TRUNC
@@ -457,6 +512,7 @@ func (a *App) Client(ctx context.Context, core, output string, force bool) ([]by
 }
 
 func (a *App) Service(ctx context.Context, core, action string) ([]byte, error) {
+	a.progressf("执行 %s 服务操作：%s", core, action)
 	if err := a.RootCheck(); err != nil {
 		return nil, err
 	}

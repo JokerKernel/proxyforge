@@ -4,13 +4,14 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	"proxyforge/internal/provider"
 )
 
-func RemovePackage(ctx context.Context, runner provider.Runner, layout Layout, packageName string) error {
+func RemovePackage(ctx context.Context, runner provider.Runner, layout Layout, packageName string, output io.Writer) error {
 	family, err := packageFamily(layout)
 	if err != nil {
 		return err
@@ -25,8 +26,17 @@ func RemovePackage(ctx context.Context, runner provider.Runner, layout Layout, p
 	default:
 		return fmt.Errorf("不支持在 %s 系发行版卸载软件包", family)
 	}
-	if _, err := runner.Run(ctx, command, args...); err != nil {
-		return fmt.Errorf("卸载软件包 %s: %w", packageName, err)
+	var removeErr error
+	if streaming, ok := runner.(provider.StreamingRunner); ok {
+		if output == nil {
+			output = io.Discard
+		}
+		removeErr = streaming.RunStreaming(ctx, output, output, command, args...)
+	} else {
+		_, removeErr = runner.Run(ctx, command, args...)
+	}
+	if removeErr != nil {
+		return fmt.Errorf("卸载软件包 %s: %w", packageName, removeErr)
 	}
 	return nil
 }

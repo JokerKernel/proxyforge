@@ -3,6 +3,7 @@ package system
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -23,6 +24,12 @@ func (r *recordingRunner) Run(_ context.Context, name string, args ...string) ([
 	return nil, nil
 }
 
+type outputRunner struct{ output []byte }
+
+func (r outputRunner) Run(context.Context, string, ...string) ([]byte, error) {
+	return r.output, nil
+}
+
 func TestExecRunnerStreamsStdoutAndStderr(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := (ExecRunner{}).RunStreaming(
@@ -41,6 +48,26 @@ func TestExecRunnerStreamsStdoutAndStderr(t *testing.T) {
 	}
 	if stderr.String() != "stderr-data" {
 		t.Fatalf("stderr=%q", stderr.String())
+	}
+}
+
+func TestLoggingRunnerReportsCommandWithoutLeakingBufferedOutput(t *testing.T) {
+	var log bytes.Buffer
+	runner := &LoggingRunner{Runner: outputRunner{output: []byte("private-key-output")}, Out: &log}
+	b, err := runner.Run(context.Background(), "sing-box", "generate", "reality-keypair")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "private-key-output" {
+		t.Fatalf("output=%q", b)
+	}
+	for _, want := range []string{"[命令] 执行命令：sing-box generate reality-keypair", "[命令] 命令完成：sing-box"} {
+		if !strings.Contains(log.String(), want) {
+			t.Fatalf("log missing %q: %s", want, log.String())
+		}
+	}
+	if strings.Contains(log.String(), "private-key-output") {
+		t.Fatalf("buffered command output leaked into log: %s", log.String())
 	}
 }
 
@@ -174,7 +201,7 @@ func TestRemovePackageUsesDistributionNativeDatabase(t *testing.T) {
 				t.Fatal(err)
 			}
 			runner := &recordingRunner{}
-			if err := RemovePackage(context.Background(), runner, Layout{Root: root}, "sing-box"); err != nil {
+			if err := RemovePackage(context.Background(), runner, Layout{Root: root}, "sing-box", io.Discard); err != nil {
 				t.Fatal(err)
 			}
 			if runner.name != tt.command || strings.Join(runner.args, " ") != strings.Join(tt.args, " ") {

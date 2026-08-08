@@ -36,11 +36,13 @@ func New(version string) *cobra.Command {
 }
 
 func newCommand(version string, rootCheck func() error) *cobra.Command {
-	runner := system.ExecRunner{}
+	runner := &system.LoggingRunner{Runner: system.ExecRunner{}, Out: os.Stderr}
 	layout := system.Layout{Root: os.Getenv("PROXYFORGE_ROOT")}
 	reg := provider.NewRegistry(singbox.New(), xray.New())
 	a := app.New(reg, runner, layout, os.Stdout)
 	a.RootCheck = rootCheck
+	a.Progress = os.Stderr
+	a.Installer.Output = os.Stderr
 	c := &commandSet{
 		app: a, in: os.Stdin, reader: bufio.NewReader(os.Stdin), out: os.Stdout, errOut: os.Stderr,
 		probeSNI: app.ProbeSNICandidates, randomIndex: secureRandomIndex,
@@ -48,8 +50,11 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 	root := &cobra.Command{
 		Use: "proxyforge", Short: "Linux 双内核 VLESS + REALITY + Vision 管理器", Version: version,
 		SilenceUsage: true, SilenceErrors: true,
-		PersistentPreRunE: func(*cobra.Command, []string) error { return rootCheck() },
-		RunE:              func(cmd *cobra.Command, args []string) error { return c.menu(cmd.Context()) },
+		PersistentPreRunE: func(*cobra.Command, []string) error {
+			fmt.Fprintln(os.Stderr, "[步骤] 验证 root 运行权限")
+			return rootCheck()
+		},
+		RunE: func(cmd *cobra.Command, args []string) error { return c.menu(cmd.Context()) },
 	}
 	root.SetOut(os.Stdout)
 	root.SetErr(os.Stderr)
