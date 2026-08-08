@@ -99,3 +99,26 @@ SING_BOX_BIN=/path/to/sing-box XRAY_BIN=/path/to/xray \
 ```
 
 在一次性 Debian/Ubuntu 或 Rocky/AlmaLinux systemd VM 中，可设置脚本要求的公网地址、SNI 和两个已人工核对的安装脚本哈希，再以 root 运行 `scripts/smoke-systemd.sh`。它会真实安装两个内核、生成 443/8443 节点、验证两个客户端并确认两项服务同时 active，因此不应在生产主机上直接运行。
+
+## CI/CD 与发布
+
+GitHub Actions 会在分支 push、Pull Request 和手动触发时运行测试、`go vet`，随后编译 Linux amd64、arm64，并将压缩包保存为工作流产物。
+
+发布正式版本时创建并推送一个 `v` 开头的 Git 标签：
+
+```bash
+git tag -a v1.0.0 -m "ProxyForge v1.0.0"
+git push origin v1.0.0
+```
+
+Release 工作流会重新测试该标签，构建并发布以下资产到当前 GitHub 仓库的 Releases：
+
+```text
+proxyforge_v1.0.0_linux_amd64.tar.gz
+proxyforge_v1.0.0_linux_arm64.tar.gz
+SHA256SUMS
+```
+
+也可以在 GitHub Actions 的 `Release` 工作流中手动输入一个已经存在的标签重新发布。发布任务只在最后阶段取得 `contents: write` 权限；普通 CI 和构建任务保持只读权限。
+
+Dependabot 每周一检查 Go Modules 和 GitHub Actions 更新，并分别创建依赖更新 Pull Request。

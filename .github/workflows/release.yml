@@ -1,0 +1,175 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing Git tag to publish, for example v1.0.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+jobs:
+  metadata:
+    name: Prepare release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.metadata.outputs.commit }}
+      build_date: ${{ steps.metadata.outputs.build_date }}
+      source_date_epoch: ${{ steps.metadata.outputs.source_date_epoch }}
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Read release metadata
+        id: metadata
+        shell: bash
+        run: |
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "release tag must use semantic version form such as v1.2.3 or v1.2.3-rc.1" >&2
+            exit 1
+          fi
+          if ! git show-ref --verify --quiet "refs/tags/${RELEASE_TAG}"; then
+            echo "release tag does not exist: ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+          printf 'commit=%s\n' "$(git rev-parse --short HEAD)" >> "${GITHUB_OUTPUT}"
+          printf 'build_date=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
+          printf 'source_date_epoch=%s\n' "$(git show -s --format=%ct HEAD)" >> "${GITHUB_OUTPUT}"
+
+  test:
+    name: Test release source
+    needs: metadata
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Run tests and vet
+        run: |
+          go test -race ./...
+          go vet ./...
+
+  build:
+    name: Package linux/${{ matrix.arch }}
+    needs:
+      - metadata
+      - test
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      COMMIT: ${{ needs.metadata.outputs.commit }}
+      BUILD_DATE: ${{ needs.metadata.outputs.build_date }}
+      SOURCE_DATE_EPOCH: ${{ needs.metadata.outputs.source_date_epoch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - amd64
+          - arm64
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Build binary
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+          OUTPUT: dist/proxyforge
+        run: |
+          mkdir -p dist
+          ./scripts/build.sh
+
+      - name: Verify embedded version
+        if: matrix.arch == 'amd64'
+        run: dist/proxyforge --version
+
+      - name: Create reproducible archive
+        shell: bash
+        run: |
+          archive="proxyforge_${VERSION}_linux_${{ matrix.arch }}.tar.gz"
+          tar --sort=name --owner=0 --group=0 --numeric-owner \
+            --mtime="@${SOURCE_DATE_EPOCH}" -C dist -czf "${archive}" proxyforge
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-linux-${{ matrix.arch }}
+          path: proxyforge_*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Download packaged binaries
+        uses: actions/download-artifact@v7
+        with:
+          pattern: release-linux-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksum manifest
+        working-directory: dist
+        run: sha256sum proxyforge_*.tar.gz > SHA256SUMS
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" dist/proxyforge_*.tar.gz dist/SHA256SUMS --clobber
+          else
+            gh release create "${RELEASE_TAG}" \
+              dist/proxyforge_*.tar.gz dist/SHA256SUMS \
+              --verify-tag \
+              --generate-notes \
+              --title "ProxyForge ${RELEASE_TAG}"
+          fi

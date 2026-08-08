@@ -13,6 +13,7 @@ ldflags+=" -X ${version_package}.Commit=${COMMIT}"
 ldflags+=" -X ${version_package}.BuildDate=${BUILD_DATE}"
 
 go build -trimpath -ldflags="${ldflags}" -o "${OUTPUT}" ./cmd/proxyforge
+chmod 0755 "${OUTPUT}"
 
 printf 'built %s: version=%s commit=%s build_date=%s\n' \
   "${OUTPUT}" "${VERSION}" "${COMMIT}" "${BUILD_DATE}"

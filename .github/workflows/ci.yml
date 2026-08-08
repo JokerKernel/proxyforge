@@ -1,37 +1,81 @@
-name: ci
+name: CI
 
 on:
   push:
+    branches:
+      - "**"
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    name: Test and vet
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
-      - run: go test -race ./...
-      - run: go vet ./...
+          cache-dependency-path: go.sum
 
-  cross-build:
+      - name: Run tests with race detector
+        run: go test -race ./...
+
+      - name: Run go vet
+        run: go vet ./...
+
+  build:
+    name: Build linux/${{ matrix.arch }}
+    needs: test
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        arch: [amd64, arm64]
+        arch:
+          - amd64
+          - arm64
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
-      - run: ./scripts/build.sh
+          cache-dependency-path: go.sum
+
+      - name: Build binary
         env:
+          CGO_ENABLED: "0"
           GOOS: linux
           GOARCH: ${{ matrix.arch }}
-          OUTPUT: proxyforge-linux-${{ matrix.arch }}
+          OUTPUT: dist/proxyforge-linux-${{ matrix.arch }}
+        run: |
+          mkdir -p dist
+          ./scripts/build.sh
+
+      - name: Package binary
+        run: |
+          tar -C dist -czf "dist/proxyforge-linux-${{ matrix.arch }}.tar.gz" "proxyforge-linux-${{ matrix.arch }}"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: proxyforge-linux-${{ matrix.arch }}
+          path: dist/proxyforge-linux-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14
