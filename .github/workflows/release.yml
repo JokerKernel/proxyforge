@@ -52,34 +52,9 @@ jobs:
           printf 'build_date=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
           printf 'source_date_epoch=%s\n' "$(git show -s --format=%ct HEAD)" >> "${GITHUB_OUTPUT}"
 
-  test:
-    name: Test release source
-    needs: metadata
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out release tag
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ env.RELEASE_TAG }}
-          fetch-depth: 0
-
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-          cache-dependency-path: go.sum
-
-      - name: Run tests and vet
-        run: |
-          go test -race ./...
-          go vet ./...
-
   build:
     name: Package linux/${{ matrix.arch }}
-    needs:
-      - metadata
-      - test
+    needs: metadata
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}

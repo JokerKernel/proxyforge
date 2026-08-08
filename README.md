@@ -111,7 +111,7 @@ git tag -a v1.0.0 -m "ProxyForge v1.0.0"
 git push origin v1.0.0
 ```
 
-Release 工作流会重新测试该标签，构建并发布以下资产到当前 GitHub 仓库的 Releases：
+Release 工作流会构建该标签并发布以下资产到当前 GitHub 仓库的 Releases；测试与 `go vet` 由独立的 CI 工作流负责：
 
 ```text
 proxyforge_v1.0.0_linux_amd64.tar.gz
