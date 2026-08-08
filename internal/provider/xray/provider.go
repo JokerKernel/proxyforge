@@ -78,7 +78,7 @@ func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 		"log": map[string]any{"loglevel": "warning"},
 		"inbounds": []any{map[string]any{
 			"listen": "0.0.0.0", "port": n.Port, "protocol": "vless",
-			"settings": map[string]any{"clients": []any{map[string]any{"id": n.UUID, "flow": domain.VisionFlow}}, "decryption": "none"},
+			"settings": map[string]any{"clients": []any{map[string]any{"email": n.UserName, "id": n.UUID, "flow": domain.VisionFlow}}, "decryption": "none"},
 			"streamSettings": map[string]any{"network": "raw", "security": "reality", "realitySettings": map[string]any{
 				"show": false, "target": n.Target, "xver": 0, "serverNames": []string{n.SNI}, "privateKey": n.PrivateKey, "shortIds": []string{n.ShortID},
 			}},

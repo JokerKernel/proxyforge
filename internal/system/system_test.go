@@ -104,6 +104,8 @@ func TestValidation(t *testing.T) {
 		{"port zero", ValidatePort(0), true}, {"port max", ValidatePort(65535), false},
 		{"sni ip", ValidateSNI("1.1.1.1"), true}, {"sni domain", ValidateSNI("www.example.com"), false},
 		{"target missing port", ValidateTarget("example.com"), true}, {"target good", ValidateTarget("example.com:443"), false},
+		{"user name", ValidateUserName("phone"), false}, {"empty user name", ValidateUserName(""), true},
+		{"user name control", ValidateUserName("phone\nadmin"), true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if (tt.err != nil) != tt.want {

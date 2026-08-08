@@ -28,7 +28,7 @@ func (r binaryRunner) Run(ctx context.Context, name string, args ...string) ([]b
 }
 
 func TestRealStableBinariesValidateAllConfigs(t *testing.T) {
-	n := domain.NodeSpec{Server: "203.0.113.10", Port: 443, SNI: "example.com", Target: "example.com:443", UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "UuMBgl7MXTPx9inmQp2UC7Jcnwc6XYbwDNebonM-FCc", PublicKey: "jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0", ShortID: "0123456789abcdef"}
+	n := domain.NodeSpec{Server: "203.0.113.10", Port: 443, SNI: "example.com", Target: "example.com:443", UserName: domain.DefaultUserName, UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "UuMBgl7MXTPx9inmQp2UC7Jcnwc6XYbwDNebonM-FCc", PublicKey: "jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0", ShortID: "0123456789abcdef"}
 	providers := []provider.CoreProvider{singbox.New(), xray.New()}
 	for _, p := range providers {
 		p := p

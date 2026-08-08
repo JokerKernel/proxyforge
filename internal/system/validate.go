@@ -7,6 +7,8 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 func UUID() (string, error) {
@@ -46,6 +48,22 @@ func ValidateServer(server string) error {
 func ValidatePort(port int) error {
 	if port < 1 || port > 65535 {
 		return fmt.Errorf("端口必须在 1..65535")
+	}
+	return nil
+}
+
+func ValidateUserName(name string) error {
+	if name == "" {
+		return fmt.Errorf("用户名称不能为空")
+	}
+	if strings.TrimSpace(name) != name {
+		return fmt.Errorf("用户名称首尾不能包含空白")
+	}
+	if utf8.RuneCountInString(name) > 128 {
+		return fmt.Errorf("用户名称不能超过 128 个字符")
+	}
+	if strings.IndexFunc(name, unicode.IsControl) >= 0 {
+		return fmt.Errorf("用户名称不能包含控制字符")
 	}
 	return nil
 }

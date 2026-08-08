@@ -44,7 +44,7 @@ sudo ./proxyforge
 proxyforge install <sing-box|xray> [--version VERSION]
 proxyforge uninstall <sing-box|xray> [--yes]
 proxyforge cleanup <sing-box|xray|all> [--yes]
-proxyforge config generate <sing-box|xray> --server HOST --port PORT --sni DOMAIN [--target HOST:PORT]
+proxyforge config generate <sing-box|xray> --server HOST --port PORT --sni DOMAIN [--target HOST:PORT] [--user-name NAME]
 proxyforge config client <sing-box|xray> [--format native|clash] [--output FILE] [--force]
 proxyforge config reset <sing-box|xray> [--sni DOMAIN] [--target HOST:PORT] [--yes]
 proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
@@ -84,17 +84,17 @@ sudo proxyforge cleanup all --yes
 
 ```bash
 sudo proxyforge config generate sing-box \
-  --yes --server 203.0.113.10 --port 443 --sni www.example.com
+  --yes --server 203.0.113.10 --port 443 --sni www.example.com --user-name phone
 
 sudo proxyforge config generate xray \
-  --yes --server 203.0.113.10 --port 8443 --sni www.example.com
+  --yes --server 203.0.113.10 --port 8443 --sni www.example.com --user-name laptop
 
 sudo proxyforge config client sing-box --output ./sing-box-client.json
 sudo proxyforge config client xray --output ./xray-client.json
 sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 ```
 
-客户端文件以 `0600` 创建。`--format native` 是默认值，输出前会调用对应内核的原生配置校验：sing-box 客户端提供 `127.0.0.1:2080` mixed 入站，Xray 客户端提供 `127.0.0.1:10808` SOCKS 与 `127.0.0.1:10809` HTTP 入站。`--format clash` 输出带 `mixed-port: 7890`、`PROXY` 策略组和 `MATCH` 规则的完整 Mihomo/Clash Meta YAML；由于传统 Clash 不支持 VLESS REALITY，不能使用该文件，且 ProxyForge 不会用 sing-box/Xray 二进制校验这种非原生格式。
+服务端用户名称默认为 `proxyforge-user`，可通过交互提示或 `--user-name` 修改；它在 sing-box 中写入 `users[].name`，在 Xray 中写入 `clients[].email`。客户端文件以 `0600` 创建。`--format native` 是默认值，输出前会调用对应内核的原生配置校验：sing-box 客户端提供 `127.0.0.1:2080` mixed 入站，Xray 客户端提供 `127.0.0.1:10808` SOCKS 与 `127.0.0.1:10809` HTTP 入站。`--format clash` 输出带 `mixed-port: 7890`、`PROXY` 策略组和 `MATCH` 规则的完整 Mihomo/Clash Meta YAML；由于传统 Clash 不支持 VLESS REALITY，不能使用该文件，且 ProxyForge 不会用 sing-box/Xray 二进制校验这种非原生格式。
 
 ## 文件与安全边界
 

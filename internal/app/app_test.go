@@ -152,12 +152,12 @@ func TestGenerateTakeoverPreserveRotateAndRollback(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte("foreign config"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	o := domain.GenerateOptions{Server: "server.example.com", Port: r.port, SNI: "www.example.com", Target: "www.example.com:443", TakeOver: true, NonInteractive: true}
+	o := domain.GenerateOptions{Server: "server.example.com", Port: r.port, SNI: "www.example.com", Target: "www.example.com:443", UserName: "phone", TakeOver: true, NonInteractive: true}
 	first, err := a.Generate(context.Background(), domain.CoreSingBox, o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.UUID == "" || first.ShortID == "" {
+	if first.UUID == "" || first.ShortID == "" || first.UserName != "phone" {
 		t.Fatalf("missing credentials: %#v", first)
 	}
 	backups, err := filepath.Glob(filepath.Join(root, "var/lib/proxyforge/backups/sing-box/*/config.json"))
@@ -184,6 +184,9 @@ func TestGenerateTakeoverPreserveRotateAndRollback(t *testing.T) {
 	}
 	if third.Server != second.Server || third.Port != second.Port || third.SNI != second.SNI || third.Target != second.Target {
 		t.Fatal("reset changed node connection settings")
+	}
+	if third.UserName != second.UserName {
+		t.Fatal("reset changed user name")
 	}
 	changedSNI, err := a.ResetCredentials(context.Background(), domain.CoreSingBox, domain.ResetOptions{SNI: "alt.example.com"})
 	if err != nil {
@@ -223,8 +226,12 @@ func TestGenerateStopsActiveServiceBeforeFirstPortCheck(t *testing.T) {
 		return nil
 	}
 	o := domain.GenerateOptions{Server: "server.example.com", Port: r.port, SNI: "www.example.com", NonInteractive: true}
-	if _, err := a.Generate(context.Background(), domain.CoreSingBox, o); err != nil {
+	n, err := a.Generate(context.Background(), domain.CoreSingBox, o)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if n.UserName != domain.DefaultUserName {
+		t.Fatalf("default user name=%q", n.UserName)
 	}
 	if r.stopped() {
 		t.Fatal("service was not restarted after applying the config")

@@ -75,7 +75,7 @@ func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 		"dns": map[string]any{"servers": []any{map[string]any{"type": "local", "tag": "local"}}},
 		"inbounds": []any{map[string]any{
 			"type": "vless", "tag": "vless-reality", "listen": "::", "listen_port": n.Port,
-			"users": []any{map[string]any{"uuid": n.UUID, "flow": domain.VisionFlow}},
+			"users": []any{map[string]any{"name": n.UserName, "uuid": n.UUID, "flow": domain.VisionFlow}},
 			"tls": map[string]any{"enabled": true, "server_name": n.SNI, "reality": map[string]any{
 				"enabled": true, "handshake": map[string]any{"server": targetHost(n.Target), "server_port": targetPort(n.Target)},
 				"private_key": n.PrivateKey, "short_id": []string{n.ShortID},

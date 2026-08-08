@@ -3,7 +3,7 @@
     "listen": "0.0.0.0",
     "port": 443,
     "protocol": "vless",
-    "settings": {"clients": [{"flow": "xtls-rprx-vision", "id": "123e4567-e89b-42d3-a456-426614174000"}], "decryption": "none"},
+    "settings": {"clients": [{"email": "proxyforge-user", "flow": "xtls-rprx-vision", "id": "123e4567-e89b-42d3-a456-426614174000"}], "decryption": "none"},
     "streamSettings": {
       "network": "raw",
       "realitySettings": {"privateKey": "private-key", "serverNames": ["example.com"], "shortIds": ["0123456789abcdef"], "show": false, "target": "example.com:443", "xver": 0},

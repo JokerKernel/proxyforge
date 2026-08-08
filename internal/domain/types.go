@@ -3,9 +3,10 @@ package domain
 import "time"
 
 const (
-	CoreSingBox = "sing-box"
-	CoreXray    = "xray"
-	VisionFlow  = "xtls-rprx-vision"
+	CoreSingBox     = "sing-box"
+	CoreXray        = "xray"
+	VisionFlow      = "xtls-rprx-vision"
+	DefaultUserName = "proxyforge-user"
 )
 
 type NodeSpec struct {
@@ -15,6 +16,7 @@ type NodeSpec struct {
 	Port         int       `json:"port"`
 	SNI          string    `json:"sni"`
 	Target       string    `json:"target"`
+	UserName     string    `json:"user_name"`
 	UUID         string    `json:"uuid"`
 	PrivateKey   string    `json:"private_key"`
 	PublicKey    string    `json:"public_key"`
@@ -29,6 +31,7 @@ type GenerateOptions struct {
 	Port              int
 	SNI               string
 	Target            string
+	UserName          string
 	RotateCredentials bool
 	TakeOver          bool
 	NonInteractive    bool

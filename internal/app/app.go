@@ -116,7 +116,7 @@ func (a *App) Install(ctx context.Context, core string, opts install.Options) er
 	if err != nil {
 		return err
 	}
-	probe := domain.NodeSpec{Core: core, Server: "127.0.0.1", Port: 443, SNI: "example.com", Target: "example.com:443", UUID: uuid, PrivateKey: keys.Private, PublicKey: keys.Public, ShortID: shortID, CoreVersion: version}
+	probe := domain.NodeSpec{Core: core, Server: "127.0.0.1", Port: 443, SNI: "example.com", Target: "example.com:443", UserName: domain.DefaultUserName, UUID: uuid, PrivateKey: keys.Private, PublicKey: keys.Public, ShortID: shortID, CoreVersion: version}
 	serverConfig, err := p.RenderServer(probe)
 	if err != nil {
 		return fmt.Errorf("渲染能力检测配置: %w", err)
@@ -332,6 +332,16 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if loadErr != nil && !errors.Is(loadErr, system.ErrNoState) {
 		return domain.NodeSpec{}, loadErr
 	}
+	userName := strings.TrimSpace(opts.UserName)
+	if userName == "" && hasOld {
+		userName = strings.TrimSpace(old.UserName)
+	}
+	if userName == "" {
+		userName = domain.DefaultUserName
+	}
+	if err := system.ValidateUserName(userName); err != nil {
+		return domain.NodeSpec{}, err
+	}
 	other := domain.CoreSingBox
 	if core == other {
 		other = domain.CoreXray
@@ -344,7 +354,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if err != nil {
 		return domain.NodeSpec{}, fmt.Errorf("内核不可用或不支持所需能力: %w", err)
 	}
-	n := domain.NodeSpec{ManagedBy: "proxyforge", Core: core, Server: opts.Server, Port: opts.Port, SNI: opts.SNI, Target: opts.Target, CoreVersion: version, UpdatedAt: a.Now().UTC()}
+	n := domain.NodeSpec{ManagedBy: "proxyforge", Core: core, Server: opts.Server, Port: opts.Port, SNI: opts.SNI, Target: opts.Target, UserName: userName, CoreVersion: version, UpdatedAt: a.Now().UTC()}
 	if hasOld && !opts.RotateCredentials {
 		a.progressf("保留现有 UUID、REALITY 密钥和 short ID")
 		n.UUID, n.PrivateKey, n.PublicKey, n.ShortID = old.UUID, old.PrivateKey, old.PublicKey, old.ShortID
@@ -493,6 +503,7 @@ func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.Res
 		Port:              current.Port,
 		SNI:               desiredSNI,
 		Target:            desiredTarget,
+		UserName:          current.UserName,
 		RotateCredentials: true,
 		NonInteractive:    true,
 	})
@@ -633,6 +644,11 @@ func validateGenerate(o domain.GenerateOptions) error {
 	}
 	if err := system.ValidateSNI(o.SNI); err != nil {
 		return err
+	}
+	if o.UserName != "" {
+		if err := system.ValidateUserName(o.UserName); err != nil {
+			return err
+		}
 	}
 	if o.Target != "" {
 		return system.ValidateTarget(o.Target)
