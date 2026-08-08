@@ -55,6 +55,10 @@ func TestGenerateCommandOffersUserNameAndInboundTag(t *testing.T) {
 			t.Fatalf("%s flag=%v", name, flag)
 		}
 	}
+	flag := cmd.Flags().Lookup("simplified-config")
+	if flag == nil || flag.DefValue != "false" {
+		t.Fatalf("simplified-config flag=%v", flag)
+	}
 }
 
 func TestPrintGenerateSuccessDisplaysNodeInformation(t *testing.T) {
@@ -73,6 +77,7 @@ func TestPrintGenerateSuccessDisplaysNodeInformation(t *testing.T) {
 		"REALITY target：www.example.com:443",
 		"用户名称：phone",
 		"入站标签：phone-in",
+		"配置模式：标准安全配置",
 		"内核版本：sing-box version 1.13.16",
 		"查看客户端配置",
 	} {
@@ -538,7 +543,7 @@ func TestClearTerminalClearsVisibleScreenAndScrollback(t *testing.T) {
 func TestFillGenerateSelectsRandomDefaultFromFastCandidates(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("\n\n\n\nyes\n")),
+		reader: bufio.NewReader(strings.NewReader("\n\n\n\n\nyes\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
 			if len(candidates) < 10 || server != "server.example.com" || limit != 10 {
@@ -567,6 +572,27 @@ func TestFillGenerateSelectsRandomDefaultFromFastCandidates(t *testing.T) {
 		!strings.Contains(out.String(), "TLS=1.3") || !strings.Contains(out.String(), "ALPN=h2") ||
 		!strings.Contains(out.String(), "证书 SAN=fast.example.com, *.example.com") || !strings.Contains(out.String(), "CDN=Akamai（CNAME）") {
 		t.Fatalf("candidate menu output=%q", out.String())
+	}
+}
+
+func TestFillGenerateSelectsSimplifiedSingBoxConfig(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{
+		reader: bufio.NewReader(strings.NewReader("2\n\n\nyes\n")),
+		out:    &out,
+	}
+	opts := domain.GenerateOptions{
+		Server: "server.example.com", Port: 443,
+		SNI: "www.example.com", Target: "www.example.com:443",
+	}
+	if err := c.fillGenerate(context.Background(), domain.CoreSingBox, &opts); err != nil {
+		t.Fatal(err)
+	}
+	if !opts.SimplifiedConfig {
+		t.Fatalf("generate options=%#v", opts)
+	}
+	if !strings.Contains(out.String(), "DNS 日志较少") || !strings.Contains(out.String(), "可能绕过拦截") {
+		t.Fatalf("simplified warning missing: %q", out.String())
 	}
 }
 

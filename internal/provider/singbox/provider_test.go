@@ -23,7 +23,14 @@ func TestGoldenConfigs(t *testing.T) {
 	tests := []struct {
 		name, file string
 		render     func(domain.NodeSpec) ([]byte, error)
-	}{{"server", "testdata/server.json", p.RenderServer}, {"client", "testdata/client.json", p.RenderClient}}
+	}{
+		{"server", "testdata/server.json", p.RenderServer},
+		{"simplified server", "testdata/server_simplified.json", func(n domain.NodeSpec) ([]byte, error) {
+			n.SimplifiedConfig = true
+			return p.RenderServer(n)
+		}},
+		{"client", "testdata/client.json", p.RenderClient},
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.render(n)

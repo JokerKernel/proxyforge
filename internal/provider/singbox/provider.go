@@ -72,7 +72,6 @@ func (*Provider) GenerateKeyPair(ctx context.Context, r provider.Runner) (domain
 func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 	v := map[string]any{
 		"log": map[string]any{"level": "info", "timestamp": true},
-		"dns": map[string]any{"servers": []any{map[string]any{"type": "local", "tag": "local"}}},
 		"inbounds": []any{map[string]any{
 			"type": "vless", "tag": n.InboundTag, "listen": "::", "listen_port": n.Port,
 			"users": []any{map[string]any{"name": n.UserName, "uuid": n.UUID, "flow": domain.VisionFlow}},
@@ -82,7 +81,15 @@ func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 			}},
 		}},
 		"outbounds": []any{map[string]any{"type": "direct", "tag": "direct"}},
-		"route":     privateNetworkRoute(true, "direct"),
+	}
+	if n.SimplifiedConfig {
+		v["route"] = map[string]any{
+			"rules": []any{map[string]any{"ip_is_private": true, "action": "reject"}},
+			"final": "direct",
+		}
+	} else {
+		v["dns"] = map[string]any{"servers": []any{map[string]any{"type": "local", "tag": "local"}}}
+		v["route"] = privateNetworkRoute(true, "direct")
 	}
 	return jsonutil.Marshal(v)
 }

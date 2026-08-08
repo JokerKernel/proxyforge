@@ -274,6 +274,47 @@ func TestGenerateStopsActiveServiceBeforeFirstPortCheck(t *testing.T) {
 	}
 }
 
+func TestGenerateSimplifiedSingBoxConfigAndResetPreservesMode(t *testing.T) {
+	r := &fakeRunner{port: freePort(t)}
+	a, _ := testApp(t, r)
+	o := domain.GenerateOptions{
+		Server: "server.example.com", Port: r.port, SNI: "www.example.com",
+		SimplifiedConfig: true, NonInteractive: true,
+	}
+	n, err := a.Generate(context.Background(), domain.CoreSingBox, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !n.SimplifiedConfig {
+		t.Fatal("simplified mode was not saved")
+	}
+	config, err := os.ReadFile(a.Layout.Resolve(singbox.New().ConfigPath()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, unwanted := range []string{`"dns"`, `"default_domain_resolver"`, `"action": "resolve"`, `"tag": "block"`} {
+		if strings.Contains(string(config), unwanted) {
+			t.Fatalf("simplified config contains %s: %s", unwanted, config)
+		}
+	}
+	reset, err := a.ResetCredentials(context.Background(), domain.CoreSingBox, domain.ResetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reset.SimplifiedConfig {
+		t.Fatal("credential reset changed simplified mode")
+	}
+}
+
+func TestGenerateRejectsSimplifiedConfigForXray(t *testing.T) {
+	r := &fakeRunner{port: freePort(t)}
+	a, _ := testApp(t, r)
+	_, err := a.Generate(context.Background(), domain.CoreXray, domain.GenerateOptions{SimplifiedConfig: true})
+	if err == nil || !strings.Contains(err.Error(), "仅支持 sing-box") {
+		t.Fatalf("error=%v", err)
+	}
+}
+
 func TestGenerateRestartsServiceWhenPortRemainsOccupied(t *testing.T) {
 	r := &fakeRunner{port: freePort(t)}
 	a, root := testApp(t, r)

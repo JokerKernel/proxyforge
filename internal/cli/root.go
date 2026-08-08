@@ -210,6 +210,7 @@ func (c *commandSet) generateCommand() *cobra.Command {
 	cmd.Flags().StringVar(&o.Target, "target", "", "REALITY 目标 host:port（默认 SNI:443）")
 	cmd.Flags().StringVar(&o.UserName, "user-name", "", "服务端用户名称（默认 proxyforge-user）")
 	cmd.Flags().StringVar(&o.InboundTag, "inbound-tag", "", "入站标签（默认按内核自动生成）")
+	cmd.Flags().BoolVar(&o.SimplifiedConfig, "simplified-config", false, "sing-box 使用简化配置（系统 DNS、较少 DNS 日志，但私网域名拦截较弱）")
 	cmd.Flags().BoolVar(&o.RotateCredentials, "rotate-credentials", false, "轮换 UUID、密钥和 short ID，使旧客户端失效")
 	cmd.Flags().Bool("take-over", false, "兼容旧版本；当前始终备份并完整覆盖现有配置")
 	_ = cmd.Flags().MarkDeprecated("take-over", "当前生成流程会自动备份并完整覆盖现有配置，无需此参数")
@@ -265,6 +266,20 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 	c.clearScreen()
 	fmt.Fprintf(c.out, "生成服务端配置：%s\n\n", core)
 	fmt.Fprintln(c.out, "提示：任意输入步骤输入 q 可取消并返回主菜单。")
+	if core == domain.CoreSingBox {
+		fmt.Fprintln(c.out, "\n配置模式")
+		fmt.Fprintln(c.out, "1) 标准安全配置（默认；内部 DNS 解析后拦截私网和保留地址）")
+		fmt.Fprintln(c.out, "2) 简化配置（系统默认 DNS；DNS 日志较少，但域名解析到私网时可能绕过拦截）")
+		defaultChoice := 1
+		if o.SimplifiedConfig {
+			defaultChoice = 2
+		}
+		choice, err := c.chooseNumberCancelable("请选择配置模式", 1, 2, defaultChoice)
+		if err != nil {
+			return err
+		}
+		o.SimplifiedConfig = choice == 2
+	}
 	if o.Server == "" {
 		detected, err := c.selectPublicAddress(ctx)
 		if err != nil {
@@ -452,6 +467,13 @@ func printGenerateSuccess(w io.Writer, n domain.NodeSpec) {
 	fmt.Fprintf(w, "REALITY target：%s\n", n.Target)
 	fmt.Fprintf(w, "用户名称：%s\n", n.UserName)
 	fmt.Fprintf(w, "入站标签：%s\n", n.InboundTag)
+	if n.Core == domain.CoreSingBox {
+		mode := "标准安全配置"
+		if n.SimplifiedConfig {
+			mode = "简化配置（系统 DNS）"
+		}
+		fmt.Fprintf(w, "配置模式：%s\n", mode)
+	}
 	fmt.Fprintf(w, "内核版本：%s\n", n.CoreVersion)
 	fmt.Fprintln(w, border)
 	fmt.Fprintln(w, "提示：请从“查看客户端配置”导出并妥善保管客户端配置。")

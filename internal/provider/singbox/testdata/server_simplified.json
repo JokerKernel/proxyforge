@@ -1,0 +1,25 @@
+{
+  "inbounds": [{
+    "listen": "::",
+    "listen_port": 443,
+    "tag": "proxyforge-sing-box-in",
+    "tls": {
+      "enabled": true,
+      "reality": {
+        "enabled": true,
+        "handshake": {"server": "example.com", "server_port": 443},
+        "private_key": "private-key",
+        "short_id": ["0123456789abcdef"]
+      },
+      "server_name": "example.com"
+    },
+    "type": "vless",
+    "users": [{"flow": "xtls-rprx-vision", "name": "proxyforge-user", "uuid": "123e4567-e89b-42d3-a456-426614174000"}]
+  }],
+  "log": {"level": "info", "timestamp": true},
+  "outbounds": [{"tag": "direct", "type": "direct"}],
+  "route": {
+    "final": "direct",
+    "rules": [{"action": "reject", "ip_is_private": true}]
+  }
+}

@@ -396,6 +396,9 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if err != nil {
 		return domain.NodeSpec{}, err
 	}
+	if opts.SimplifiedConfig && core != domain.CoreSingBox {
+		return domain.NodeSpec{}, fmt.Errorf("简化服务端配置目前仅支持 sing-box")
+	}
 	if err := validateGenerate(opts); err != nil {
 		return domain.NodeSpec{}, err
 	}
@@ -447,7 +450,10 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if err != nil {
 		return domain.NodeSpec{}, fmt.Errorf("内核不可用或不支持所需能力: %w", err)
 	}
-	n := domain.NodeSpec{ManagedBy: "proxyforge", Core: core, InboundTag: inboundTag, Server: opts.Server, Port: opts.Port, SNI: opts.SNI, Target: opts.Target, UserName: userName, CoreVersion: version, UpdatedAt: a.Now().UTC()}
+	n := domain.NodeSpec{ManagedBy: "proxyforge", Core: core, InboundTag: inboundTag, Server: opts.Server, Port: opts.Port, SNI: opts.SNI, Target: opts.Target, UserName: userName, SimplifiedConfig: opts.SimplifiedConfig, CoreVersion: version, UpdatedAt: a.Now().UTC()}
+	if n.SimplifiedConfig {
+		fmt.Fprintln(a.Out, "警告：已选择 sing-box 简化配置；域名将在出站连接阶段由系统 DNS 解析，域名解析到私网地址时可能绕过路由私网拦截。")
+	}
 	if hasOld && !opts.RotateCredentials {
 		a.progressf("保留现有 UUID、REALITY 密钥和 short ID")
 		n.UUID, n.PrivateKey, n.PublicKey, n.ShortID = old.UUID, old.PrivateKey, old.PublicKey, old.ShortID
@@ -594,6 +600,7 @@ func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.Res
 		Target:            desiredTarget,
 		UserName:          current.UserName,
 		InboundTag:        current.InboundTag,
+		SimplifiedConfig:  current.SimplifiedConfig,
 		RotateCredentials: true,
 		NonInteractive:    true,
 	})

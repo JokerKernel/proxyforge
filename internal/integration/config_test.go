@@ -45,6 +45,15 @@ func TestRealStableBinariesValidateAllConfigs(t *testing.T) {
 				name   string
 				render func(domain.NodeSpec) ([]byte, error)
 			}{{"server", p.RenderServer}, {"client", p.RenderClient}}
+			if p.Name() == domain.CoreSingBox {
+				configs = append(configs, struct {
+					name   string
+					render func(domain.NodeSpec) ([]byte, error)
+				}{"simplified-server", func(n domain.NodeSpec) ([]byte, error) {
+					n.SimplifiedConfig = true
+					return p.RenderServer(n)
+				}})
+			}
 			for _, item := range configs {
 				item := item
 				t.Run(item.name, func(t *testing.T) {
