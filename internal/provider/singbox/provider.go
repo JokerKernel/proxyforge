@@ -69,6 +69,7 @@ func (*Provider) GenerateKeyPair(ctx context.Context, r provider.Runner) (domain
 func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 	v := map[string]any{
 		"log": map[string]any{"level": "info", "timestamp": true},
+		"dns": map[string]any{"servers": []any{map[string]any{"type": "local", "tag": "local"}}},
 		"inbounds": []any{map[string]any{
 			"type": "vless", "tag": "vless-reality", "listen": "::", "listen_port": n.Port,
 			"users": []any{map[string]any{"uuid": n.UUID, "flow": domain.VisionFlow}},
@@ -78,6 +79,7 @@ func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 			}},
 		}},
 		"outbounds": []any{map[string]any{"type": "direct", "tag": "direct"}},
+		"route":     privateNetworkRoute(true, "direct"),
 	}
 	return jsonutil.Marshal(v)
 }
@@ -91,9 +93,26 @@ func (*Provider) RenderClient(n domain.NodeSpec) ([]byte, error) {
 			"tls": map[string]any{"enabled": true, "server_name": n.SNI, "utls": map[string]any{"enabled": true, "fingerprint": "chrome"},
 				"reality": map[string]any{"enabled": true, "public_key": n.PublicKey, "short_id": n.ShortID}},
 		}},
-		"route": map[string]any{"final": "proxy"},
+		"route": privateNetworkRoute(false, "proxy"),
 	}
 	return jsonutil.Marshal(v)
+}
+
+func privateNetworkRoute(resolveDomains bool, final string) map[string]any {
+	rules := make([]any, 0, 2)
+	if resolveDomains {
+		rules = append(rules, map[string]any{"action": "resolve", "server": "local"})
+	}
+	rules = append(rules, map[string]any{
+		"ip_is_private": true,
+		"ip_cidr":       domain.BlockedDestinationCIDRs(),
+		"action":        "reject",
+	})
+	route := map[string]any{"rules": rules, "final": final}
+	if resolveDomains {
+		route["default_domain_resolver"] = "local"
+	}
+	return route
 }
 
 func (*Provider) ValidateConfig(ctx context.Context, r provider.Runner, path string) error {

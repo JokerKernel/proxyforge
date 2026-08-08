@@ -88,6 +88,8 @@ proxyforge config client xray --output ./xray-client.json
 
 ProxyForge 会验证 REALITY target 的 DNS、TCP/TLS、证书名称和地址属性，拒绝本机、私网及保留地址。使用 CDN 目标可能把未认证的回落流量转发给第三方，必须自行评估。工具只提示 ufw/firewalld 所需 TCP 端口，不会修改防火墙。
 
+生成的服务端和客户端配置会拒绝访问 IPv4/IPv6 私网、本机、链路本地、CGNAT、云元数据、基准测试、多播和保留地址。域名目标会先解析为 IP 再匹配黑洞规则；Xray 的 Freedom 出站也固定使用 IP 解析策略。
+
 官方参考：[sing-box 安装](https://sing-box.sagernet.org/installation/package-manager/)、[sing-box VLESS](https://sing-box.sagernet.org/configuration/inbound/vless/)、[sing-box REALITY TLS](https://sing-box.sagernet.org/configuration/shared/tls/)、[Xray-install](https://github.com/XTLS/Xray-install)、[Xray VLESS](https://xtls.github.io/en/config/inbounds/vless.html)、[XTLS REALITY](https://github.com/XTLS/REALITY/blob/main/README.en.md)。
 
 ## 验收测试

@@ -4,14 +4,31 @@
     {"listen": "127.0.0.1", "port": 10809, "protocol": "http", "settings": {}}
   ],
   "log": {"loglevel": "warning"},
-  "outbounds": [{
-    "protocol": "vless",
-    "settings": {"vnext": [{"address": "203.0.113.10", "port": 443, "users": [{"encryption": "none", "flow": "xtls-rprx-vision", "id": "123e4567-e89b-42d3-a456-426614174000"}]}]},
-    "streamSettings": {
-      "network": "raw",
-      "realitySettings": {"fingerprint": "chrome", "password": "public-key", "serverName": "example.com", "shortId": "0123456789abcdef", "spiderX": "/"},
-      "security": "reality"
+  "outbounds": [
+    {
+      "protocol": "vless",
+      "settings": {"vnext": [{"address": "203.0.113.10", "port": 443, "users": [{"encryption": "none", "flow": "xtls-rprx-vision", "id": "123e4567-e89b-42d3-a456-426614174000"}]}]},
+      "streamSettings": {
+        "network": "raw",
+        "realitySettings": {"fingerprint": "chrome", "password": "public-key", "serverName": "example.com", "shortId": "0123456789abcdef", "spiderX": "/"},
+        "security": "reality"
+      },
+      "tag": "proxy"
     },
-    "tag": "proxy"
-  }]
+    {"protocol": "blackhole", "settings": {}, "tag": "blocked-private"}
+  ],
+  "routing": {
+    "domainStrategy": "IPOnDemand",
+    "rules": [{
+      "type": "field",
+      "ip": [
+        "geoip:private", "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8",
+        "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24",
+        "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24",
+        "224.0.0.0/4", "240.0.0.0/4", "::/128", "::1/128", "64:ff9b:1::/48",
+        "100::/64", "2001:db8::/32", "fc00::/7", "fe80::/10", "ff00::/8"
+      ],
+      "outboundTag": "blocked-private"
+    }]
+  }
 }

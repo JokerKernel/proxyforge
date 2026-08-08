@@ -78,7 +78,8 @@ func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 				"show": false, "target": n.Target, "xver": 0, "serverNames": []string{n.SNI}, "privateKey": n.PrivateKey, "shortIds": []string{n.ShortID},
 			}},
 		}},
-		"outbounds": []any{map[string]any{"protocol": "freedom", "tag": "direct"}},
+		"outbounds": []any{directOutbound(), blockedOutbound()},
+		"routing":   privateNetworkRouting(),
 	}
 	return jsonutil.Marshal(v)
 }
@@ -97,9 +98,37 @@ func (*Provider) RenderClient(n domain.NodeSpec) ([]byte, error) {
 			"streamSettings": map[string]any{"network": "raw", "security": "reality", "realitySettings": map[string]any{
 				"fingerprint": "chrome", "serverName": n.SNI, "password": n.PublicKey, "shortId": n.ShortID, "spiderX": "/",
 			}},
-		}},
+		}, blockedOutbound()},
+		"routing": privateNetworkRouting(),
 	}
 	return jsonutil.Marshal(v)
+}
+
+func privateNetworkRouting() map[string]any {
+	return map[string]any{
+		"domainStrategy": "IPOnDemand",
+		"rules": []any{map[string]any{
+			"type":        "field",
+			"ip":          xrayBlockedDestinations(),
+			"outboundTag": "blocked-private",
+		}},
+	}
+}
+
+func xrayBlockedDestinations() []string {
+	return append([]string{"geoip:private"}, domain.BlockedDestinationCIDRs()...)
+}
+
+func blockedOutbound() map[string]any {
+	return map[string]any{"protocol": "blackhole", "tag": "blocked-private", "settings": map[string]any{}}
+}
+
+func directOutbound() map[string]any {
+	return map[string]any{
+		"protocol": "freedom",
+		"tag":      "direct",
+		"settings": map[string]any{"domainStrategy": "UseIP"},
+	}
 }
 
 func (*Provider) ValidateConfig(ctx context.Context, r provider.Runner, path string) error {
