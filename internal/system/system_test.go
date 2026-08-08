@@ -117,7 +117,7 @@ func TestServiceManagerLabelsBufferedOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := string(status), "[系统命令/输出] line one\n[系统命令/输出] line two\n"; got != want {
+	if got, want := string(status), "[系统命令/输出]\nline one\nline two\n"; got != want {
 		t.Fatalf("status=%q, want %q", got, want)
 	}
 }
@@ -132,6 +132,20 @@ func TestLinePrefixWriterHandlesFragmentedLines(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got, want := output.String(), "[来源] first\n[来源] partial\n[来源] last"; got != want {
+		t.Fatalf("output=%q, want %q", got, want)
+	}
+}
+
+func TestBlockPrefixWriterLabelsOutputOnce(t *testing.T) {
+	var output bytes.Buffer
+	w := NewBlockPrefixWriter(&output, "[系统命令/输出]")
+	if _, err := io.WriteString(w, "first\npart"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(w, "ial\nlast\n"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := output.String(), "[系统命令/输出]\nfirst\npartial\nlast\n"; got != want {
 		t.Fatalf("output=%q, want %q", got, want)
 	}
 }
@@ -484,7 +498,7 @@ func TestRemovePackageLabelsStreamingCommandOutput(t *testing.T) {
 	if err := RemovePackage(context.Background(), runner, Layout{Root: root}, "sing-box", &output); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := output.String(), "[系统命令/输出] live log line\n"; got != want {
+	if got, want := output.String(), "[系统命令/输出]\nlive log line\n"; got != want {
 		t.Fatalf("output=%q, want %q", got, want)
 	}
 }

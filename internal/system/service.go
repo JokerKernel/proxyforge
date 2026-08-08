@@ -26,7 +26,7 @@ func (m ServiceManager) Action(ctx context.Context, service, action string) ([]b
 		args = append(args, "--no-pager")
 	}
 	b, err := m.Runner.Run(ctx, "systemctl", args...)
-	return PrefixLines(b, "[系统命令/输出] "), err
+	return PrefixBlock(b, "[系统命令/输出]"), err
 }
 
 func (m ServiceManager) FollowLogs(ctx context.Context, service string, output io.Writer) error {
