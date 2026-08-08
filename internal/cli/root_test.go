@@ -434,6 +434,18 @@ func TestCancelableGenerateInputsRecognizeQ(t *testing.T) {
 	})
 }
 
+func TestSNIConfirmationDefaultsToYes(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{reader: bufio.NewReader(strings.NewReader("\n")), out: &out}
+	ok, err := c.confirmCancelableDefaultYes("确认 SNI 和 REALITY target？")
+	if err != nil || !ok {
+		t.Fatalf("confirmed=%v error=%v", ok, err)
+	}
+	if !strings.Contains(out.String(), "直接回车默认 yes") || !strings.Contains(out.String(), "输入 q 返回当前菜单") {
+		t.Fatalf("default confirmation prompt=%q", out.String())
+	}
+}
+
 func TestCleanupConfirmationWarnsNoBackup(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{reader: bufio.NewReader(strings.NewReader("Y\n")), out: &out}

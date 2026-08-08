@@ -374,7 +374,7 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 			"允许将其用作 REALITY 回落站点",
 		}},
 	)
-	ok, err := c.confirmCancelable("确认 SNI 和 REALITY target？")
+	ok, err := c.confirmCancelableDefaultYes("确认 SNI 和 REALITY target？")
 	if err != nil {
 		return err
 	}
@@ -1043,11 +1043,16 @@ func (c *commandSet) askDefaultInput(label, def string, cancelable bool) (string
 }
 
 func (c *commandSet) confirm(message string) (bool, error) {
-	return c.confirmInput(message, false)
+	return c.confirmInput(message, false, false)
 }
 
 func (c *commandSet) confirmCancelable(message string) (bool, error) {
-	return c.confirmInput(message, true)
+	return c.confirmInput(message, true, false)
+
+}
+
+func (c *commandSet) confirmCancelableDefaultYes(message string) (bool, error) {
+	return c.confirmInput(message, true, true)
 }
 
 func (c *commandSet) printConfirmationPanel(title string, details []string, sections ...confirmationSection) {
@@ -1069,9 +1074,11 @@ func (c *commandSet) printConfirmationPanel(title string, details []string, sect
 	fmt.Fprintln(c.out, "----------------------------------------")
 }
 
-func (c *commandSet) confirmInput(message string, cancelable bool) (bool, error) {
+func (c *commandSet) confirmInput(message string, cancelable, defaultYes bool) (bool, error) {
 	fmt.Fprintln(c.out, strings.TrimSpace(message))
-	if cancelable {
+	if cancelable && defaultYes {
+		fmt.Fprint(c.out, "请输入 yes/y 确认（直接回车默认 yes），输入 q 返回当前菜单；其他输入取消： ")
+	} else if cancelable {
 		fmt.Fprint(c.out, "请输入 yes/y 确认，输入 q 返回当前菜单；其他输入取消： ")
 	} else {
 		fmt.Fprint(c.out, "请输入 yes/y 确认；其他输入取消： ")
@@ -1083,6 +1090,9 @@ func (c *commandSet) confirmInput(message string, cancelable bool) (bool, error)
 	value := strings.TrimSpace(line)
 	if cancelable && strings.EqualFold(value, "q") {
 		return false, errReturnToMenu
+	}
+	if defaultYes && value == "" {
+		return true, nil
 	}
 	return strings.EqualFold(value, "yes") || strings.EqualFold(value, "y"), nil
 }
