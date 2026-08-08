@@ -98,13 +98,31 @@ func TestPatchServerPreservesManualConfiguration(t *testing.T) {
 	}
 }
 
-func TestGenerateKeyPairParsesCurrentNativeOutput(t *testing.T) {
-	pair, err := New().GenerateKeyPair(context.Background(), outputRunner{"PrivateKey: private\nPassword: public\nHash32: unused\n"})
-	if err != nil {
-		t.Fatal(err)
+func TestGenerateKeyPairParsesSupportedNativeOutputs(t *testing.T) {
+	tests := []struct {
+		name, output string
+	}{
+		{"legacy", "Private key: private\nPublic key: public\n"},
+		{"password", "PrivateKey: private\nPassword: public\nHash32: unused\n"},
+		{"password with public key label", "PrivateKey: private\nPassword (PublicKey): public\nHash32: unused\n"},
 	}
-	if pair.Private != "private" || pair.Public != "public" {
-		t.Fatalf("pair=%#v", pair)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pair, err := New().GenerateKeyPair(context.Background(), outputRunner{tt.output})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if pair.Private != "private" || pair.Public != "public" {
+				t.Fatalf("pair=%#v", pair)
+			}
+		})
+	}
+}
+
+func TestGenerateKeyPairDoesNotTreatHash32AsPublicKey(t *testing.T) {
+	pair, err := New().GenerateKeyPair(context.Background(), outputRunner{"PrivateKey: private\nHash32: hash\n"})
+	if err == nil {
+		t.Fatalf("pair=%#v, expected missing public key error", pair)
 	}
 }
 

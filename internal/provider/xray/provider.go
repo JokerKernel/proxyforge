@@ -3,7 +3,6 @@ package xray
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"proxyforge/internal/domain"
@@ -60,21 +59,27 @@ func (*Provider) GenerateKeyPair(ctx context.Context, r provider.Runner) (domain
 	if err != nil {
 		return domain.KeyPair{}, fmt.Errorf("生成 Xray REALITY 密钥: %w", err)
 	}
-	re := regexp.MustCompile(`(?m)^(Private key|PrivateKey|Private):\s*(\S+)|^(Public key|PublicKey|Password|Public):\s*(\S+)`)
 	var pair domain.KeyPair
-	for _, m := range re.FindAllStringSubmatch(string(b), -1) {
-		label, value := m[1], m[2]
-		if label == "" {
-			label, value = m[3], m[4]
+	for _, line := range strings.Split(string(b), "\n") {
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			continue
 		}
-		if strings.HasPrefix(strings.ToLower(label), "private") {
-			pair.Private = value
-		} else {
-			pair.Public = value
+		values := strings.Fields(parts[1])
+		if len(values) == 0 {
+			continue
+		}
+		label := strings.ToLower(strings.TrimSpace(parts[0]))
+		label = strings.NewReplacer(" ", "", "_", "", "-", "").Replace(label)
+		switch label {
+		case "private", "privatekey":
+			pair.Private = values[0]
+		case "public", "publickey", "password", "password(publickey)":
+			pair.Public = values[0]
 		}
 	}
 	if pair.Private == "" || pair.Public == "" {
-		return pair, fmt.Errorf("无法解析 Xray REALITY 密钥输出")
+		return pair, fmt.Errorf("无法解析 Xray REALITY 密钥输出（缺少 PrivateKey 或 Password/PublicKey 字段）")
 	}
 	return pair, nil
 }
