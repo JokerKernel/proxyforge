@@ -70,9 +70,30 @@ func (c *commandSet) installCommand(upgrade bool) *cobra.Command {
 }
 
 func (c *commandSet) configCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "config", Short: "生成服务端或客户端配置"}
-	cmd.AddCommand(c.generateCommand(), c.clientCommand())
+	cmd := &cobra.Command{Use: "config", Short: "管理服务端、客户端和节点凭据"}
+	cmd.AddCommand(c.generateCommand(), c.clientCommand(), c.resetCommand())
 	return cmd
+}
+
+func (c *commandSet) resetCommand() *cobra.Command {
+	return &cobra.Command{
+		Use: "reset <sing-box|xray>", Short: "重置 UUID、REALITY 密钥和 short ID", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !c.yes {
+				if !readerInteractive(c.in) {
+					return fmt.Errorf("非交互模式重置凭据必须显式提供 --yes")
+				}
+				confirmed, err := c.confirmCredentialReset(args[0])
+				if err != nil {
+					return err
+				}
+				if !confirmed {
+					return fmt.Errorf("用户取消凭据重置")
+				}
+			}
+			return c.runCredentialReset(cmd.Context(), args[0])
+		},
+	}
 }
 
 func (c *commandSet) generateCommand() *cobra.Command {
@@ -195,38 +216,178 @@ func (c *commandSet) runGenerate(ctx context.Context, core string, o domain.Gene
 }
 
 func (c *commandSet) menu(ctx context.Context) error {
-	fmt.Fprintln(c.out, "ProxyForge 双内核代理管理器")
-	fmt.Fprintln(c.out, "1) 安装内核  2) 升级内核  3) 生成服务端配置  4) 查看客户端配置  5) 管理服务  0) 退出")
-	choice := c.askDefault("请选择", "")
-	if choice == "0" || choice == "" {
-		return nil
-	}
-	core := c.askDefault("内核（sing-box/xray）", "sing-box")
-	switch choice {
-	case "1", "2":
-		return c.app.Install(ctx, core, install.Options{Upgrade: choice == "2", Confirm: c.confirm})
-	case "3":
-		o := domain.GenerateOptions{}
-		if err := c.fillGenerate(ctx, core, &o); err != nil {
+	for {
+		c.printMainMenu()
+		choice, err := c.chooseNumber("请选择", 0, 6, 0)
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
 			return err
 		}
-		return c.runGenerate(ctx, core, o, true)
-	case "4":
-		b, err := c.app.Client(ctx, core, "", false)
-		if err == nil {
-			_, err = c.out.Write(b)
+		if choice == 0 {
+			fmt.Fprintln(c.out, "已退出 ProxyForge。")
+			return nil
 		}
+
+		if choice == 6 {
+			if err := c.serviceMenu(ctx); err != nil {
+				if err == io.EOF {
+					return nil
+				}
+				c.printMenuError(err)
+			}
+			continue
+		}
+
+		core, selected, err := c.selectCore()
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+		if !selected {
+			continue
+		}
+
+		switch choice {
+		case 1, 2:
+			err = c.app.Install(ctx, core, install.Options{Upgrade: choice == 2, Confirm: c.confirm})
+		case 3:
+			o := domain.GenerateOptions{}
+			if err = c.fillGenerate(ctx, core, &o); err == nil {
+				err = c.runGenerate(ctx, core, o, true)
+			}
+		case 4:
+			var b []byte
+			b, err = c.app.Client(ctx, core, "", false)
+			if err == nil {
+				_, err = c.out.Write(b)
+			}
+		case 5:
+			var confirmed bool
+			confirmed, err = c.confirmCredentialReset(core)
+			if err == nil && confirmed {
+				err = c.runCredentialReset(ctx, core)
+			} else if err == nil {
+				fmt.Fprintln(c.out, "已取消凭据重置。")
+			}
+		}
+		if err != nil {
+			c.printMenuError(err)
+		}
+	}
+}
+
+func (c *commandSet) printMainMenu() {
+	fmt.Fprintln(c.out)
+	fmt.Fprintln(c.out, "========================================")
+	fmt.Fprintln(c.out, "       ProxyForge 双内核代理管理器")
+	fmt.Fprintln(c.out, "========================================")
+	fmt.Fprintln(c.out, "1) 安装内核")
+	fmt.Fprintln(c.out, "2) 升级内核")
+	fmt.Fprintln(c.out, "3) 生成服务端配置")
+	fmt.Fprintln(c.out, "4) 查看客户端配置")
+	fmt.Fprintln(c.out, "5) 重置节点凭据")
+	fmt.Fprintln(c.out, "6) 管理服务")
+	fmt.Fprintln(c.out, "0) 退出")
+	fmt.Fprintln(c.out, "----------------------------------------")
+}
+
+func (c *commandSet) confirmCredentialReset(core string) (bool, error) {
+	fmt.Fprintf(c.out, "即将重置 %s 的 UUID、REALITY 密钥和 short ID；所有旧客户端配置会立即失效。\n", core)
+	return c.confirm("确认重置？输入 yes 继续")
+}
+
+func (c *commandSet) runCredentialReset(ctx context.Context, core string) error {
+	if _, err := c.app.ResetCredentials(ctx, core); err != nil {
 		return err
-	case "5":
-		action := c.askDefault("操作（start/stop/restart/status/logs）", "status")
-		b, err := c.app.Service(ctx, core, action)
+	}
+	fmt.Fprintf(c.out, "%s 节点凭据已全部重置；请重新导出并分发客户端配置。\n", core)
+	return nil
+}
+
+func (c *commandSet) selectCore() (string, bool, error) {
+	fmt.Fprintln(c.out)
+	fmt.Fprintln(c.out, "请选择内核")
+	fmt.Fprintln(c.out, "1) sing-box")
+	fmt.Fprintln(c.out, "2) Xray-core")
+	fmt.Fprintln(c.out, "0) 返回主菜单")
+	choice, err := c.chooseNumber("请选择", 0, 2, 1)
+	if err != nil {
+		return "", false, err
+	}
+	switch choice {
+	case 1:
+		return domain.CoreSingBox, true, nil
+	case 2:
+		return domain.CoreXray, true, nil
+	default:
+		return "", false, nil
+	}
+}
+
+func (c *commandSet) serviceMenu(ctx context.Context) error {
+	core, selected, err := c.selectCore()
+	if err != nil || !selected {
+		return err
+	}
+	actions := []string{"", "start", "stop", "restart", "status", "logs"}
+	for {
+		fmt.Fprintln(c.out)
+		fmt.Fprintf(c.out, "服务管理：%s\n", core)
+		fmt.Fprintln(c.out, "1) 启动服务")
+		fmt.Fprintln(c.out, "2) 停止服务")
+		fmt.Fprintln(c.out, "3) 重启服务")
+		fmt.Fprintln(c.out, "4) 查看状态")
+		fmt.Fprintln(c.out, "5) 查看最近日志")
+		fmt.Fprintln(c.out, "0) 返回主菜单")
+		choice, chooseErr := c.chooseNumber("请选择", 0, 5, 4)
+		if chooseErr != nil {
+			return chooseErr
+		}
+		if choice == 0 {
+			return nil
+		}
+		b, actionErr := c.app.Service(ctx, core, actions[choice])
 		if len(b) > 0 {
 			fmt.Fprint(c.out, string(b))
+			if b[len(b)-1] != '\n' {
+				fmt.Fprintln(c.out)
+			}
 		}
-		return err
-	default:
-		return fmt.Errorf("无效选择 %q", choice)
+		if actionErr != nil {
+			c.printMenuError(actionErr)
+		}
 	}
+}
+
+func (c *commandSet) chooseNumber(label string, min, max, def int) (int, error) {
+	for {
+		if def >= min && def <= max {
+			fmt.Fprintf(c.out, "%s [%d]: ", label, def)
+		} else {
+			fmt.Fprintf(c.out, "%s: ", label)
+		}
+		line, err := c.reader.ReadString('\n')
+		if err != nil && len(line) == 0 {
+			return 0, err
+		}
+		value := strings.TrimSpace(line)
+		if value == "" && def >= min && def <= max {
+			return def, nil
+		}
+		choice, parseErr := strconv.Atoi(value)
+		if parseErr == nil && choice >= min && choice <= max {
+			return choice, nil
+		}
+		fmt.Fprintf(c.out, "无效选择，请输入 %d 到 %d 之间的数字。\n", min, max)
+	}
+}
+
+func (c *commandSet) printMenuError(err error) {
+	fmt.Fprintf(c.errOut, "操作失败：%v\n", err)
 }
 
 func (c *commandSet) askDefault(label, def string) string {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,10 +26,11 @@ func (allowTarget) Validate(context.Context, string, string, string) ([]string, 
 }
 
 type fakeRunner struct {
-	mu          sync.Mutex
-	calls       []string
-	port        int
-	failRestart bool
+	mu            sync.Mutex
+	calls         []string
+	port          int
+	failRestart   bool
+	keyGeneration int
 }
 
 func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
@@ -40,7 +42,8 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte
 		return []byte("sing-box version 1.14.0\n"), nil
 	}
 	if name == "sing-box" && len(args) > 1 && args[0] == "generate" {
-		return []byte("PrivateKey: private-key\nPublicKey: public-key\n"), nil
+		f.keyGeneration++
+		return []byte(fmt.Sprintf("PrivateKey: private-key-%d\nPublicKey: public-key-%d\n", f.keyGeneration, f.keyGeneration)), nil
 	}
 	if name == "sing-box" && len(args) > 0 && args[0] == "check" {
 		return nil, nil
@@ -125,20 +128,20 @@ func TestGenerateTakeoverPreserveRotateAndRollback(t *testing.T) {
 	if second.UUID != first.UUID || second.ShortID != first.ShortID || second.PrivateKey != first.PrivateKey {
 		t.Fatal("credentials changed without rotation")
 	}
-	o.RotateCredentials = true
-	third, err := a.Generate(context.Background(), domain.CoreSingBox, o)
+	third, err := a.ResetCredentials(context.Background(), domain.CoreSingBox)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if third.UUID == second.UUID || third.ShortID == second.ShortID {
+	if third.UUID == second.UUID || third.ShortID == second.ShortID || third.PrivateKey == second.PrivateKey || third.PublicKey == second.PublicKey {
 		t.Fatal("credentials were not rotated")
+	}
+	if third.Server != second.Server || third.Port != second.Port || third.SNI != second.SNI || third.Target != second.Target {
+		t.Fatal("reset changed node connection settings")
 	}
 	beforeConfig, _ := os.ReadFile(configPath)
 	beforeState, _ := os.ReadFile(a.Layout.StatePath(domain.CoreSingBox))
 	r.failRestart = true
-	o.SNI = "alt.example.com"
-	o.Target = "alt.example.com:443"
-	_, err = a.Generate(context.Background(), domain.CoreSingBox, o)
+	_, err = a.ResetCredentials(context.Background(), domain.CoreSingBox)
 	if err == nil || !strings.Contains(err.Error(), "已恢复") {
 		t.Fatalf("rollback error=%v", err)
 	}

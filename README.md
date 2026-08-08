@@ -45,6 +45,7 @@ proxyforge install <sing-box|xray> [--version VERSION]
 proxyforge upgrade <sing-box|xray> [--version VERSION]
 proxyforge config generate <sing-box|xray> --server HOST --port PORT --sni DOMAIN [--target HOST:PORT]
 proxyforge config client <sing-box|xray> [--output FILE] [--force]
+proxyforge config reset <sing-box|xray> [--yes]
 proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
 ```
 
@@ -56,7 +57,7 @@ sudo proxyforge install sing-box --yes --trust-script-sha256 <64位哈希>
 
 首次交互安装会展示来源、最终重定向地址、大小、危险操作摘要和 SHA-256，只有输入完整的 `yes` 才执行。脚本变化后，非交互执行会被阻止，必须重新进行交互确认。安装器下载受限临时文件，不使用 `curl | sh`，并检查 HTTPS 主机白名单、重定向、HTTP 状态、大小、shebang、NUL/文本格式和 `bash -n`。
 
-生成首个节点时交互默认端口为 443；检测到另一个受管节点后默认建议 8443。重新生成会保留 UUID、REALITY 密钥和 short ID；只有 `--rotate-credentials` 会轮换它们并让旧客户端失效。未知或被外部修改的配置必须交互确认，自动化时使用 `--take-over`。
+生成首个节点时交互默认端口为 443；检测到另一个受管节点后默认建议 8443。重新生成会保留 UUID、REALITY 密钥和 short ID；只有 `--rotate-credentials` 或 `config reset` 会同时轮换它们并让旧客户端失效。`config reset` 保留地址、端口、SNI 和 REALITY target，交互模式要求确认，自动化必须显式传入 `--yes`。未知或被外部修改的配置必须交互确认，自动化时使用 `--take-over`。
 
 示例：
 

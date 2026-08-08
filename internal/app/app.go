@@ -172,6 +172,9 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		}
 		n.PrivateKey, n.PublicKey = keys.Private, keys.Public
 	}
+	if hasOld && opts.RotateCredentials && (n.UUID == old.UUID || n.PrivateKey == old.PrivateKey || n.PublicKey == old.PublicKey || n.ShortID == old.ShortID) {
+		return n, fmt.Errorf("凭据生成器返回了重复值，已拒绝修改现有节点")
+	}
 	config, err := p.RenderServer(n)
 	if err != nil {
 		return n, err
@@ -235,6 +238,26 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	}
 	a.firewallHint(opts.Port)
 	return n, nil
+}
+
+// ResetCredentials atomically rotates every client credential while preserving
+// the managed node's address, port, SNI, and REALITY target.
+func (a *App) ResetCredentials(ctx context.Context, core string) (domain.NodeSpec, error) {
+	if err := a.RootCheck(); err != nil {
+		return domain.NodeSpec{}, err
+	}
+	current, err := a.Store.Load(core)
+	if err != nil {
+		return domain.NodeSpec{}, err
+	}
+	return a.Generate(ctx, core, domain.GenerateOptions{
+		Server:            current.Server,
+		Port:              current.Port,
+		SNI:               current.SNI,
+		Target:            current.Target,
+		RotateCredentials: true,
+		NonInteractive:    true,
+	})
 }
 
 func (a *App) Client(ctx context.Context, core, output string, force bool) ([]byte, error) {
