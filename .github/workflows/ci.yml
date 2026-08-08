@@ -68,14 +68,10 @@ jobs:
           mkdir -p dist
           ./scripts/build.sh
 
-      - name: Package binary
-        run: |
-          tar -C dist -czf "dist/proxyforge-linux-${{ matrix.arch }}.tar.gz" "proxyforge-linux-${{ matrix.arch }}"
-
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: proxyforge-linux-${{ matrix.arch }}
-          path: dist/proxyforge-linux-${{ matrix.arch }}.tar.gz
+          path: dist/proxyforge-linux-${{ matrix.arch }}
           if-no-files-found: error
           retention-days: 14

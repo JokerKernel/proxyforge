@@ -28,7 +28,6 @@ jobs:
     outputs:
       commit: ${{ steps.metadata.outputs.commit }}
       build_date: ${{ steps.metadata.outputs.build_date }}
-      source_date_epoch: ${{ steps.metadata.outputs.source_date_epoch }}
     steps:
       - name: Check out release tag
         uses: actions/checkout@v7
@@ -50,17 +49,15 @@ jobs:
           fi
           printf 'commit=%s\n' "$(git rev-parse --short HEAD)" >> "${GITHUB_OUTPUT}"
           printf 'build_date=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
-          printf 'source_date_epoch=%s\n' "$(git show -s --format=%ct HEAD)" >> "${GITHUB_OUTPUT}"
 
   build:
-    name: Package linux/${{ matrix.arch }}
+    name: Build linux/${{ matrix.arch }}
     needs: metadata
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       COMMIT: ${{ needs.metadata.outputs.commit }}
       BUILD_DATE: ${{ needs.metadata.outputs.build_date }}
-      SOURCE_DATE_EPOCH: ${{ needs.metadata.outputs.source_date_epoch }}
     strategy:
       fail-fast: false
       matrix:
@@ -86,27 +83,19 @@ jobs:
           CGO_ENABLED: "0"
           GOOS: linux
           GOARCH: ${{ matrix.arch }}
-          OUTPUT: dist/proxyforge
         run: |
           mkdir -p dist
-          ./scripts/build.sh
+          OUTPUT="dist/proxyforge_${VERSION}_linux_${{ matrix.arch }}" ./scripts/build.sh
 
       - name: Verify embedded version
         if: matrix.arch == 'amd64'
-        run: dist/proxyforge --version
-
-      - name: Create reproducible archive
-        shell: bash
-        run: |
-          archive="proxyforge_${VERSION}_linux_${{ matrix.arch }}.tar.gz"
-          tar --sort=name --owner=0 --group=0 --numeric-owner \
-            --mtime="@${SOURCE_DATE_EPOCH}" -C dist -czf "${archive}" proxyforge
+        run: dist/proxyforge_${VERSION}_linux_${{ matrix.arch }} --version
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v7
         with:
           name: release-linux-${{ matrix.arch }}
-          path: proxyforge_*.tar.gz
+          path: dist/proxyforge_*_linux_${{ matrix.arch }}
           if-no-files-found: error
           retention-days: 7
 
@@ -123,7 +112,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
 
-      - name: Download packaged binaries
+      - name: Download binaries
         uses: actions/download-artifact@v8
         with:
           pattern: release-linux-*
@@ -132,7 +121,7 @@ jobs:
 
       - name: Generate checksum manifest
         working-directory: dist
-        run: sha256sum proxyforge_*.tar.gz > SHA256SUMS
+        run: sha256sum proxyforge_*_linux_* > SHA256SUMS
 
       - name: Create or update GitHub Release
         env:
@@ -140,10 +129,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-            gh release upload "${RELEASE_TAG}" dist/proxyforge_*.tar.gz dist/SHA256SUMS --clobber
+            gh release upload "${RELEASE_TAG}" dist/proxyforge_*_linux_* dist/SHA256SUMS --clobber
           else
             gh release create "${RELEASE_TAG}" \
-              dist/proxyforge_*.tar.gz dist/SHA256SUMS \
+              dist/proxyforge_*_linux_* dist/SHA256SUMS \
               --verify-tag \
               --generate-notes \
               --title "ProxyForge ${RELEASE_TAG}"

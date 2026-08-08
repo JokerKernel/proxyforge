@@ -129,7 +129,7 @@ SING_BOX_BIN=/path/to/sing-box XRAY_BIN=/path/to/xray \
 
 ## CI/CD 与发布
 
-GitHub Actions 会在分支 push、Pull Request 和手动触发时运行测试、`go vet`，随后编译 Linux amd64、arm64，并将压缩包保存为工作流产物。
+GitHub Actions 会在分支 push、Pull Request 和手动触发时运行测试、`go vet`，随后编译 Linux amd64、arm64，并将独立二进制文件保存为工作流产物。
 
 发布正式版本时创建并推送一个 `v` 开头的 Git 标签：
 
@@ -141,10 +141,12 @@ git push origin v1.0.0
 Release 工作流会构建该标签并发布以下资产到当前 GitHub 仓库的 Releases；测试与 `go vet` 由独立的 CI 工作流负责：
 
 ```text
-proxyforge_v1.0.0_linux_amd64.tar.gz
-proxyforge_v1.0.0_linux_arm64.tar.gz
+proxyforge_v1.0.0_linux_amd64
+proxyforge_v1.0.0_linux_arm64
 SHA256SUMS
 ```
+
+下载对应架构的二进制后需要赋予执行权限，例如 `chmod +x proxyforge_v1.0.0_linux_amd64`，随后即可直接运行，不需要解压。
 
 也可以在 GitHub Actions 的 `Release` 工作流中手动输入一个已经存在的标签重新发布。发布任务只在最后阶段取得 `contents: write` 权限；普通 CI 和构建任务保持只读权限。
 
