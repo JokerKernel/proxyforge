@@ -540,6 +540,28 @@ func (a *App) ServerConfig(core string) ([]byte, error) {
 	return b, nil
 }
 
+func (a *App) ServerConfigExists(core string) (bool, error) {
+	if err := a.RootCheck(); err != nil {
+		return false, err
+	}
+	p, err := a.Registry.Get(core)
+	if err != nil {
+		return false, err
+	}
+	path := a.Layout.Resolve(p.ConfigPath())
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("检查 %s 服务端配置 %s: %w", core, p.ConfigPath(), err)
+	}
+	if !info.Mode().IsRegular() {
+		return false, fmt.Errorf("服务端配置路径不是普通文件: %s", p.ConfigPath())
+	}
+	return true, nil
+}
+
 func (a *App) ClientConfig(ctx context.Context, core, format, output string, force bool) ([]byte, error) {
 	if err := a.RootCheck(); err != nil {
 		return nil, err

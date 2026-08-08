@@ -138,8 +138,14 @@ func TestServerConfigMenuShowsCurrentConfig(t *testing.T) {
 }
 
 func TestServerConfigGenerationQReturnsWithoutApplying(t *testing.T) {
+	a := &app.App{
+		Registry:  provider.NewRegistry(singbox.New(), xray.New()),
+		Layout:    system.Layout{Root: t.TempDir()},
+		RootCheck: func() error { return nil },
+	}
 	var out, errOut bytes.Buffer
 	c := &commandSet{
+		app:    a,
 		reader: bufio.NewReader(strings.NewReader("1\nq\n")),
 		out:    &out,
 		errOut: &errOut,
@@ -153,6 +159,42 @@ func TestServerConfigGenerationQReturnsWithoutApplying(t *testing.T) {
 	if errOut.Len() != 0 {
 		t.Fatalf("cancel was reported as an error: %q", errOut.String())
 	}
+}
+
+func TestExistingServerConfigRequiresOverwriteConfirmation(t *testing.T) {
+	layout := system.Layout{Root: t.TempDir()}
+	if err := system.AtomicWrite(layout.Resolve(singbox.New().ConfigPath()), []byte("existing"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	a := &app.App{
+		Registry:  provider.NewRegistry(singbox.New(), xray.New()),
+		Layout:    layout,
+		RootCheck: func() error { return nil },
+	}
+	t.Run("interactive cancel", func(t *testing.T) {
+		var out bytes.Buffer
+		c := &commandSet{app: a, reader: bufio.NewReader(strings.NewReader("n\n")), out: &out}
+		err := c.confirmServerConfigOverwrite(domain.CoreSingBox, true)
+		if !errors.Is(err, errReturnToMenu) || !strings.Contains(out.String(), "完整覆盖") {
+			t.Fatalf("error=%v output=%q", err, out.String())
+		}
+	})
+	t.Run("interactive confirm", func(t *testing.T) {
+		c := &commandSet{app: a, reader: bufio.NewReader(strings.NewReader("yes\n")), out: io.Discard}
+		if err := c.confirmServerConfigOverwrite(domain.CoreSingBox, true); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("non-interactive requires yes", func(t *testing.T) {
+		c := &commandSet{app: a, out: io.Discard}
+		if err := c.confirmServerConfigOverwrite(domain.CoreSingBox, false); err == nil || !strings.Contains(err.Error(), "--yes") {
+			t.Fatalf("error=%v", err)
+		}
+		c.yes = true
+		if err := c.confirmServerConfigOverwrite(domain.CoreSingBox, false); err != nil {
+			t.Fatal(err)
+		}
+	})
 }
 
 func TestCleanupCommandRequiresYesWhenNonInteractive(t *testing.T) {

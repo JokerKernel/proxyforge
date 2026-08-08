@@ -180,6 +180,13 @@ func (c *commandSet) generateCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			interactive := !c.yes && readerInteractive(c.in)
 			o.NonInteractive = !interactive
+			if err := c.confirmServerConfigOverwrite(args[0], interactive); err != nil {
+				if errors.Is(err, errReturnToMenu) {
+					fmt.Fprintln(c.out, "已取消生成服务端配置。")
+					return nil
+				}
+				return err
+			}
 			if interactive {
 				if err := c.fillGenerate(cmd.Context(), args[0], &o); err != nil {
 					if errors.Is(err, errReturnToMenu) {
@@ -333,6 +340,32 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 	}
 	if !ok {
 		return fmt.Errorf("用户取消配置生成")
+	}
+	return nil
+}
+
+func (c *commandSet) confirmServerConfigOverwrite(core string, interactive bool) error {
+	exists, err := c.app.ServerConfigExists(core)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	if !interactive {
+		if c.yes {
+			return nil
+		}
+		return fmt.Errorf("检测到已存在的 %s 服务端配置；非交互覆盖必须显式提供 --yes", core)
+	}
+	fmt.Fprintf(c.out, "检测到已存在的 %s 服务端配置。\n", core)
+	fmt.Fprintln(c.out, "继续操作会先备份当前文件，再使用 ProxyForge 标准模板完整覆盖；原有自定义内容不会合并。")
+	ok, err := c.confirmCancelable("确认覆盖？输入 yes/y 继续，输入 q 返回主菜单")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errReturnToMenu
 	}
 	return nil
 }
@@ -524,7 +557,10 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		switch choice {
 		case 1:
 			o := domain.GenerateOptions{}
-			if err = c.fillGenerate(ctx, core, &o); err == nil {
+			if err = c.confirmServerConfigOverwrite(core, true); err == nil {
+				err = c.fillGenerate(ctx, core, &o)
+			}
+			if err == nil {
 				err = c.runGenerate(ctx, core, o)
 			}
 			if errors.Is(err, errReturnToMenu) {
