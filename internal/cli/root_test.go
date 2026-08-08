@@ -177,6 +177,24 @@ func TestMenuCanReturnFromCoreSelection(t *testing.T) {
 	if !strings.Contains(out.String(), "已退出 ProxyForge") {
 		t.Fatalf("missing exit message: %q", out.String())
 	}
+	if strings.Contains(out.String(), "\x1b[") {
+		t.Fatalf("redirected menu output contains ANSI controls: %q", out.String())
+	}
+}
+
+func TestScreenControlsAreDisabledForRedirectedIO(t *testing.T) {
+	input := strings.NewReader("kept\n")
+	var out bytes.Buffer
+	c := &commandSet{in: input, reader: bufio.NewReader(input), out: &out}
+	c.clearScreen()
+	c.pauseForMenu()
+	if out.Len() != 0 {
+		t.Fatalf("redirected output=%q", out.String())
+	}
+	line, err := c.reader.ReadString('\n')
+	if err != nil || line != "kept\n" {
+		t.Fatalf("redirected input was consumed: line=%q err=%v", line, err)
+	}
 }
 
 func TestFillGenerateSelectsRandomDefaultFromFastCandidates(t *testing.T) {

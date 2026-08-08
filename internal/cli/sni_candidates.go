@@ -94,6 +94,9 @@ func (c *commandSet) selectSNICandidate(ctx context.Context, server string) (str
 	if probe == nil {
 		probe = app.ProbeSNICandidates
 	}
+	c.clearScreen()
+	fmt.Fprintln(c.out, "REALITY SNI 候选检测")
+	fmt.Fprintln(c.out, "----------------------------------------")
 	fmt.Fprintf(c.out, "正在并发测试 %d 个 SNI 候选的 DNS、TCP/TLS、ALPN、证书 SAN 和 CDN 特征，请稍候……\n", len(defaultSNICandidates))
 	candidates, err := probe(ctx, defaultSNICandidates, server, 10)
 	if err != nil {

@@ -64,6 +64,10 @@ func (c *commandSet) installCommand(upgrade bool) *cobra.Command {
 		Use: name + " <sing-box|xray>", Short: desc, Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			nonInteractive := c.yes || !readerInteractive(c.in)
+			if !nonInteractive {
+				c.clearScreen()
+				fmt.Fprintf(c.out, "%s内核：%s\n\n", desc, args[0])
+			}
 			opts := install.Options{URL: scriptURL, Version: version, Upgrade: upgrade, NonInteractive: nonInteractive, TrustScriptSHA256: trust, Confirm: c.confirm}
 			return c.app.Install(cmd.Context(), args[0], opts)
 		},
@@ -175,6 +179,8 @@ func (c *commandSet) serviceCommand() *cobra.Command {
 }
 
 func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.GenerateOptions) error {
+	c.clearScreen()
+	fmt.Fprintf(c.out, "生成服务端配置：%s\n\n", core)
 	if o.Server == "" {
 		detected, err := app.PublicAddress(ctx)
 		if err != nil {
@@ -198,6 +204,10 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 				return fmt.Errorf("自动选择 SNI 失败: %w", err)
 			}
 			o.SNI = selected
+			if c.interactiveUI() {
+				c.clearScreen()
+				fmt.Fprintf(c.out, "生成服务端配置：%s\n\n已选择 REALITY SNI：%s\n", core, o.SNI)
+			}
 		}
 	}
 	if o.Target == "" {
@@ -236,6 +246,7 @@ func (c *commandSet) runGenerate(ctx context.Context, core string, o domain.Gene
 
 func (c *commandSet) menu(ctx context.Context) error {
 	for {
+		c.clearScreen()
 		c.printMainMenu()
 		choice, err := c.chooseNumber("请选择", 0, 6, 0)
 		if err != nil {
@@ -270,6 +281,8 @@ func (c *commandSet) menu(ctx context.Context) error {
 			continue
 		}
 
+		c.clearScreen()
+		shouldPause := true
 		switch choice {
 		case 1, 2:
 			err = c.app.Install(ctx, core, install.Options{Upgrade: choice == 2, Confirm: c.confirm})
@@ -285,10 +298,13 @@ func (c *commandSet) menu(ctx context.Context) error {
 				_, err = c.out.Write(b)
 			}
 		case 5:
-			err = c.resetMenu(ctx, core)
+			shouldPause, err = c.resetMenu(ctx, core)
 		}
 		if err != nil {
 			c.printMenuError(err)
+		}
+		if shouldPause {
+			c.pauseForMenu()
 		}
 	}
 }
@@ -308,41 +324,46 @@ func (c *commandSet) printMainMenu() {
 	fmt.Fprintln(c.out, "----------------------------------------")
 }
 
-func (c *commandSet) resetMenu(ctx context.Context, core string) error {
-	fmt.Fprintln(c.out)
+func (c *commandSet) resetMenu(ctx context.Context, core string) (bool, error) {
+	c.clearScreen()
 	fmt.Fprintf(c.out, "重置 %s\n", core)
 	fmt.Fprintln(c.out, "1) 重置节点（重选 SNI/target，并重置凭证）")
 	fmt.Fprintln(c.out, "2) 重置凭证（保留 SNI/target，仅重置 UUID、REALITY 密钥和 short ID）")
 	fmt.Fprintln(c.out, "0) 返回主菜单")
 	choice, err := c.chooseNumber("请选择", 0, 2, 1)
-	if err != nil || choice == 0 {
-		return err
+	if err != nil {
+		return false, err
+	}
+	if choice == 0 {
+		return false, nil
 	}
 
 	opts := domain.ResetOptions{}
 	if choice == 1 {
 		if err := c.fillReset(ctx, core, &opts); err != nil {
-			return err
+			return true, err
 		}
 		confirmed, err := c.confirmCredentialReset(core, opts)
 		if err != nil {
-			return err
+			return true, err
 		}
 		if !confirmed {
 			fmt.Fprintln(c.out, "已取消节点重置。")
-			return nil
+			return true, nil
 		}
 	} else {
+		c.clearScreen()
+		fmt.Fprintf(c.out, "重置凭证：%s\n\n", core)
 		confirmed, err := c.confirmCredentialOnlyReset(core)
 		if err != nil {
-			return err
+			return true, err
 		}
 		if !confirmed {
 			fmt.Fprintln(c.out, "已取消凭证重置。")
-			return nil
+			return true, nil
 		}
 	}
-	return c.runCredentialReset(ctx, core, opts)
+	return true, c.runCredentialReset(ctx, core, opts)
 }
 
 func (c *commandSet) fillReset(ctx context.Context, core string, opts *domain.ResetOptions) error {
@@ -350,6 +371,8 @@ func (c *commandSet) fillReset(ctx context.Context, core string, opts *domain.Re
 	if err != nil {
 		return err
 	}
+	c.clearScreen()
+	fmt.Fprintf(c.out, "重置节点：%s\n\n", core)
 	if opts.SNI == "" {
 		opts.SNI = c.askDefault("新的 REALITY SNI（输入域名；直接回车自动测速候选）", "")
 		if opts.SNI == "" {
@@ -358,6 +381,10 @@ func (c *commandSet) fillReset(ctx context.Context, core string, opts *domain.Re
 				return fmt.Errorf("自动选择 SNI 失败: %w", err)
 			}
 			opts.SNI = selected
+			if c.interactiveUI() {
+				c.clearScreen()
+				fmt.Fprintf(c.out, "重置节点：%s\n\n已选择 REALITY SNI：%s\n", core, opts.SNI)
+			}
 		}
 	}
 	if opts.Target == "" {
@@ -393,7 +420,7 @@ func (c *commandSet) runCredentialReset(ctx context.Context, core string, opts d
 }
 
 func (c *commandSet) selectCore() (string, bool, error) {
-	fmt.Fprintln(c.out)
+	c.clearScreen()
 	fmt.Fprintln(c.out, "请选择内核")
 	fmt.Fprintln(c.out, "1) sing-box")
 	fmt.Fprintln(c.out, "2) Xray-core")
@@ -419,7 +446,7 @@ func (c *commandSet) serviceMenu(ctx context.Context) error {
 	}
 	actions := []string{"", "start", "stop", "restart", "status", "logs"}
 	for {
-		fmt.Fprintln(c.out)
+		c.clearScreen()
 		fmt.Fprintf(c.out, "服务管理：%s\n", core)
 		fmt.Fprintln(c.out, "1) 启动服务")
 		fmt.Fprintln(c.out, "2) 停止服务")
@@ -444,6 +471,7 @@ func (c *commandSet) serviceMenu(ctx context.Context) error {
 		if actionErr != nil {
 			c.printMenuError(actionErr)
 		}
+		c.pauseForMenu()
 	}
 }
 
@@ -506,6 +534,33 @@ func readerInteractive(r io.Reader) bool {
 	}
 	info, err := f.Stat()
 	return err == nil && (info.Mode()&os.ModeCharDevice) != 0
+}
+
+func writerInteractive(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := f.Stat()
+	return err == nil && (info.Mode()&os.ModeCharDevice) != 0
+}
+
+func (c *commandSet) interactiveUI() bool {
+	return !c.yes && os.Getenv("TERM") != "dumb" && readerInteractive(c.in) && writerInteractive(c.out)
+}
+
+func (c *commandSet) clearScreen() {
+	if c.interactiveUI() {
+		fmt.Fprint(c.out, "\033[H\033[2J")
+	}
+}
+
+func (c *commandSet) pauseForMenu() {
+	if !c.interactiveUI() {
+		return
+	}
+	fmt.Fprint(c.out, "\n按 Enter 返回菜单……")
+	_, _ = c.reader.ReadString('\n')
 }
 
 func netJoinHostPort(host, port string) string {
