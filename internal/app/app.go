@@ -880,6 +880,18 @@ func (a *App) Service(ctx context.Context, core, action string) ([]byte, error) 
 	return a.Services.Action(ctx, p.ServiceName(), action)
 }
 
+func (a *App) FollowServiceLogs(ctx context.Context, core string, output io.Writer) error {
+	a.progressf("实时查看 %s 服务日志", core)
+	if err := a.RootCheck(); err != nil {
+		return err
+	}
+	p, err := a.Registry.Get(core)
+	if err != nil {
+		return err
+	}
+	return a.Services.FollowLogs(ctx, p.ServiceName(), output)
+}
+
 func validateGenerate(o domain.GenerateOptions) error {
 	if o.NonInteractive && (o.Server == "" || o.Port == 0 || o.SNI == "") {
 		return fmt.Errorf("非交互模式必须显式提供 --server、--port 和 --sni")

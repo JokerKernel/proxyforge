@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,23 @@ import (
 	"proxyforge/internal/provider/xray"
 	"proxyforge/internal/system"
 )
+
+type liveLogRunner struct {
+	name string
+	args []string
+}
+
+func (r *liveLogRunner) Run(context.Context, string, ...string) ([]byte, error) {
+	return nil, nil
+}
+
+func (r *liveLogRunner) RunStreaming(ctx context.Context, stdout, _ io.Writer, name string, args ...string) error {
+	r.name = name
+	r.args = append([]string(nil), args...)
+	_, _ = io.WriteString(stdout, "live entry\n")
+	<-ctx.Done()
+	return ctx.Err()
+}
 
 func TestStableCommandTree(t *testing.T) {
 	root := New("test")
@@ -43,6 +61,39 @@ func TestClientCommandOffersClashFormat(t *testing.T) {
 	flag := c.clientCommand().Flags().Lookup("format")
 	if flag == nil || flag.DefValue != app.ClientFormatNative {
 		t.Fatalf("format flag=%v, want default %q", flag, app.ClientFormatNative)
+	}
+}
+
+func TestServiceMenuLiveLogsReturnsAfterInterrupt(t *testing.T) {
+	runner := &liveLogRunner{}
+	a := &app.App{
+		Registry:  provider.NewRegistry(singbox.New(), xray.New()),
+		Services:  system.ServiceManager{Runner: runner},
+		RootCheck: func() error { return nil },
+	}
+	var out, errOut bytes.Buffer
+	c := &commandSet{
+		app: a, reader: bufio.NewReader(strings.NewReader("6\n0\n")), out: &out, errOut: &errOut,
+		interruptContext: func(parent context.Context) (context.Context, context.CancelFunc) {
+			child, cancel := context.WithCancel(parent)
+			cancel()
+			return child, func() {}
+		},
+	}
+	if err := c.serviceMenu(context.Background(), domain.CoreXray); err != nil {
+		t.Fatal(err)
+	}
+	wantArgs := []string{"-u", "xray.service", "-n", "100", "-f", "--no-pager"}
+	if runner.name != "journalctl" || !reflect.DeepEqual(runner.args, wantArgs) {
+		t.Fatalf("command=%s args=%v, want journalctl %v", runner.name, runner.args, wantArgs)
+	}
+	for _, want := range []string{"实时日志查看", "live entry", "已停止实时日志", "服务管理：xray"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("output missing %q: %q", want, out.String())
+		}
+	}
+	if strings.Contains(errOut.String(), "操作失败") {
+		t.Fatalf("interrupt was reported as an error: %q", errOut.String())
 	}
 }
 

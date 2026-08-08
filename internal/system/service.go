@@ -3,6 +3,7 @@ package system
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	"proxyforge/internal/domain"
@@ -24,6 +25,14 @@ func (m ServiceManager) Action(ctx context.Context, service, action string) ([]b
 		args = append(args, "--no-pager")
 	}
 	return m.Runner.Run(ctx, "systemctl", args...)
+}
+
+func (m ServiceManager) FollowLogs(ctx context.Context, service string, output io.Writer) error {
+	streaming, ok := m.Runner.(provider.StreamingRunner)
+	if !ok {
+		return fmt.Errorf("当前命令执行器不支持实时日志输出")
+	}
+	return streaming.RunStreaming(ctx, output, output, "journalctl", "-u", service, "-n", "100", "-f", "--no-pager")
 }
 
 func (m ServiceManager) Restart(ctx context.Context, service string) error {

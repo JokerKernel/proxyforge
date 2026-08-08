@@ -3,6 +3,7 @@ package system
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -33,6 +34,32 @@ func (r outputRunner) Run(context.Context, string, ...string) ([]byte, error) {
 	return r.output, nil
 }
 
+type streamingRecordingRunner struct {
+	name string
+	args []string
+}
+
+func (r *streamingRecordingRunner) Run(context.Context, string, ...string) ([]byte, error) {
+	return nil, nil
+}
+
+func (r *streamingRecordingRunner) RunStreaming(_ context.Context, stdout, _ io.Writer, name string, args ...string) error {
+	r.name = name
+	r.args = append([]string(nil), args...)
+	_, _ = io.WriteString(stdout, "live log line\n")
+	return nil
+}
+
+type canceledStreamingRunner struct{}
+
+func (canceledStreamingRunner) Run(context.Context, string, ...string) ([]byte, error) {
+	return nil, context.Canceled
+}
+
+func (canceledStreamingRunner) RunStreaming(context.Context, io.Writer, io.Writer, string, ...string) error {
+	return context.Canceled
+}
+
 func TestServiceManagerEnable(t *testing.T) {
 	runner := &recordingRunner{}
 	if err := (ServiceManager{Runner: runner}).Enable(context.Background(), "sing-box.service"); err != nil {
@@ -57,6 +84,22 @@ func TestServiceManagerUninstallActions(t *testing.T) {
 	}
 	if runner.name != "systemctl" || !reflect.DeepEqual(runner.args, []string{"daemon-reload"}) {
 		t.Fatalf("reload command=%s args=%v", runner.name, runner.args)
+	}
+}
+
+func TestServiceManagerFollowsJournalLogs(t *testing.T) {
+	runner := &streamingRecordingRunner{}
+	var output bytes.Buffer
+	err := (ServiceManager{Runner: runner}).FollowLogs(context.Background(), "xray.service", &output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantArgs := []string{"-u", "xray.service", "-n", "100", "-f", "--no-pager"}
+	if runner.name != "journalctl" || !reflect.DeepEqual(runner.args, wantArgs) {
+		t.Fatalf("command=%s args=%v, want journalctl %v", runner.name, runner.args, wantArgs)
+	}
+	if output.String() != "live log line\n" {
+		t.Fatalf("output=%q", output.String())
 	}
 }
 
@@ -98,6 +141,19 @@ func TestLoggingRunnerReportsCommandWithoutLeakingBufferedOutput(t *testing.T) {
 	}
 	if strings.Contains(log.String(), "private-key-output") {
 		t.Fatalf("buffered command output leaked into log: %s", log.String())
+	}
+}
+
+func TestLoggingRunnerReportsCanceledStreamingCommandAsStopped(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var log bytes.Buffer
+	runner := &LoggingRunner{Runner: canceledStreamingRunner{}, Out: &log}
+	if err := runner.RunStreaming(ctx, io.Discard, io.Discard, "journalctl", "-f"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("error=%v, want context cancellation", err)
+	}
+	if !strings.Contains(log.String(), "[命令] 命令已停止：journalctl") || strings.Contains(log.String(), "命令失败") {
+		t.Fatalf("unexpected cancellation log: %s", log.String())
 	}
 }
 

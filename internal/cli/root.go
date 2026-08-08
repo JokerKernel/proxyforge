@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 
@@ -24,16 +25,17 @@ import (
 var errReturnToMenu = errors.New("返回主菜单")
 
 type commandSet struct {
-	app         *app.App
-	in          io.Reader
-	reader      *bufio.Reader
-	out         io.Writer
-	errOut      io.Writer
-	yes         bool
-	probeSNI    sniCandidateProbeFunc
-	randomIndex func(int) int
-	physicalIPs func() ([]app.PublicInterfaceAddress, error)
-	externalIP  func(context.Context) (string, error)
+	app              *app.App
+	in               io.Reader
+	reader           *bufio.Reader
+	out              io.Writer
+	errOut           io.Writer
+	yes              bool
+	probeSNI         sniCandidateProbeFunc
+	randomIndex      func(int) int
+	physicalIPs      func() ([]app.PublicInterfaceAddress, error)
+	externalIP       func(context.Context) (string, error)
+	interruptContext func(context.Context) (context.Context, context.CancelFunc)
 }
 
 func New(version string) *cobra.Command {
@@ -816,13 +818,22 @@ func (c *commandSet) serviceMenu(ctx context.Context, core string) error {
 		fmt.Fprintln(c.out, "3) 重启服务")
 		fmt.Fprintln(c.out, "4) 查看状态")
 		fmt.Fprintln(c.out, "5) 查看最近日志")
+		fmt.Fprintln(c.out, "6) 实时日志查看（Ctrl+C 返回服务管理）")
 		fmt.Fprintln(c.out, "0) 返回内核菜单")
-		choice, chooseErr := c.chooseNumber("请选择", 0, 5, 4)
+		choice, chooseErr := c.chooseNumber("请选择", 0, 6, 4)
 		if chooseErr != nil {
 			return chooseErr
 		}
 		if choice == 0 {
 			return nil
+		}
+		if choice == 6 {
+			c.clearScreen()
+			if followErr := c.followServiceLogs(ctx, core); followErr != nil {
+				c.printMenuError(followErr)
+				c.pauseForMenu()
+			}
+			continue
 		}
 		b, actionErr := c.app.Service(ctx, core, actions[choice])
 		if len(b) > 0 {
@@ -836,6 +847,29 @@ func (c *commandSet) serviceMenu(ctx context.Context, core string) error {
 		}
 		c.pauseForMenu()
 	}
+}
+
+func (c *commandSet) followServiceLogs(ctx context.Context, core string) error {
+	interruptContext := c.interruptContext
+	if interruptContext == nil {
+		interruptContext = func(parent context.Context) (context.Context, context.CancelFunc) {
+			return signal.NotifyContext(parent, os.Interrupt)
+		}
+	}
+	followCtx, stop := interruptContext(ctx)
+	defer stop()
+
+	fmt.Fprintf(c.out, "实时日志：%s（按 Ctrl+C 返回服务管理）\n", core)
+	fmt.Fprintln(c.out, "----------------------------------------")
+	err := c.app.FollowServiceLogs(followCtx, core, c.out)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if followCtx.Err() != nil {
+		fmt.Fprintln(c.out, "\n已停止实时日志，返回服务管理菜单。")
+		return nil
+	}
+	return err
 }
 
 func (c *commandSet) chooseNumber(label string, min, max, def int) (int, error) {

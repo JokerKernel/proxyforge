@@ -23,7 +23,9 @@ type LoggingRunner struct {
 func (r *LoggingRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
 	r.log("执行命令", name, args)
 	b, err := r.Runner.Run(ctx, name, args...)
-	if err != nil {
+	if err != nil && ctx.Err() != nil {
+		r.logResult("命令已停止", name)
+	} else if err != nil {
 		r.logResult("命令失败", name)
 	} else {
 		r.logResult("命令完成", name)
@@ -43,7 +45,9 @@ func (r *LoggingRunner) RunStreaming(ctx context.Context, stdout, stderr io.Writ
 			_, _ = stdout.Write(b)
 		}
 	}
-	if err != nil {
+	if err != nil && ctx.Err() != nil {
+		r.logResult("命令已停止", name)
+	} else if err != nil {
 		r.logResult("命令失败", name)
 	} else {
 		r.logResult("命令完成", name)
