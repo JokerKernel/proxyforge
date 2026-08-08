@@ -452,6 +452,9 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if err != nil {
 		return domain.NodeSpec{}, err
 	}
+	if err := a.checkCoreInstalled(ctx, p); err != nil {
+		return domain.NodeSpec{}, err
+	}
 	if opts.SimplifiedConfig && core != domain.CoreSingBox {
 		return domain.NodeSpec{}, fmt.Errorf("简化服务端配置目前仅支持 sing-box")
 	}
@@ -535,6 +538,35 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		return n, err
 	}
 	return a.applyServerConfig(ctx, p, core, n, old, hasOld, config, true)
+}
+
+func (a *App) CheckCoreInstalled(ctx context.Context, core string) error {
+	if err := a.RootCheck(); err != nil {
+		return err
+	}
+	p, err := a.Registry.Get(core)
+	if err != nil {
+		return err
+	}
+	return a.checkCoreInstalled(ctx, p)
+}
+
+func (a *App) checkCoreInstalled(ctx context.Context, p provider.CoreProvider) error {
+	path, err := a.lookPath(p.Binary())
+	if errors.Is(err, exec.ErrNotFound) || path == "" {
+		return fmt.Errorf("尚未安装 %s：未找到内核二进制 %s；请先执行安装/升级", p.Name(), p.Binary())
+	}
+	if err != nil {
+		return fmt.Errorf("检查 %s 内核二进制 %s: %w", p.Name(), p.Binary(), err)
+	}
+	loadState, err := a.Services.UnitLoadState(ctx, p.ServiceName())
+	if err != nil {
+		return fmt.Errorf("检查 %s 是否已安装: %w", p.Name(), err)
+	}
+	if loadState == "not-found" {
+		return fmt.Errorf("%s 安装不完整：未找到 systemd unit %s；请先执行安装/升级", p.Name(), p.ServiceName())
+	}
+	return nil
 }
 
 func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, core string, n, old domain.NodeSpec, hasOld bool, config []byte, managedConfig bool) (domain.NodeSpec, error) {

@@ -583,7 +583,10 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		switch choice {
 		case 1:
 			o := domain.GenerateOptions{}
-			err = c.confirmServerConfigOverwrite(core, true)
+			err = c.app.CheckCoreInstalled(ctx, core)
+			if err == nil {
+				err = c.confirmServerConfigOverwrite(core, true)
+			}
 			if errors.Is(err, errReturnToMenu) {
 				fmt.Fprintln(c.out, "已取消生成服务端配置，返回服务端配置管理菜单。")
 				continue

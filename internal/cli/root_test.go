@@ -24,6 +24,20 @@ type liveLogRunner struct {
 	args []string
 }
 
+type installedUnitRunner struct{}
+
+func (installedUnitRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
+	if name == "systemctl" && len(args) > 0 && args[0] == "show" {
+		return []byte("loaded\n"), nil
+	}
+	return nil, nil
+}
+
+func markCoreInstalled(a *app.App) {
+	a.LookPath = func(name string) (string, error) { return "/usr/bin/" + name, nil }
+	a.Services = system.ServiceManager{Runner: installedUnitRunner{}}
+}
+
 func (r *liveLogRunner) Run(context.Context, string, ...string) ([]byte, error) {
 	return nil, nil
 }
@@ -200,6 +214,7 @@ func TestServerConfigGenerationQReturnsWithoutApplying(t *testing.T) {
 		Layout:    system.Layout{Root: t.TempDir()},
 		RootCheck: func() error { return nil },
 	}
+	markCoreInstalled(a)
 	var out, errOut bytes.Buffer
 	c := &commandSet{
 		app:    a,
@@ -218,6 +233,27 @@ func TestServerConfigGenerationQReturnsWithoutApplying(t *testing.T) {
 	}
 }
 
+func TestServerConfigGenerationRejectsMissingCoreBeforePrompts(t *testing.T) {
+	a := &app.App{
+		Registry:  provider.NewRegistry(singbox.New(), xray.New()),
+		RootCheck: func() error { return nil },
+		LookPath:  func(string) (string, error) { return "", errors.New("missing") },
+	}
+	var out, errOut bytes.Buffer
+	c := &commandSet{
+		app: a, reader: bufio.NewReader(strings.NewReader("1\n0\n")), out: &out, errOut: &errOut,
+	}
+	if err := c.serverConfigMenu(context.Background(), domain.CoreSingBox); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(errOut.String(), "尚未安装 sing-box") || !strings.Contains(errOut.String(), "请先执行安装/升级") {
+		t.Fatalf("missing-core error=%q", errOut.String())
+	}
+	if strings.Contains(out.String(), "生成服务端配置：sing-box") || strings.Contains(out.String(), "确认覆盖") {
+		t.Fatalf("generation prompts were shown before install check: %q", out.String())
+	}
+}
+
 func TestExistingServerConfigRequiresOverwriteConfirmation(t *testing.T) {
 	layout := system.Layout{Root: t.TempDir()}
 	if err := system.AtomicWrite(layout.Resolve(singbox.New().ConfigPath()), []byte("existing"), 0600); err != nil {
@@ -228,6 +264,7 @@ func TestExistingServerConfigRequiresOverwriteConfirmation(t *testing.T) {
 		Layout:    layout,
 		RootCheck: func() error { return nil },
 	}
+	markCoreInstalled(a)
 	t.Run("interactive cancel", func(t *testing.T) {
 		var out bytes.Buffer
 		c := &commandSet{app: a, reader: bufio.NewReader(strings.NewReader("n\n")), out: &out}

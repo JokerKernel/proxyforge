@@ -427,6 +427,29 @@ func TestGenerateRejectsSimplifiedConfigForXray(t *testing.T) {
 	}
 }
 
+func TestCheckCoreInstalled(t *testing.T) {
+	t.Run("installed", func(t *testing.T) {
+		a, _ := testApp(t, &fakeRunner{})
+		if err := a.CheckCoreInstalled(context.Background(), domain.CoreXray); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("missing binary", func(t *testing.T) {
+		a, _ := testApp(t, &fakeRunner{missingBinary: true})
+		err := a.CheckCoreInstalled(context.Background(), domain.CoreXray)
+		if err == nil || !strings.Contains(err.Error(), "尚未安装 xray") || !strings.Contains(err.Error(), "内核二进制 xray") {
+			t.Fatalf("error=%v", err)
+		}
+	})
+	t.Run("missing systemd unit", func(t *testing.T) {
+		a, _ := testApp(t, &fakeRunner{unitRemoved: true})
+		err := a.CheckCoreInstalled(context.Background(), domain.CoreXray)
+		if err == nil || !strings.Contains(err.Error(), "安装不完整") || !strings.Contains(err.Error(), "xray.service") {
+			t.Fatalf("error=%v", err)
+		}
+	})
+}
+
 func TestGenerateRestartsServiceWhenPortRemainsOccupied(t *testing.T) {
 	r := &fakeRunner{port: freePort(t)}
 	a, root := testApp(t, r)
