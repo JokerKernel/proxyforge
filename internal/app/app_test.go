@@ -27,13 +27,14 @@ func (allowTarget) Validate(context.Context, string, string, string) ([]string, 
 }
 
 type fakeRunner struct {
-	mu            sync.Mutex
-	calls         []string
-	port          int
-	failRestart   bool
-	failRemove    bool
-	missingBinary bool
-	keyGeneration int
+	mu             sync.Mutex
+	calls          []string
+	port           int
+	failRestart    bool
+	failRemove     bool
+	missingBinary  bool
+	keyGeneration  int
+	serviceStopped bool
 }
 
 func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
@@ -64,13 +65,25 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte
 		return []byte("root\n"), nil
 	}
 	if name == "systemctl" && len(args) > 0 && args[0] == "is-active" {
+		if f.serviceStopped {
+			return []byte("inactive\n"), errors.New("service inactive")
+		}
 		return []byte("active\n"), nil
+	}
+	if name == "systemctl" && len(args) > 0 && args[0] == "stop" {
+		f.serviceStopped = true
+		return nil, nil
+	}
+	if name == "systemctl" && len(args) > 0 && args[0] == "start" {
+		f.serviceStopped = false
+		return nil, nil
 	}
 	if name == "systemctl" && len(args) > 0 && args[0] == "restart" {
 		if f.failRestart {
 			f.failRestart = false
 			return nil, errors.New("injected restart failure")
 		}
+		f.serviceStopped = false
 		return nil, nil
 	}
 	if (name == "dpkg" || name == "rpm") && f.failRemove {
@@ -87,6 +100,12 @@ func (f *fakeRunner) callLog() string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return strings.Join(f.calls, "\n")
+}
+
+func (f *fakeRunner) stopped() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.serviceStopped
 }
 
 func testApp(t *testing.T, runner *fakeRunner) (*App, string) {
@@ -191,6 +210,52 @@ func TestGenerateTakeoverPreserveRotateAndRollback(t *testing.T) {
 	log := r.callLog()
 	if strings.Contains(log, "xray.service") {
 		t.Fatalf("other provider was touched:\n%s", log)
+	}
+}
+
+func TestGenerateStopsActiveServiceBeforeFirstPortCheck(t *testing.T) {
+	r := &fakeRunner{port: freePort(t)}
+	a, _ := testApp(t, r)
+	a.PortFree = func(int) error {
+		if !r.stopped() {
+			return errors.New("port is still held by the active service")
+		}
+		return nil
+	}
+	o := domain.GenerateOptions{Server: "server.example.com", Port: r.port, SNI: "www.example.com", NonInteractive: true}
+	if _, err := a.Generate(context.Background(), domain.CoreSingBox, o); err != nil {
+		t.Fatal(err)
+	}
+	if r.stopped() {
+		t.Fatal("service was not restarted after applying the config")
+	}
+	log := r.callLog()
+	stopAt := strings.Index(log, "systemctl stop sing-box.service")
+	restartAt := strings.Index(log, "systemctl restart sing-box.service")
+	if stopAt < 0 || restartAt < 0 || stopAt >= restartAt {
+		t.Fatalf("service was not stopped before the config was applied:\n%s", log)
+	}
+}
+
+func TestGenerateRestartsServiceWhenPortRemainsOccupied(t *testing.T) {
+	r := &fakeRunner{port: freePort(t)}
+	a, root := testApp(t, r)
+	a.PortFree = func(int) error { return errors.New("address already in use") }
+	o := domain.GenerateOptions{Server: "server.example.com", Port: r.port, SNI: "www.example.com", NonInteractive: true}
+	if _, err := a.Generate(context.Background(), domain.CoreSingBox, o); err == nil || !strings.Contains(err.Error(), "address already in use") {
+		t.Fatalf("error=%v", err)
+	}
+	if r.stopped() {
+		t.Fatal("service was not restored after the port conflict")
+	}
+	log := r.callLog()
+	stopAt := strings.Index(log, "systemctl stop sing-box.service")
+	startAt := strings.Index(log, "systemctl start sing-box.service")
+	if stopAt < 0 || startAt < 0 || stopAt >= startAt {
+		t.Fatalf("service was not restored after the port conflict:\n%s", log)
+	}
+	if _, err := os.Stat(filepath.Join(root, "etc/sing-box/config.json")); !os.IsNotExist(err) {
+		t.Fatalf("config should not be written on a port conflict: %v", err)
 	}
 }
 

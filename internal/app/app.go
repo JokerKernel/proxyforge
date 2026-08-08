@@ -313,12 +313,6 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if otherState, e := a.Store.Load(other); e == nil && otherState.Port == opts.Port {
 		return domain.NodeSpec{}, fmt.Errorf("端口 %d 已由受管的 %s 节点使用", opts.Port, other)
 	}
-	if !hasOld || old.Port != opts.Port {
-		a.progressf("检查监听端口 %d 是否可用", opts.Port)
-		if err := a.PortFree(opts.Port); err != nil {
-			return domain.NodeSpec{}, err
-		}
-	}
 	a.progressf("检测 %s 版本和配置能力", core)
 	version, err := p.Version(ctx, a.Runner)
 	if err != nil {
@@ -376,15 +370,41 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 			a.progressf("现有配置已备份到 %s", backup)
 		}
 	}
+	serviceStopped := false
+	restoreStoppedService := func(cause error) error {
+		if !serviceStopped {
+			return cause
+		}
+		a.progressf("操作未应用，正在恢复 systemd 服务 %s", p.ServiceName())
+		if _, startErr := a.Services.Action(ctx, p.ServiceName(), "start"); startErr != nil {
+			return fmt.Errorf("%v；且恢复 %s 失败: %w", cause, p.ServiceName(), startErr)
+		}
+		serviceStopped = false
+		return cause
+	}
+	if !hasOld || old.Port != opts.Port {
+		status, _ := a.Services.IsActive(ctx, p.ServiceName())
+		if status.Active {
+			a.progressf("临时停止 systemd 服务 %s 以检查监听端口", p.ServiceName())
+			if _, err := a.Services.Action(ctx, p.ServiceName(), "stop"); err != nil {
+				return n, fmt.Errorf("停止 %s 失败: %w", p.ServiceName(), err)
+			}
+			serviceStopped = true
+		}
+		a.progressf("检查监听端口 %d 是否可用", opts.Port)
+		if err := a.PortFree(opts.Port); err != nil {
+			return n, restoreStoppedService(err)
+		}
+	}
 	a.progressf("原子写入服务端配置 %s", configPath)
 	if err := system.AtomicWrite(configPath, config, 0600); err != nil {
-		return n, err
+		return n, restoreStoppedService(err)
 	}
 	serviceUser := a.Services.User(ctx, p.ServiceName())
 	a.progressf("按 systemd 服务用户 %s 设置配置权限", serviceUser)
 	if err := secureConfigForUser(configPath, serviceUser); err != nil {
 		_ = restoreFile(configPath, oldConfig, hadConfig, oldMetadata)
-		return n, err
+		return n, restoreStoppedService(err)
 	}
 	rollback := func(cause error) error {
 		a.progressf("操作失败，正在恢复旧配置、状态和服务")
