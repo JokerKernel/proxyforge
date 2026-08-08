@@ -489,6 +489,62 @@ func TestFillGenerateSelectsRandomDefaultFromFastCandidates(t *testing.T) {
 	}
 }
 
+func TestSelectPublicAddressDefaultsToPhysicalInterface(t *testing.T) {
+	var out bytes.Buffer
+	externalCalled := false
+	c := &commandSet{
+		reader: bufio.NewReader(strings.NewReader("\n")), out: &out,
+		physicalIP: func() (string, error) { return "198.51.100.10", nil },
+		externalIP: func(context.Context) (string, error) {
+			externalCalled = true
+			return "203.0.113.10", nil
+		},
+	}
+	got, err := c.selectPublicAddress(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "198.51.100.10" || externalCalled {
+		t.Fatalf("address=%q externalCalled=%v", got, externalCalled)
+	}
+	if !strings.Contains(out.String(), "从物理网卡获取（默认）") {
+		t.Fatalf("method menu=%q", out.String())
+	}
+}
+
+func TestSelectPublicAddressCanUseExternalService(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{
+		reader: bufio.NewReader(strings.NewReader("2\n")), out: &out,
+		physicalIP: func() (string, error) { return "198.51.100.10", nil },
+		externalIP: func(context.Context) (string, error) { return "203.0.113.10", nil },
+	}
+	got, err := c.selectPublicAddress(context.Background())
+	if err != nil || got != "203.0.113.10" {
+		t.Fatalf("address=%q error=%v", got, err)
+	}
+}
+
+func TestSelectPublicAddressCanUseManualInput(t *testing.T) {
+	var out bytes.Buffer
+	detectorCalled := false
+	c := &commandSet{
+		reader: bufio.NewReader(strings.NewReader("3\n")), out: &out,
+		physicalIP: func() (string, error) {
+			detectorCalled = true
+			return "", nil
+		},
+		externalIP: func(context.Context) (string, error) {
+			detectorCalled = true
+			return "", nil
+		},
+	}
+	got, err := c.selectPublicAddress(context.Background())
+	if err != nil || got != "" || detectorCalled {
+		t.Fatalf("address=%q detectorCalled=%v error=%v", got, detectorCalled, err)
+	}
+}
+
 func TestFormatCertificateSANsLimitsLongCertificates(t *testing.T) {
 	got := formatCertificateSANs([]string{"one.example", "two.example", "three.example", "four.example"}, 3)
 	if got != "one.example, two.example, three.example（另有 1 项）" {

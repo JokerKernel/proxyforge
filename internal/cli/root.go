@@ -29,6 +29,8 @@ type commandSet struct {
 	yes         bool
 	probeSNI    sniCandidateProbeFunc
 	randomIndex func(int) int
+	physicalIP  func() (string, error)
+	externalIP  func(context.Context) (string, error)
 }
 
 func New(version string) *cobra.Command {
@@ -46,6 +48,7 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 	c := &commandSet{
 		app: a, in: os.Stdin, reader: bufio.NewReader(os.Stdin), out: os.Stdout, errOut: os.Stderr,
 		probeSNI: app.ProbeSNICandidates, randomIndex: secureRandomIndex,
+		physicalIP: app.PhysicalPublicAddress, externalIP: app.PublicAddress,
 	}
 	root := &cobra.Command{
 		Use: "proxyforge", Short: "Linux 双内核 VLESS + REALITY + Vision 管理器", Version: version,
@@ -241,9 +244,9 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 	c.clearScreen()
 	fmt.Fprintf(c.out, "生成服务端配置：%s\n\n", core)
 	if o.Server == "" {
-		detected, err := app.PublicAddress(ctx)
+		detected, err := c.selectPublicAddress(ctx)
 		if err != nil {
-			fmt.Fprintln(c.errOut, "自动探测公网地址失败:", err)
+			return err
 		}
 		o.Server = c.askDefault("公网 IP 或域名", detected)
 	}
@@ -299,6 +302,41 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		return fmt.Errorf("用户取消配置生成")
 	}
 	return nil
+}
+
+func (c *commandSet) selectPublicAddress(ctx context.Context) (string, error) {
+	physicalIP := c.physicalIP
+	if physicalIP == nil {
+		physicalIP = app.PhysicalPublicAddress
+	}
+	externalIP := c.externalIP
+	if externalIP == nil {
+		externalIP = app.PublicAddress
+	}
+	for {
+		fmt.Fprintln(c.out, "公网地址获取方式")
+		fmt.Fprintln(c.out, "1) 从物理网卡获取（默认）")
+		fmt.Fprintln(c.out, "2) 通过 api.ipify.org HTTPS 探测")
+		fmt.Fprintln(c.out, "3) 手动输入")
+		choice, err := c.chooseNumber("请选择", 1, 3, 1)
+		if err != nil {
+			return "", err
+		}
+		if choice == 3 {
+			return "", nil
+		}
+		var address string
+		if choice == 1 {
+			address, err = physicalIP()
+		} else {
+			address, err = externalIP(ctx)
+		}
+		if err == nil {
+			fmt.Fprintf(c.out, "已获取公网地址：%s\n", address)
+			return address, nil
+		}
+		fmt.Fprintf(c.out, "获取公网地址失败：%v，请重新选择。\n\n", err)
+	}
 }
 
 func (c *commandSet) runGenerate(ctx context.Context, core string, o domain.GenerateOptions, interactive bool) error {
