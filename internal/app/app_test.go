@@ -613,3 +613,20 @@ func TestInstalledServiceRunning(t *testing.T) {
 		})
 	}
 }
+
+func TestPrintInstallSuccessDistinguishesInstallAndUpgrade(t *testing.T) {
+	var installed, upgraded bytes.Buffer
+	printInstallSuccess(&installed, domain.CoreSingBox, "安装", "", "sing-box version 1.13.16", true)
+	printInstallSuccess(&upgraded, domain.CoreXray, "升级", "Xray 25.1.1", "Xray 25.2.0", false)
+
+	for _, want := range []string{"sing-box 安装成功", "版本：sing-box version 1.13.16", "服务：active（运行中）"} {
+		if !strings.Contains(installed.String(), want) {
+			t.Fatalf("install result missing %q: %q", want, installed.String())
+		}
+	}
+	for _, want := range []string{"xray 升级成功", "版本：Xray 25.1.1  ->  Xray 25.2.0", "服务：inactive（尚未运行）"} {
+		if !strings.Contains(upgraded.String(), want) {
+			t.Fatalf("upgrade result missing %q: %q", want, upgraded.String())
+		}
+	}
+}

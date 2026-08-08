@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strconv"
@@ -78,6 +79,12 @@ func (a *App) Install(ctx context.Context, core string, opts install.Options) er
 	if err != nil {
 		return err
 	}
+	resultAction := "安装"
+	previousVersion := ""
+	if _, lookErr := exec.LookPath(p.Binary()); lookErr == nil {
+		resultAction = "升级"
+		previousVersion, _ = p.Version(ctx, a.Runner)
+	}
 	config := a.Layout.Resolve(p.ConfigPath())
 	a.progressf("检查并备份现有配置 %s", config)
 	if backup, err := system.BackupFile(config, a.Layout.BackupRoot(core), a.Now()); err != nil {
@@ -134,12 +141,31 @@ func (a *App) Install(ctx context.Context, core string, opts install.Options) er
 		return fmt.Errorf("安装完成但服务状态异常（%s）: %w", status.Detail, err)
 	}
 	if running {
-		fmt.Fprintf(a.Out, "%s 已安装并运行：%s\n", core, version)
+		printInstallSuccess(a.Out, core, resultAction, previousVersion, version, true)
 		return nil
 	}
-	fmt.Fprintf(a.Out, "%s 已安装：%s\n", core, version)
+	printInstallSuccess(a.Out, core, resultAction, previousVersion, version, false)
 	fmt.Fprintln(a.Out, "服务当前为 inactive；这是尚未生成服务端配置时的正常状态。请继续选择“生成服务端配置”，配置成功后服务会自动启动。")
 	return nil
+}
+
+func printInstallSuccess(w io.Writer, core, action, previousVersion, version string, running bool) {
+	const border = "========================================================"
+	serviceStatus := "inactive（尚未运行）"
+	if running {
+		serviceStatus = "active（运行中）"
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, border)
+	fmt.Fprintf(w, "  %s %s成功\n", core, action)
+	fmt.Fprintln(w, border)
+	if action == "升级" && previousVersion != "" {
+		fmt.Fprintf(w, "版本：%s  ->  %s\n", previousVersion, version)
+	} else {
+		fmt.Fprintf(w, "版本：%s\n", version)
+	}
+	fmt.Fprintf(w, "服务：%s\n", serviceStatus)
+	fmt.Fprintln(w, border)
 }
 
 func (a *App) Uninstall(ctx context.Context, core string, opts install.Options) error {
