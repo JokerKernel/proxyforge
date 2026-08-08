@@ -663,10 +663,10 @@ func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
 	}
 	c.clearScreen()
 	fmt.Fprintf(c.out, "DNS 设置：%s\n", core)
-	fmt.Fprintf(c.out, "当前配置：%s\n\n", dnsProfileDisplay(settings.Current))
+	fmt.Fprintf(c.out, "当前配置：%s\n\n", dnsProfileDisplay(core, settings.Current))
 	defaultChoice := 1
 	for index, profile := range settings.Profiles {
-		fmt.Fprintf(c.out, "%d) %s\n", index+1, dnsProfileDisplay(profile))
+		fmt.Fprintf(c.out, "%d) %s\n", index+1, dnsProfileDisplay(core, profile))
 		if profile == settings.Current ||
 			(profile == provider.DNSProfilePublicCloudflare && settings.Current == provider.DNSProfileCloudflare) ||
 			(profile == provider.DNSProfilePublicGoogle && settings.Current == provider.DNSProfileGoogle) {
@@ -683,7 +683,7 @@ func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
 	}
 	selected := settings.Profiles[choice-1]
 	if selected == settings.Current {
-		fmt.Fprintf(c.out, "[ProxyForge/提示] DNS 已经是 %s，无需修改。\n", dnsProfileDisplay(selected))
+		fmt.Fprintf(c.out, "[ProxyForge/提示] DNS 已经是 %s，无需修改。\n", dnsProfileDisplay(core, selected))
 		return nil
 	}
 
@@ -702,7 +702,7 @@ func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
 		if core == domain.CoreSingBox {
 			items = append(items,
 				"sing-box 仅使用系统 DNS 引导解析 DoH 服务地址，普通域名查询不会使用系统 DNS",
-				"sing-box 会写入两个 DoH 服务器并使用所选默认项，但不提供 Xray 式自动顺序回退",
+				"sing-box 只写入所选的一个 DoH 上游，不配置无效的备用服务器",
 			)
 		} else {
 			items = append(items, "Xray 使用 IP 形式的 DoH 地址，不依赖系统 DNS 引导，并按配置顺序自动回退")
@@ -714,7 +714,7 @@ func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
 			"该设置只修改代理内核解析器，不修改系统全局 DNS",
 		}
 		if core == domain.CoreSingBox {
-			items = append(items, "sing-box 会写入两个服务器并使用所选默认项，但不提供 Xray 式自动顺序回退")
+			items = append(items, "sing-box 只写入所选的一个公共 DNS，不配置无效的备用服务器")
 		}
 		sections = append(sections, confirmationSection{title: "注意", items: items})
 	}
@@ -722,8 +722,8 @@ func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
 		"操作确认：设置 DNS",
 		[]string{
 			"目标内核：" + core,
-			"当前配置：" + dnsProfileDisplay(settings.Current),
-			"新的配置：" + dnsProfileDisplay(selected),
+			"当前配置：" + dnsProfileDisplay(core, settings.Current),
+			"新的配置：" + dnsProfileDisplay(core, selected),
 		},
 		sections...,
 	)
@@ -740,7 +740,7 @@ func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
 		return err
 	}
 	if !change.Changed {
-		fmt.Fprintf(c.out, "[ProxyForge/提示] DNS 已经是 %s，无需修改。\n", dnsProfileDisplay(change.Current))
+		fmt.Fprintf(c.out, "[ProxyForge/提示] DNS 已经是 %s，无需修改。\n", dnsProfileDisplay(core, change.Current))
 		return nil
 	}
 	effect := "服务当前未运行，将在下次启动时生效"
@@ -748,21 +748,33 @@ func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
 		effect = "服务已重启，设置已生效"
 	}
 	fmt.Fprintf(c.out, "[ProxyForge/结果] %s DNS 已从 %s 修改为 %s；%s。\n",
-		core, dnsProfileDisplay(change.Previous), dnsProfileDisplay(change.Current), effect)
+		core, dnsProfileDisplay(core, change.Previous), dnsProfileDisplay(core, change.Current), effect)
 	return nil
 }
 
-func dnsProfileDisplay(profile string) string {
+func dnsProfileDisplay(core, profile string) string {
 	switch profile {
 	case provider.DNSProfileSystem:
 		return "系统 DNS（推荐）"
 	case provider.DNSProfilePublicCloudflare:
+		if core == domain.CoreSingBox {
+			return "公共 DNS（Cloudflare 1.1.1.1）"
+		}
 		return "公共 DNS（Cloudflare 默认；同时写入 1.1.1.1 + 8.8.8.8）"
 	case provider.DNSProfilePublicGoogle:
+		if core == domain.CoreSingBox {
+			return "公共 DNS（Google 8.8.8.8）"
+		}
 		return "公共 DNS（Google 默认；同时写入 8.8.8.8 + 1.1.1.1）"
 	case provider.DNSProfileDoHCloudflare:
+		if core == domain.CoreSingBox {
+			return "加密 DNS/DoH（Cloudflare）"
+		}
 		return "加密 DNS/DoH（Cloudflare 默认；同时配置 Google）"
 	case provider.DNSProfileDoHGoogle:
+		if core == domain.CoreSingBox {
+			return "加密 DNS/DoH（Google）"
+		}
 		return "加密 DNS/DoH（Google 默认；同时配置 Cloudflare）"
 	case provider.DNSProfileCloudflare:
 		return "Cloudflare DNS（仅 1.1.1.1，旧单地址配置）"

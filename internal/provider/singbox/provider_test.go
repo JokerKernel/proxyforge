@@ -172,15 +172,13 @@ func TestPatchDNSProfileUpdatesResolverReferences(t *testing.T) {
 	}
 	dns := root["dns"].(map[string]any)
 	servers := dns["servers"].([]any)
-	if len(servers) != 2 {
+	if len(servers) != 1 {
 		t.Fatalf("dns servers=%#v", servers)
 	}
 	cloudflare := servers[0].(map[string]any)
-	google := servers[1].(map[string]any)
 	route := root["route"].(map[string]any)
 	resolve := route["rules"].([]any)[0].(map[string]any)
 	if cloudflare["type"] != "udp" || cloudflare["server"] != "1.1.1.1" || cloudflare["server_port"] != float64(53) ||
-		google["type"] != "udp" || google["server"] != "8.8.8.8" || google["server_port"] != float64(53) ||
 		dns["final"] != "cloudflare" || route["default_domain_resolver"] != "cloudflare" || resolve["server"] != "cloudflare" {
 		t.Fatalf("dns=%#v route=%#v", dns, route)
 	}
@@ -213,8 +211,7 @@ func TestPatchDNSProfileUpdatesResolverReferences(t *testing.T) {
 	googleServers := googleDNS["servers"].([]any)
 	googleRoute := googleRoot["route"].(map[string]any)
 	googleResolve := googleRoute["rules"].([]any)[0].(map[string]any)
-	if len(googleServers) != 2 || googleServers[0].(map[string]any)["server"] != "8.8.8.8" ||
-		googleServers[1].(map[string]any)["server"] != "1.1.1.1" || googleDNS["final"] != "google" ||
+	if len(googleServers) != 1 || googleServers[0].(map[string]any)["server"] != "8.8.8.8" || googleDNS["final"] != "google" ||
 		googleRoute["default_domain_resolver"] != "google" || googleResolve["action"] != "resolve" || googleResolve["server"] != "google" {
 		t.Fatalf("google dns=%#v route=%#v", googleDNS, googleRoute)
 	}
@@ -233,9 +230,9 @@ func TestPatchDNSProfileUpdatesResolverReferences(t *testing.T) {
 	dohDNS := dohRoot["dns"].(map[string]any)
 	dohServers := dohDNS["servers"].([]any)
 	dohRoute := dohRoot["route"].(map[string]any)
-	if len(dohServers) != 3 || dohServers[0].(map[string]any)["type"] != "local" ||
+	if len(dohServers) != 2 || dohServers[0].(map[string]any)["type"] != "local" ||
 		dohServers[1].(map[string]any)["server"] != "dns.google" || dohServers[1].(map[string]any)["type"] != "https" ||
-		dohServers[2].(map[string]any)["server"] != "cloudflare-dns.com" || dohDNS["final"] != "google-doh" ||
+		dohDNS["final"] != "google-doh" ||
 		dohRoute["default_domain_resolver"] != "google-doh" || dohRoute["rules"].([]any)[0].(map[string]any)["server"] != "google-doh" {
 		t.Fatalf("doh dns=%#v route=%#v", dohDNS, dohRoute)
 	}

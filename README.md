@@ -83,7 +83,7 @@ sudo proxyforge cleanup all --yes
 
 Xray 服务端和原生客户端模板会显式配置系统 DNS：`servers: ["localhost"]`、`queryStrategy: "UseIP"`。路由仍使用 `IPOnDemand` 在私网 IP 规则前解析域名，Freedom 出站仍使用 `UseIP` 连接解析结果；该配置只是将原先隐式使用的系统 DNS 明确写入 JSON，不改用第三方 DNS。
 
-“服务端配置管理 → DNS 设置”可在系统 DNS（推荐）、明文公共 DNS 和加密 DNS/DoH 之间切换，公共 DNS 与 DoH 都分别提供 Cloudflare 默认和 Google 默认。明文选项一次写入 `1.1.1.1` 与 `8.8.8.8`；DoH 选项使用 Cloudflare `cloudflare-dns.com/dns-query` 与 Google `dns.google/dns-query`。Xray 使用 IP 形式的 `https+local` DoH 地址，不依赖系统 DNS 引导，并按照所选顺序自动回退；sing-box 仅通过系统 DNS 引导解析两个 DoH 服务地址，普通域名查询走 HTTPS/443，但只将所选默认项用于 `dns.final`、`route.default_domain_resolver` 和所有 `resolve` 规则，因为 sing-box 没有与 Xray 相同的自动顺序回退语义。修改会先使用对应内核的原生命令校验，再备份并原子写入；服务正在运行时自动重启，失败则恢复旧配置。所有选项仅影响代理内核，不修改系统全局 DNS。
+“服务端配置管理 → DNS 设置”可在系统 DNS（推荐）、明文公共 DNS 和加密 DNS/DoH 之间切换，公共 DNS 与 DoH 都分别提供 Cloudflare 和 Google。Xray 的明文及 DoH 选项都会写入两家服务器，按照所选顺序自动回退；DoH 使用 IP 形式的 `https+local` 地址，不依赖系统 DNS 引导。sing-box 没有相同的自动回退语义，因此只写入所选的一个公共上游；DoH 模式额外保留系统 DNS 作为 `cloudflare-dns.com` 或 `dns.google` 的引导解析器，普通域名查询仍走 HTTPS/443。sing-box 会同步所选服务器到 `dns.final`、`route.default_domain_resolver` 和所有 `resolve` 规则。修改会先使用对应内核的原生命令校验，再备份并原子写入；服务正在运行时自动重启，失败则恢复旧配置。所有选项仅影响代理内核，不修改系统全局 DNS。
 
 示例：
 

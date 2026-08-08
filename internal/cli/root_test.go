@@ -227,7 +227,7 @@ func TestServerConfigMenuShowsCurrentConfig(t *testing.T) {
 
 func TestDNSProfileDisplayIncludesEncryptedOptions(t *testing.T) {
 	for _, profile := range []string{provider.DNSProfileDoHCloudflare, provider.DNSProfileDoHGoogle} {
-		got := dnsProfileDisplay(profile)
+		got := dnsProfileDisplay(domain.CoreSingBox, profile)
 		if !strings.Contains(got, "加密 DNS/DoH") {
 			t.Fatalf("profile %q display=%q", profile, got)
 		}

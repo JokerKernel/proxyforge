@@ -100,16 +100,10 @@ func (*Provider) PatchDNSProfile(config []byte, profile string) ([]byte, error) 
 	servers := []any{map[string]any{"type": "local", "tag": tag}}
 	if profile == provider.DNSProfilePublicCloudflare {
 		tag = "cloudflare"
-		servers = []any{
-			map[string]any{"type": "udp", "tag": "cloudflare", "server": "1.1.1.1", "server_port": 53},
-			map[string]any{"type": "udp", "tag": "google", "server": "8.8.8.8", "server_port": 53},
-		}
+		servers = []any{map[string]any{"type": "udp", "tag": "cloudflare", "server": "1.1.1.1", "server_port": 53}}
 	} else if profile == provider.DNSProfilePublicGoogle {
 		tag = "google"
-		servers = []any{
-			map[string]any{"type": "udp", "tag": "google", "server": "8.8.8.8", "server_port": 53},
-			map[string]any{"type": "udp", "tag": "cloudflare", "server": "1.1.1.1", "server_port": 53},
-		}
+		servers = []any{map[string]any{"type": "udp", "tag": "google", "server": "8.8.8.8", "server_port": 53}}
 	} else if profile == provider.DNSProfileDoHCloudflare {
 		tag = "cloudflare-doh"
 		servers = singDoHServers(false)
@@ -167,22 +161,16 @@ func singDNSProfile(servers []any) (string, string) {
 		case serverType == "local" && tag == "local":
 			return provider.DNSProfileSystem, "local"
 		case serverType == "udp" && tag == "cloudflare" && address == "1.1.1.1":
-			return provider.DNSProfileCloudflare, "cloudflare"
+			return provider.DNSProfilePublicCloudflare, "cloudflare"
 		case serverType == "udp" && tag == "google" && address == "8.8.8.8":
-			return provider.DNSProfileGoogle, "google"
+			return provider.DNSProfilePublicGoogle, "google"
 		}
 	}
-	if len(servers) == 2 && singDNSServerMatches(servers[0], "cloudflare", "1.1.1.1") && singDNSServerMatches(servers[1], "google", "8.8.8.8") {
-		return provider.DNSProfilePublicCloudflare, "cloudflare"
-	}
-	if len(servers) == 2 && singDNSServerMatches(servers[0], "google", "8.8.8.8") && singDNSServerMatches(servers[1], "cloudflare", "1.1.1.1") {
-		return provider.DNSProfilePublicGoogle, "google"
-	}
-	if len(servers) == 3 && singLocalDNSServerMatches(servers[0], "bootstrap") {
-		if singDoHServerMatches(servers[1], "cloudflare-doh", "cloudflare-dns.com") && singDoHServerMatches(servers[2], "google-doh", "dns.google") {
+	if len(servers) == 2 && singLocalDNSServerMatches(servers[0], "bootstrap") {
+		if singDoHServerMatches(servers[1], "cloudflare-doh", "cloudflare-dns.com") {
 			return provider.DNSProfileDoHCloudflare, "cloudflare-doh"
 		}
-		if singDoHServerMatches(servers[1], "google-doh", "dns.google") && singDoHServerMatches(servers[2], "cloudflare-doh", "cloudflare-dns.com") {
+		if singDoHServerMatches(servers[1], "google-doh", "dns.google") {
 			return provider.DNSProfileDoHGoogle, "google-doh"
 		}
 	}
@@ -191,12 +179,10 @@ func singDNSProfile(servers []any) (string, string) {
 
 func singDoHServers(googleFirst bool) []any {
 	bootstrap := map[string]any{"type": "local", "tag": "bootstrap"}
-	cloudflare := singDoHServer("cloudflare-doh", "cloudflare-dns.com")
-	google := singDoHServer("google-doh", "dns.google")
 	if googleFirst {
-		return []any{bootstrap, google, cloudflare}
+		return []any{bootstrap, singDoHServer("google-doh", "dns.google")}
 	}
-	return []any{bootstrap, cloudflare, google}
+	return []any{bootstrap, singDoHServer("cloudflare-doh", "cloudflare-dns.com")}
 }
 
 func singDoHServer(tag, address string) map[string]any {
@@ -236,17 +222,6 @@ func singDoHServerMatches(raw any, tag, address string) bool {
 	serverName, _ := tls["server_name"].(string)
 	return serverType == "https" && serverTag == tag && serverAddress == address && serverPort == 443 &&
 		path == "/dns-query" && resolver == "bootstrap" && tlsEnabled && serverName == address
-}
-
-func singDNSServerMatches(raw any, tag, address string) bool {
-	server, ok := raw.(map[string]any)
-	if !ok {
-		return false
-	}
-	serverType, _ := server["type"].(string)
-	serverTag, _ := server["tag"].(string)
-	serverAddress, _ := server["server"].(string)
-	return serverType == "udp" && serverTag == tag && serverAddress == address
 }
 
 func parseDNSRoot(config []byte) (map[string]any, error) {
