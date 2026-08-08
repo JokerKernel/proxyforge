@@ -10,7 +10,7 @@ import (
 	"proxyforge/internal/provider/jsonutil"
 )
 
-var supportedDNSProfiles = []string{provider.DNSProfileSystem, provider.DNSProfileCloudflare, provider.DNSProfileGoogle}
+var supportedDNSProfiles = []string{provider.DNSProfileSystem, provider.DNSProfilePublic}
 
 func (*Provider) DNSProfiles() []string {
 	return append([]string(nil), supportedDNSProfiles...)
@@ -29,26 +29,34 @@ func (*Provider) CurrentDNSProfile(config []byte) (string, error) {
 		return "implicit-system", nil
 	}
 	servers, ok := dns["servers"].([]any)
-	if !ok || len(servers) != 1 {
-		return "custom", nil
-	}
-	address, ok := dnsServerAddress(servers[0])
 	if !ok {
 		return "custom", nil
 	}
 	if strategy, _ := dns["queryStrategy"].(string); strategy != "UseIP" {
 		return "custom", nil
 	}
-	switch address {
-	case "localhost":
-		return provider.DNSProfileSystem, nil
-	case "1.1.1.1":
-		return provider.DNSProfileCloudflare, nil
-	case "8.8.8.8":
-		return provider.DNSProfileGoogle, nil
-	default:
-		return "custom", nil
+	if len(servers) == 2 {
+		first, firstOK := dnsServerAddress(servers[0])
+		second, secondOK := dnsServerAddress(servers[1])
+		if firstOK && secondOK && first == "1.1.1.1" && second == "8.8.8.8" {
+			return provider.DNSProfilePublic, nil
+		}
 	}
+	if len(servers) == 1 {
+		address, ok := dnsServerAddress(servers[0])
+		if !ok {
+			return "custom", nil
+		}
+		switch address {
+		case "localhost":
+			return provider.DNSProfileSystem, nil
+		case "1.1.1.1":
+			return provider.DNSProfileCloudflare, nil
+		case "8.8.8.8":
+			return provider.DNSProfileGoogle, nil
+		}
+	}
+	return "custom", nil
 }
 
 func (*Provider) PatchDNSProfile(config []byte, profile string) ([]byte, error) {
@@ -68,13 +76,11 @@ func (*Provider) PatchDNSProfile(config []byte, profile string) ([]byte, error) 
 		dns = make(map[string]any)
 		root["dns"] = dns
 	}
-	address := "localhost"
-	if profile == provider.DNSProfileCloudflare {
-		address = "1.1.1.1"
-	} else if profile == provider.DNSProfileGoogle {
-		address = "8.8.8.8"
+	servers := []any{"localhost"}
+	if profile == provider.DNSProfilePublic {
+		servers = []any{"1.1.1.1", "8.8.8.8"}
 	}
-	dns["servers"] = []any{address}
+	dns["servers"] = servers
 	dns["queryStrategy"] = "UseIP"
 	return jsonutil.Marshal(root)
 }

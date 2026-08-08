@@ -10,7 +10,7 @@ import (
 	"proxyforge/internal/provider/jsonutil"
 )
 
-var supportedDNSProfiles = []string{provider.DNSProfileSystem, provider.DNSProfileCloudflare, provider.DNSProfileGoogle}
+var supportedDNSProfiles = []string{provider.DNSProfileSystem, provider.DNSProfilePublic}
 
 func (*Provider) DNSProfiles() []string {
 	return append([]string(nil), supportedDNSProfiles...)
@@ -29,25 +29,11 @@ func (*Provider) CurrentDNSProfile(config []byte) (string, error) {
 		return "none", nil
 	}
 	servers, ok := dns["servers"].([]any)
-	if !ok || len(servers) != 1 {
-		return "custom", nil
-	}
-	server, ok := servers[0].(map[string]any)
 	if !ok {
 		return "custom", nil
 	}
-	serverType, _ := server["type"].(string)
-	tag, _ := server["tag"].(string)
-	address, _ := server["server"].(string)
-	expectedTag := ""
-	switch {
-	case serverType == "local" && tag == "local":
-		expectedTag = "local"
-	case serverType == "udp" && tag == "cloudflare" && address == "1.1.1.1":
-		expectedTag = "cloudflare"
-	case serverType == "udp" && tag == "google" && address == "8.8.8.8":
-		expectedTag = "google"
-	default:
+	profile, expectedTag := singDNSProfile(servers)
+	if profile == "custom" {
 		return "custom", nil
 	}
 	if rawFinal, exists := dns["final"]; exists {
@@ -83,16 +69,7 @@ func (*Provider) CurrentDNSProfile(config []byte) (string, error) {
 	if !foundResolve {
 		return "custom", nil
 	}
-	switch expectedTag {
-	case "local":
-		return provider.DNSProfileSystem, nil
-	case "cloudflare":
-		return provider.DNSProfileCloudflare, nil
-	case "google":
-		return provider.DNSProfileGoogle, nil
-	default:
-		return "custom", nil
-	}
+	return profile, nil
 }
 
 func (*Provider) PatchDNSProfile(config []byte, profile string) ([]byte, error) {
@@ -114,16 +91,15 @@ func (*Provider) PatchDNSProfile(config []byte, profile string) ([]byte, error) 
 	}
 
 	tag := "local"
-	server := map[string]any{"type": "local", "tag": tag}
-	switch profile {
-	case provider.DNSProfileCloudflare:
+	servers := []any{map[string]any{"type": "local", "tag": tag}}
+	if profile == provider.DNSProfilePublic {
 		tag = "cloudflare"
-		server = map[string]any{"type": "udp", "tag": tag, "server": "1.1.1.1", "server_port": 53}
-	case provider.DNSProfileGoogle:
-		tag = "google"
-		server = map[string]any{"type": "udp", "tag": tag, "server": "8.8.8.8", "server_port": 53}
+		servers = []any{
+			map[string]any{"type": "udp", "tag": "cloudflare", "server": "1.1.1.1", "server_port": 53},
+			map[string]any{"type": "udp", "tag": "google", "server": "8.8.8.8", "server_port": 53},
+		}
 	}
-	dns["servers"] = []any{server}
+	dns["servers"] = servers
 	dns["final"] = tag
 
 	route, ok := root["route"].(map[string]any)
@@ -158,6 +134,41 @@ func (*Provider) PatchDNSProfile(config []byte, profile string) ([]byte, error) 
 	}
 	route["rules"] = rules
 	return jsonutil.Marshal(root)
+}
+
+func singDNSProfile(servers []any) (string, string) {
+	if len(servers) == 1 {
+		server, ok := servers[0].(map[string]any)
+		if !ok {
+			return "custom", ""
+		}
+		serverType, _ := server["type"].(string)
+		tag, _ := server["tag"].(string)
+		address, _ := server["server"].(string)
+		switch {
+		case serverType == "local" && tag == "local":
+			return provider.DNSProfileSystem, "local"
+		case serverType == "udp" && tag == "cloudflare" && address == "1.1.1.1":
+			return provider.DNSProfileCloudflare, "cloudflare"
+		case serverType == "udp" && tag == "google" && address == "8.8.8.8":
+			return provider.DNSProfileGoogle, "google"
+		}
+	}
+	if len(servers) == 2 && singDNSServerMatches(servers[0], "cloudflare", "1.1.1.1") && singDNSServerMatches(servers[1], "google", "8.8.8.8") {
+		return provider.DNSProfilePublic, "cloudflare"
+	}
+	return "custom", ""
+}
+
+func singDNSServerMatches(raw any, tag, address string) bool {
+	server, ok := raw.(map[string]any)
+	if !ok {
+		return false
+	}
+	serverType, _ := server["type"].(string)
+	serverTag, _ := server["tag"].(string)
+	serverAddress, _ := server["server"].(string)
+	return serverType == "udp" && serverTag == tag && serverAddress == address
 }
 
 func parseDNSRoot(config []byte) (map[string]any, error) {

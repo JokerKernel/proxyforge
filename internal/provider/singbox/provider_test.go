@@ -162,7 +162,7 @@ func TestPatchDNSProfileUpdatesResolverReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	patched, err := p.PatchDNSProfile(config, "cloudflare")
+	patched, err := p.PatchDNSProfile(config, "public")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,14 +171,20 @@ func TestPatchDNSProfileUpdatesResolverReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	dns := root["dns"].(map[string]any)
-	server := dns["servers"].([]any)[0].(map[string]any)
+	servers := dns["servers"].([]any)
+	if len(servers) != 2 {
+		t.Fatalf("dns servers=%#v", servers)
+	}
+	cloudflare := servers[0].(map[string]any)
+	google := servers[1].(map[string]any)
 	route := root["route"].(map[string]any)
 	resolve := route["rules"].([]any)[0].(map[string]any)
-	if server["type"] != "udp" || server["server"] != "1.1.1.1" || server["server_port"] != float64(53) ||
+	if cloudflare["type"] != "udp" || cloudflare["server"] != "1.1.1.1" || cloudflare["server_port"] != float64(53) ||
+		google["type"] != "udp" || google["server"] != "8.8.8.8" || google["server_port"] != float64(53) ||
 		dns["final"] != "cloudflare" || route["default_domain_resolver"] != "cloudflare" || resolve["server"] != "cloudflare" {
 		t.Fatalf("dns=%#v route=%#v", dns, route)
 	}
-	if current, err := p.CurrentDNSProfile(patched); err != nil || current != "cloudflare" {
+	if current, err := p.CurrentDNSProfile(patched); err != nil || current != "public" {
 		t.Fatalf("patched current=%q error=%v", current, err)
 	}
 	for _, rawRule := range route["rules"].([]any) {
@@ -195,12 +201,12 @@ func TestPatchDNSProfileUpdatesResolverReferences(t *testing.T) {
 	if current, err := p.CurrentDNSProfile(simplified); err != nil || current != "none" {
 		t.Fatalf("simplified current=%q error=%v", current, err)
 	}
-	withGoogle, err := p.PatchDNSProfile(simplified, "google")
+	withPublicDNS, err := p.PatchDNSProfile(simplified, "public")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var googleRoot map[string]any
-	if err := json.Unmarshal(withGoogle, &googleRoot); err != nil {
+	if err := json.Unmarshal(withPublicDNS, &googleRoot); err != nil {
 		t.Fatal(err)
 	}
 	googleRoute := googleRoot["route"].(map[string]any)

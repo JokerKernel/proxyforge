@@ -182,7 +182,7 @@ func TestPatchDNSProfilePreservesOtherDNSSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	patched, err := p.PatchDNSProfile(modified, "google")
+	patched, err := p.PatchDNSProfile(modified, "public")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,10 +192,10 @@ func TestPatchDNSProfilePreservesOtherDNSSettings(t *testing.T) {
 	}
 	gotDNS := got["dns"].(map[string]any)
 	servers := gotDNS["servers"].([]any)
-	if len(servers) != 1 || servers[0] != "8.8.8.8" || gotDNS["queryStrategy"] != "UseIP" || gotDNS["disableCache"] != true {
+	if len(servers) != 2 || servers[0] != "1.1.1.1" || servers[1] != "8.8.8.8" || gotDNS["queryStrategy"] != "UseIP" || gotDNS["disableCache"] != true {
 		t.Fatalf("dns=%#v", gotDNS)
 	}
-	if current, err := p.CurrentDNSProfile(patched); err != nil || current != "google" {
+	if current, err := p.CurrentDNSProfile(patched); err != nil || current != "public" {
 		t.Fatalf("patched current=%q error=%v", current, err)
 	}
 	gotDNS["queryStrategy"] = "UseIPv4"
