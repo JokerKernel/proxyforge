@@ -177,6 +177,7 @@ func decorateSourceLabels(value string) string {
 		{"[官方脚本/风险]", ansiBoldYellow},
 		{"[官方脚本/状态]", ansiMagenta},
 		{"[官方脚本/输出]", ansiBrightBlack},
+		{"[默认]", ansiBoldYellow},
 	}
 	for _, label := range labels {
 		value = strings.ReplaceAll(value, label.text, wrapANSI(label.color, label.text))
@@ -213,7 +214,14 @@ func decorateNumberedChoice(value string) string {
 		}
 	}
 	prefix := trimmedLeft[:closing+1]
-	return value[:indent] + wrapANSI(ansiBoldGreen, prefix) + trimmedLeft[closing+1:]
+	remainder := trimmedLeft[closing+1:]
+	trimmedRemainder := strings.TrimLeft(remainder, " \t")
+	spacing := remainder[:len(remainder)-len(trimmedRemainder)]
+	if fields := strings.Fields(trimmedRemainder); len(fields) > 0 && strings.Contains(fields[0], ".") && !strings.ContainsAny(fields[0], "/:") {
+		domain := fields[0]
+		trimmedRemainder = wrapANSI(ansiBoldCyan, domain) + trimmedRemainder[len(domain):]
+	}
+	return value[:indent] + wrapANSI(ansiBoldGreen, prefix) + spacing + trimmedRemainder
 }
 
 func isRepeated(value string, expected byte) bool {

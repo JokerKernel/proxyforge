@@ -578,7 +578,7 @@ func TestFillResetUsesSameAutomaticSNICandidatesAsGenerate(t *testing.T) {
 	if opts.SNI != "new.example.com" || opts.Target != "new.example.com:443" {
 		t.Fatalf("reset options = %#v", opts)
 	}
-	if !strings.Contains(out.String(), "TLS=1.3") || !strings.Contains(out.String(), "证书 SAN=new.example.com") {
+	if !strings.Contains(out.String(), "TLS 1.3 / h2") || !strings.Contains(out.String(), "均已通过 DNS、TLS 和证书名称校验") {
 		t.Fatalf("candidate output=%q", out.String())
 	}
 }
@@ -733,9 +733,10 @@ func TestFillGenerateSelectsRandomDefaultFromFastCandidates(t *testing.T) {
 	if opts.SNI != "second.example.com" || opts.Target != "second.example.com:443" || opts.UserName != domain.DefaultUserName || opts.InboundTag != domain.DefaultInboundTag(domain.CoreSingBox) {
 		t.Fatalf("generate options=%#v", opts)
 	}
-	if !strings.Contains(out.String(), "最快的候选域名") || !strings.Contains(out.String(), "[2]") ||
-		!strings.Contains(out.String(), "TLS=1.3") || !strings.Contains(out.String(), "ALPN=h2") ||
-		!strings.Contains(out.String(), "证书 SAN=fast.example.com, *.example.com") || !strings.Contains(out.String(), "CDN=Akamai（CNAME）") {
+	if !strings.Contains(out.String(), "最快的候选域名（按延迟排序）") || !strings.Contains(out.String(), "[2]") ||
+		!strings.Contains(out.String(), "second.example.com  [默认]") || !strings.Contains(out.String(), "TLS 1.3 / h2") ||
+		!strings.Contains(out.String(), "Akamai（CNAME）") || !strings.Contains(out.String(), "均已通过 DNS、TLS 和证书名称校验") ||
+		strings.Contains(out.String(), "证书 SAN=fast.example.com") {
 		t.Fatalf("candidate menu output=%q", out.String())
 	}
 }

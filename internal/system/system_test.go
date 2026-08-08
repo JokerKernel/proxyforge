@@ -162,6 +162,7 @@ func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
 		"[系统命令/输出] system output\n",
 		"[官方脚本/风险] 将以 root 执行\n",
 		"[服务日志/xray] accepted connection\n",
+		" 1) example.com  [默认]\n",
 		"请输入 yes/y 确认；其他输入取消： ",
 	} {
 		if _, err := io.WriteString(w, line); err != nil {
@@ -179,6 +180,7 @@ func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
 		"\x1b[90m[系统命令/输出]\x1b[0m",
 		"\x1b[1;33m[官方脚本/风险]\x1b[0m",
 		"\x1b[35m[服务日志/xray]\x1b[0m",
+		"\x1b[1;32m1)\x1b[0m \x1b[1;36mexample.com\x1b[0m  \x1b[1;33m[默认]\x1b[0m",
 		"\x1b[1;33m请输入 yes/y 确认；其他输入取消： \x1b[0m",
 	} {
 		if !strings.Contains(got, want) {

@@ -105,17 +105,20 @@ func (c *commandSet) selectSNICandidate(ctx context.Context, server string) (str
 	if len(candidates) == 0 {
 		return "", fmt.Errorf("SNI 测速没有返回可用候选")
 	}
-	fmt.Fprintln(c.out, "当前网络下最快的候选域名：")
-	for index, candidate := range candidates {
-		c.printSNICandidate(fmt.Sprintf("%d) ", index+1), candidate)
-	}
-	fmt.Fprintln(c.out, "0) 手动输入其他域名")
-	fmt.Fprintln(c.out, "提示：延迟是当前 DNS/TCP/TLS 完整探测耗时；CDN 为启发式判断，均不代表目标归属、长期可用性或使用授权。")
 	randomIndex := c.randomIndex
 	if randomIndex == nil {
 		randomIndex = secureRandomIndex
 	}
 	defaultChoice := randomIndex(len(candidates)) + 1
+	fmt.Fprintln(c.out, "当前网络下最快的候选域名（按延迟排序）：")
+	fmt.Fprintln(c.out)
+	for index, candidate := range candidates {
+		c.printSNICandidateSummary(index+1, candidate, index+1 == defaultChoice)
+	}
+	fmt.Fprintln(c.out, " 0) 手动输入其他域名")
+	fmt.Fprintln(c.out)
+	fmt.Fprintln(c.out, "提示：以上候选均已通过 DNS、TLS 和证书名称校验；延迟为完整探测耗时。")
+	fmt.Fprintln(c.out, "      CDN 为启发式识别，不代表目标归属、长期可用性或使用授权。")
 	choice, err := c.chooseNumberCancelable("请选择 SNI（默认从最快 10 个中随机）", 0, len(candidates), defaultChoice)
 	if err != nil {
 		return "", err
@@ -153,7 +156,7 @@ func (c *commandSet) confirmManualSNI(ctx context.Context, domain, server string
 		return fmt.Errorf("手动 SNI %s 未返回有效检测结果", domain)
 	}
 	fmt.Fprintln(c.out, "手动 SNI 检测结果：")
-	c.printSNICandidate("域名：", candidates[0])
+	c.printSNICandidateDetails("域名：", candidates[0])
 	fmt.Fprintln(c.out, "提示：检测结果只反映当前网络状态，不代表目标归属、长期可用性或使用授权。")
 	ok, err := c.confirmCancelable("确认采用这个手动 SNI？")
 	if err != nil {
@@ -165,7 +168,29 @@ func (c *commandSet) confirmManualSNI(ctx context.Context, domain, server string
 	return nil
 }
 
-func (c *commandSet) printSNICandidate(prefix string, candidate app.SNICandidate) {
+func (c *commandSet) printSNICandidateSummary(index int, candidate app.SNICandidate, selectedByDefault bool) {
+	latency, tlsVersion, alpn, cdn := sniCandidateMetadata(candidate)
+	defaultMarker := ""
+	if selectedByDefault {
+		defaultMarker = "  [默认]"
+	}
+	fmt.Fprintf(c.out, "%2d) %s%s\n", index, candidate.Domain, defaultMarker)
+	if cdn == "未发现明显特征" {
+		cdn = "未识别 CDN"
+	} else if cdn == "未知" {
+		cdn = "CDN 未知"
+	}
+	fmt.Fprintf(c.out, "    延迟 %s  ·  TLS %s / %s  ·  %s\n", latency, tlsVersion, alpn, cdn)
+}
+
+func (c *commandSet) printSNICandidateDetails(prefix string, candidate app.SNICandidate) {
+	latency, tlsVersion, alpn, cdn := sniCandidateMetadata(candidate)
+	fmt.Fprintf(c.out, "%s%s\n", prefix, candidate.Domain)
+	fmt.Fprintf(c.out, "   延迟=%s  TLS=%s  ALPN=%s  CDN=%s\n", latency, tlsVersion, alpn, cdn)
+	fmt.Fprintf(c.out, "   证书 SAN=%s\n", formatCertificateSANs(candidate.CertificateSANs, 3))
+}
+
+func sniCandidateMetadata(candidate app.SNICandidate) (time.Duration, string, string, string) {
 	latency := candidate.Latency.Round(time.Millisecond)
 	if latency < time.Millisecond {
 		latency = time.Millisecond
@@ -182,9 +207,7 @@ func (c *commandSet) printSNICandidate(prefix string, candidate app.SNICandidate
 	if cdn == "" {
 		cdn = "未知"
 	}
-	fmt.Fprintf(c.out, "%s%s\n", prefix, candidate.Domain)
-	fmt.Fprintf(c.out, "   延迟=%s  TLS=%s  ALPN=%s  CDN=%s\n", latency, tlsVersion, alpn, cdn)
-	fmt.Fprintf(c.out, "   证书 SAN=%s\n", formatCertificateSANs(candidate.CertificateSANs, 3))
+	return latency, tlsVersion, alpn, cdn
 }
 
 func formatCertificateSANs(sans []string, limit int) string {
