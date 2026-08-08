@@ -436,11 +436,14 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 				err = c.runGenerate(ctx, core, o, true)
 			}
 		case 2:
-			fmt.Fprintln(c.out, "警告：当前服务端配置可能包含 UUID、REALITY 私钥等敏感信息，请勿泄露。")
-			fmt.Fprintln(c.out, "----------------------------------------")
 			var b []byte
 			b, err = c.app.ServerConfig(core)
 			if err == nil {
+				// ServerConfig may emit progress on stderr. Clear once more after the
+				// read so merged terminal streams cannot split the displayed JSON.
+				c.clearScreen()
+				fmt.Fprintln(c.out, "警告：当前服务端配置可能包含 UUID、REALITY 私钥等敏感信息，请勿泄露。")
+				fmt.Fprintln(c.out, "----------------------------------------")
 				_, err = c.out.Write(b)
 				if err == nil && len(b) > 0 && b[len(b)-1] != '\n' {
 					fmt.Fprintln(c.out)
@@ -747,8 +750,15 @@ func (c *commandSet) interactiveUI() bool {
 
 func (c *commandSet) clearScreen() {
 	if c.interactiveUI() {
-		fmt.Fprint(c.out, "\033[H\033[2J")
+		clearTerminal(c.out)
 	}
+}
+
+func clearTerminal(w io.Writer) {
+	// CSI 2 J clears the visible screen; CSI 3 J also clears saved scrollback.
+	// Both are needed for terminal frontends that otherwise retain every menu
+	// redraw and make one configuration appear several times.
+	fmt.Fprint(w, "\033[H\033[2J\033[3J")
 }
 
 func (c *commandSet) pauseForMenu() {

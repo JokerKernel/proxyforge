@@ -129,6 +129,9 @@ func TestServerConfigMenuShowsCurrentConfig(t *testing.T) {
 			t.Fatalf("server config menu missing %q: %q", text, out.String())
 		}
 	}
+	if count := strings.Count(out.String(), "警告：当前服务端配置可能包含"); count != 1 {
+		t.Fatalf("sensitive warning count=%d output=%q", count, out.String())
+	}
 	if errOut.Len() != 0 {
 		t.Fatalf("server config menu error output=%q", errOut.String())
 	}
@@ -412,6 +415,14 @@ func TestScreenControlsAreDisabledForRedirectedIO(t *testing.T) {
 	line, err := c.reader.ReadString('\n')
 	if err != nil || line != "kept\n" {
 		t.Fatalf("redirected input was consumed: line=%q err=%v", line, err)
+	}
+}
+
+func TestClearTerminalClearsVisibleScreenAndScrollback(t *testing.T) {
+	var out bytes.Buffer
+	clearTerminal(&out)
+	if out.String() != "\x1b[H\x1b[2J\x1b[3J" {
+		t.Fatalf("clear sequence=%q", out.String())
 	}
 }
 
