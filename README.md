@@ -2,7 +2,7 @@
 
 ProxyForge 是一个面向 Linux/systemd 的 Go 单二进制管理器，用来在同一台服务器上彼此隔离地管理一个 sing-box 和一个 Xray-core `VLESS + REALITY + Vision` 节点。两个内核拥有独立的配置、凭据、端口、状态和 systemd 服务，可以同时运行。
 
-首版支持 Debian/Ubuntu 与 RHEL/CentOS/Rocky/AlmaLinux/Fedora 系发行版的 amd64、arm64。修改系统的命令必须由 root 执行；PID 1 不是 systemd 时会拒绝安装。
+首版支持 Debian/Ubuntu 与 RHEL/CentOS/Rocky/AlmaLinux/Fedora 系发行版的 amd64、arm64。除 `--help` 和 `--version` 外，菜单及所有操作命令都必须由 root 执行；PID 1 不是 systemd 时会拒绝安装。
 
 ## 构建
 
@@ -43,6 +43,7 @@ sudo ./proxyforge
 ```text
 proxyforge install <sing-box|xray> [--version VERSION]
 proxyforge upgrade <sing-box|xray> [--version VERSION]
+proxyforge uninstall <sing-box|xray> [--yes]
 proxyforge config generate <sing-box|xray> --server HOST --port PORT --sni DOMAIN [--target HOST:PORT]
 proxyforge config client <sing-box|xray> [--output FILE] [--force]
 proxyforge config reset <sing-box|xray> [--sni DOMAIN] [--target HOST:PORT] [--yes]
@@ -55,7 +56,14 @@ proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
 sudo proxyforge install sing-box --yes --trust-script-sha256 <64位哈希>
 ```
 
-首次交互安装会展示来源、最终重定向地址、大小、危险操作摘要和 SHA-256，只有输入完整的 `yes` 才执行。脚本变化后，非交互执行会被阻止，必须重新进行交互确认。安装器下载受限临时文件，不使用 `curl | sh`，并检查 HTTPS 主机白名单、重定向、HTTP 状态、大小、shebang、NUL/文本格式和 `bash -n`。执行安装脚本时会实时转发 stdout/stderr，并保留最近 64 KiB 输出用于失败诊断。
+卸载必须交互确认，自动化时必须显式提供 `--yes`。卸载前会备份当前服务端配置；受管配置和状态会删除，外部修改或非受管配置、历史备份及脚本信任记录会保留。Xray 卸载仍会执行其官方管理脚本，因此非交互模式还必须提供当前脚本哈希：
+
+```bash
+sudo proxyforge uninstall sing-box --yes
+sudo proxyforge uninstall xray --yes --trust-script-sha256 <64位哈希>
+```
+
+首次交互安装会展示来源、最终重定向地址、大小、危险操作摘要和 SHA-256，输入 `yes`、`y` 或 `Y` 才执行；该规则适用于所有交互确认。脚本变化后，非交互执行会被阻止，必须重新进行交互确认。安装器下载受限临时文件，不使用 `curl | sh`，并检查 HTTPS 主机白名单、重定向、HTTP 状态、大小、shebang、NUL/文本格式和 `bash -n`。执行安装脚本时会实时转发 stdout/stderr，并保留最近 64 KiB 输出用于失败诊断。
 
 生成首个节点时交互默认端口为 443；检测到另一个受管节点后默认建议 8443。SNI 输入留空时，程序会并发验证内置候选域名的 DNS、TCP/TLS 和证书名称，展示当前最快的 10 个，并显示延迟、协商的 TLS 版本（包括 TLS 1.3）、ALPN、证书 SAN 和 CDN 特征，然后从中随机设置默认选择。CDN 信息仅根据 CNAME、域名和解析地址数量进行启发式判断，不代表权威的服务归属；测速也只反映当前探测速度，最终 SNI/target 仍需人工确认。重新生成会保留 UUID、REALITY 密钥和 short ID；只有 `--rotate-credentials` 或凭证重置会同时轮换它们并让旧客户端失效。主菜单的“重置节点”会复用上述 SNI 候选逻辑并允许修改 target，同时轮换凭证；“重置凭证”则保留当前 SNI/target，只轮换 UUID、REALITY 密钥和 short ID。`config reset` 保留地址和端口，并允许同时修改 SNI/target；只指定新 SNI 时 target 默认变为 `<新 SNI>:443`。交互模式要求确认，自动化必须显式传入 `--yes`。未知或被外部修改的配置必须交互确认，自动化时使用 `--take-over`。
 
@@ -70,8 +78,8 @@ sudo proxyforge config generate sing-box \
 sudo proxyforge config generate xray \
   --yes --server 203.0.113.10 --port 8443 --sni www.example.com
 
-proxyforge config client sing-box --output ./sing-box-client.json
-proxyforge config client xray --output ./xray-client.json
+sudo proxyforge config client sing-box --output ./sing-box-client.json
+sudo proxyforge config client xray --output ./xray-client.json
 ```
 
 客户端文件以 `0600` 创建；stdout 输出前也会调用对应内核的原生配置校验。sing-box 客户端提供 `127.0.0.1:2080` mixed 入站，Xray 客户端提供 `127.0.0.1:10808` SOCKS 与 `127.0.0.1:10809` HTTP 入站。

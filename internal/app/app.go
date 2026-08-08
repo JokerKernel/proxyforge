@@ -120,6 +120,53 @@ func (a *App) Install(ctx context.Context, core string, opts install.Options) er
 	return nil
 }
 
+func (a *App) Uninstall(ctx context.Context, core string, opts install.Options) error {
+	if err := a.RootCheck(); err != nil {
+		return err
+	}
+	if err := system.CheckPlatform(a.Layout); err != nil {
+		return err
+	}
+	p, err := a.Registry.Get(core)
+	if err != nil {
+		return err
+	}
+
+	configPath := a.Layout.Resolve(p.ConfigPath())
+	config, readErr := os.ReadFile(configPath)
+	hadConfig := readErr == nil
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return readErr
+	}
+	state, stateErr := a.Store.Load(core)
+	hasManagedState := stateErr == nil
+	if stateErr != nil && !errors.Is(stateErr, system.ErrNoState) {
+		fmt.Fprintf(a.Out, "警告：无法验证现有 ProxyForge 状态（%v）；活动配置将保留。\n", stateErr)
+	}
+	managedConfig := hasManagedState && hadConfig && state.ConfigSHA256 != "" && system.SHA256(config) == state.ConfigSHA256
+	if hadConfig {
+		if _, err := system.BackupFile(configPath, a.Layout.BackupRoot(core), a.Now()); err != nil {
+			return err
+		}
+	}
+
+	if err := a.Installer.Uninstall(ctx, p, opts); err != nil {
+		return err
+	}
+	if managedConfig {
+		if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("内核已卸载，但删除受管配置失败: %w", err)
+		}
+	} else if hadConfig {
+		fmt.Fprintf(a.Out, "检测到非受管或已被外部修改的配置，已保留：%s\n", p.ConfigPath())
+	}
+	if err := a.Store.Delete(core); err != nil {
+		return fmt.Errorf("内核已卸载，但删除 ProxyForge 状态失败: %w", err)
+	}
+	fmt.Fprintf(a.Out, "%s 已卸载；历史备份和安装脚本信任记录已保留。\n", core)
+	return nil
+}
+
 func installedServiceRunning(status domain.ServiceStatus, checkErr error) (bool, error) {
 	detail := strings.TrimSpace(status.Detail)
 	if status.Active || detail == "active" {
@@ -295,6 +342,9 @@ func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.Res
 }
 
 func (a *App) Client(ctx context.Context, core, output string, force bool) ([]byte, error) {
+	if err := a.RootCheck(); err != nil {
+		return nil, err
+	}
 	p, err := a.Registry.Get(core)
 	if err != nil {
 		return nil, err
@@ -348,14 +398,12 @@ func (a *App) Client(ctx context.Context, core, output string, force bool) ([]by
 }
 
 func (a *App) Service(ctx context.Context, core, action string) ([]byte, error) {
+	if err := a.RootCheck(); err != nil {
+		return nil, err
+	}
 	p, err := a.Registry.Get(core)
 	if err != nil {
 		return nil, err
-	}
-	if action != "status" && action != "logs" {
-		if err := a.RootCheck(); err != nil {
-			return nil, err
-		}
 	}
 	return a.Services.Action(ctx, p.ServiceName(), action)
 }

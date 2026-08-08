@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +17,7 @@ import (
 
 func TestStableCommandTree(t *testing.T) {
 	root := New("test")
-	for _, args := range [][]string{{"install"}, {"upgrade"}, {"config", "generate"}, {"config", "client"}, {"config", "reset"}, {"service"}} {
+	for _, args := range [][]string{{"install"}, {"upgrade"}, {"uninstall"}, {"config", "generate"}, {"config", "client"}, {"config", "reset"}, {"service"}} {
 		cmd, remaining, err := root.Find(args)
 		if err != nil {
 			t.Fatalf("find %v: %v", args, err)
@@ -26,6 +28,77 @@ func TestStableCommandTree(t *testing.T) {
 		if cmd.Name() != args[len(args)-1] {
 			t.Fatalf("find %v got %s", args, cmd.Name())
 		}
+	}
+}
+
+func TestUninstallCommandRequiresYesWhenNonInteractive(t *testing.T) {
+	input := strings.NewReader("")
+	c := &commandSet{in: input, reader: bufio.NewReader(input), out: io.Discard}
+	cmd := c.uninstallCommand()
+	cmd.SetArgs([]string{"sing-box"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--yes") {
+		t.Fatalf("error = %v, want --yes requirement", err)
+	}
+}
+
+func TestUninstallConfirmationDescribesRetainedRecoveryData(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{reader: bufio.NewReader(strings.NewReader("yes\n")), out: &out}
+	ok, err := c.confirmUninstall("xray")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || !strings.Contains(out.String(), "历史备份") || !strings.Contains(out.String(), "客户端将立即失效") {
+		t.Fatalf("confirmed=%v output=%q", ok, out.String())
+	}
+}
+
+func TestConfirmAcceptsGlobalAffirmativeForms(t *testing.T) {
+	for _, input := range []string{"yes\n", "y\n", "Y\n", "YES\n"} {
+		t.Run(strings.TrimSpace(input), func(t *testing.T) {
+			var out bytes.Buffer
+			c := &commandSet{reader: bufio.NewReader(strings.NewReader(input)), out: &out}
+			ok, err := c.confirm("confirm")
+			if err != nil || !ok {
+				t.Fatalf("input=%q confirmed=%v error=%v", input, ok, err)
+			}
+		})
+	}
+	for _, input := range []string{"n\n", "no\n", "\n"} {
+		t.Run("reject_"+strings.TrimSpace(input), func(t *testing.T) {
+			c := &commandSet{reader: bufio.NewReader(strings.NewReader(input)), out: io.Discard}
+			ok, err := c.confirm("confirm")
+			if err != nil || ok {
+				t.Fatalf("input=%q confirmed=%v error=%v", input, ok, err)
+			}
+		})
+	}
+}
+
+func TestCommandsRequireRootBeforeRunning(t *testing.T) {
+	want := errors.New("root required")
+	checks := 0
+	root := newCommand("test", func() error {
+		checks++
+		return want
+	})
+	root.SetArgs([]string{"config", "client", "sing-box"})
+	err := root.Execute()
+	if !errors.Is(err, want) {
+		t.Fatalf("error = %v, want %v", err, want)
+	}
+	if checks != 1 {
+		t.Fatalf("root checks = %d, want 1", checks)
+	}
+}
+
+func TestMenuRequiresRootBeforeRunning(t *testing.T) {
+	want := errors.New("root required")
+	root := newCommand("test", func() error { return want })
+	root.SetArgs(nil)
+	if err := root.Execute(); !errors.Is(err, want) {
+		t.Fatalf("error = %v, want %v", err, want)
 	}
 }
 

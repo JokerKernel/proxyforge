@@ -5,11 +5,23 @@ import (
 	"context"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
 	"proxyforge/internal/domain"
 )
+
+type recordingRunner struct {
+	name string
+	args []string
+}
+
+func (r *recordingRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
+	r.name = name
+	r.args = append([]string(nil), args...)
+	return nil, nil
+}
 
 func TestExecRunnerStreamsStdoutAndStderr(t *testing.T) {
 	var stdout, stderr bytes.Buffer
@@ -142,5 +154,32 @@ func TestAtomicWriteAndBackupPermissions(t *testing.T) {
 	b, _ = os.ReadFile(path)
 	if string(b) != "new" {
 		t.Fatalf("atomic result=%q", b)
+	}
+}
+
+func TestRemovePackageUsesDistributionNativeDatabase(t *testing.T) {
+	for _, tt := range []struct {
+		name, osRelease, command string
+		args                     []string
+	}{
+		{name: "debian", osRelease: "ID=ubuntu\nID_LIKE=debian\n", command: "dpkg", args: []string{"--remove", "sing-box"}},
+		{name: "rhel", osRelease: "ID=rocky\nID_LIKE=\"rhel centos fedora\"\n", command: "rpm", args: []string{"-e", "sing-box"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.MkdirAll(root+"/etc", 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(root+"/etc/os-release", []byte(tt.osRelease), 0644); err != nil {
+				t.Fatal(err)
+			}
+			runner := &recordingRunner{}
+			if err := RemovePackage(context.Background(), runner, Layout{Root: root}, "sing-box"); err != nil {
+				t.Fatal(err)
+			}
+			if runner.name != tt.command || strings.Join(runner.args, " ") != strings.Join(tt.args, " ") {
+				t.Fatalf("command=%q args=%v, want %q %v", runner.name, runner.args, tt.command, tt.args)
+			}
+		})
 	}
 }

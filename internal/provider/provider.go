@@ -26,6 +26,8 @@ type CoreProvider interface {
 	OfficialScriptURL() string
 	ScriptHosts() []string
 	InstallArgs(version string, upgrade bool) []string
+	PackageName() string
+	UninstallArgs() []string
 	Version(context.Context, Runner) (string, error)
 	GenerateKeyPair(context.Context, Runner) (domain.KeyPair, error)
 	RenderServer(domain.NodeSpec) ([]byte, error)

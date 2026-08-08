@@ -29,6 +29,8 @@ func (*Provider) InstallArgs(version string, _ bool) []string {
 	}
 	return []string{"--version", version}
 }
+func (*Provider) PackageName() string     { return "sing-box" }
+func (*Provider) UninstallArgs() []string { return nil }
 
 func (*Provider) Version(ctx context.Context, r provider.Runner) (string, error) {
 	b, err := r.Run(ctx, "sing-box", "version")

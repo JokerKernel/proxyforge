@@ -31,6 +31,8 @@ func (*Provider) InstallArgs(version string, _ bool) []string {
 	}
 	return args
 }
+func (*Provider) PackageName() string     { return "" }
+func (*Provider) UninstallArgs() []string { return []string{"remove"} }
 
 func (*Provider) Version(ctx context.Context, r provider.Runner) (string, error) {
 	b, err := r.Run(ctx, "xray", "version")

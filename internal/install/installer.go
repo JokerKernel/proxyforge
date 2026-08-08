@@ -41,6 +41,22 @@ type Installer struct {
 }
 
 func (i Installer) Run(ctx context.Context, p provider.CoreProvider, opts Options) (string, error) {
+	return i.runScript(ctx, p, opts, p.InstallArgs(opts.Version, opts.Upgrade), "安装")
+}
+
+func (i Installer) Uninstall(ctx context.Context, p provider.CoreProvider, opts Options) error {
+	if packageName := p.PackageName(); packageName != "" {
+		return system.RemovePackage(ctx, i.Runner, i.Layout, packageName)
+	}
+	args := p.UninstallArgs()
+	if len(args) == 0 {
+		return fmt.Errorf("%s 未定义卸载方式", p.Name())
+	}
+	_, err := i.runScript(ctx, p, opts, args, "卸载")
+	return err
+}
+
+func (i Installer) runScript(ctx context.Context, p provider.CoreProvider, opts Options, scriptArgs []string, operation string) (string, error) {
 	scriptURL := opts.URL
 	if scriptURL == "" {
 		scriptURL = p.OfficialScriptURL()
@@ -58,8 +74,8 @@ func (i Installer) Run(ctx context.Context, p provider.CoreProvider, opts Option
 	}
 	hash := system.SHA256(body)
 	if i.Output != nil {
-		fmt.Fprintf(i.Output, "安装脚本: %s\n最终地址: %s\n大小: %d bytes\nSHA-256: %s\n", scriptURL, finalURL, len(body), hash)
-		fmt.Fprintln(i.Output, "危险操作摘要: 脚本将以 root 执行，可能安装/替换二进制、systemd unit 和软件包文件。")
+		fmt.Fprintf(i.Output, "官方管理脚本: %s\n最终地址: %s\n大小: %d bytes\nSHA-256: %s\n", scriptURL, finalURL, len(body), hash)
+		fmt.Fprintf(i.Output, "危险操作摘要: 脚本将以 root 执行%s操作，可能修改二进制、systemd unit 和软件包文件。\n", operation)
 	}
 	if err := i.trust(p.Name(), hash, opts); err != nil {
 		return hash, err
@@ -79,7 +95,7 @@ func (i Installer) Run(ctx context.Context, p provider.CoreProvider, opts Option
 	if err != nil {
 		return hash, err
 	}
-	args := append([]string{path}, p.InstallArgs(opts.Version, opts.Upgrade)...)
+	args := append([]string{path}, scriptArgs...)
 	if err := i.executeScript(ctx, args); err != nil {
 		return hash, err
 	}
@@ -91,16 +107,16 @@ func (i Installer) executeScript(ctx context.Context, args []string) error {
 	if output == nil {
 		output = io.Discard
 	}
-	fmt.Fprintln(output, "开始执行官方安装脚本，以下为实时输出：")
+	fmt.Fprintln(output, "开始执行官方管理脚本，以下为实时输出：")
 	if streaming, ok := i.Runner.(provider.StreamingRunner); ok {
 		capture := &scriptOutputCapture{output: output, limit: maxCapturedScriptOutput}
 		if err := streaming.RunStreaming(ctx, capture, capture, "bash", args...); err != nil {
 			if tail := strings.TrimSpace(capture.String()); tail != "" {
-				return fmt.Errorf("官方安装脚本执行失败（末尾输出如下）:\n%s\n%w", tail, err)
+				return fmt.Errorf("官方管理脚本执行失败（末尾输出如下）:\n%s\n%w", tail, err)
 			}
-			return fmt.Errorf("官方安装脚本执行失败: %w", err)
+			return fmt.Errorf("官方管理脚本执行失败: %w", err)
 		}
-		fmt.Fprintln(output, "安装脚本执行完成。")
+		fmt.Fprintln(output, "官方管理脚本执行完成。")
 		return nil
 	}
 
@@ -112,9 +128,9 @@ func (i Installer) executeScript(ctx context.Context, args []string) error {
 		}
 	}
 	if err != nil {
-		return fmt.Errorf("官方安装脚本执行失败: %w", err)
+		return fmt.Errorf("官方管理脚本执行失败: %w", err)
 	}
-	fmt.Fprintln(output, "安装脚本执行完成。")
+	fmt.Fprintln(output, "官方管理脚本执行完成。")
 	return nil
 }
 
@@ -198,7 +214,7 @@ func (i Installer) trust(core, hash string, opts Options) error {
 	if old != "" {
 		message = fmt.Sprintf("脚本哈希已由 %s 变为 %s，重新信任", old, hash)
 	}
-	ok, err := opts.Confirm(message + "？输入 yes 才会执行")
+	ok, err := opts.Confirm(message + "？输入 yes/y 才会执行")
 	if err != nil {
 		return err
 	}

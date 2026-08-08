@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"proxyforge/internal/domain"
+	"proxyforge/internal/install"
 	"proxyforge/internal/provider"
 	"proxyforge/internal/provider/singbox"
 	"proxyforge/internal/provider/xray"
@@ -30,6 +31,7 @@ type fakeRunner struct {
 	calls         []string
 	port          int
 	failRestart   bool
+	failRemove    bool
 	keyGeneration int
 }
 
@@ -64,6 +66,9 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte
 		}
 		return nil, nil
 	}
+	if (name == "dpkg" || name == "rpm") && f.failRemove {
+		return nil, errors.New("injected package removal failure")
+	}
 	if name == "sh" {
 		return nil, errors.New("not installed")
 	}
@@ -92,6 +97,22 @@ func testApp(t *testing.T, runner *fakeRunner) (*App, string) {
 func freePort(t *testing.T) int {
 	t.Helper()
 	return 15443
+}
+
+func writeSupportedPlatform(t *testing.T, root string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(root, "proc/1"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "etc"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "proc/1/comm"), []byte("systemd\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "etc/os-release"), []byte("ID=debian\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestGenerateTakeoverPreserveRotateAndRollback(t *testing.T) {
@@ -183,6 +204,118 @@ func TestGenerateRejectsManagedPortConflict(t *testing.T) {
 	}
 }
 
+func TestUninstallBacksUpAndRemovesManagedConfigAndState(t *testing.T) {
+	r := &fakeRunner{}
+	a, root := testApp(t, r)
+	writeSupportedPlatform(t, root)
+	config := []byte("managed config")
+	configPath := a.Layout.Resolve(singbox.New().ConfigPath())
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, config, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Store.Save(domain.NodeSpec{
+		ManagedBy: "proxyforge", Core: domain.CoreSingBox, ConfigSHA256: system.SHA256(config),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	otherState := domain.NodeSpec{ManagedBy: "proxyforge", Core: domain.CoreXray, Port: 8443}
+	if err := a.Store.Save(otherState); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(a.Layout.TrustPath(domain.CoreSingBox)), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(a.Layout.TrustPath(domain.CoreSingBox), []byte("trusted\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.Uninstall(context.Background(), domain.CoreSingBox, install.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+		t.Fatalf("managed config still exists: %v", err)
+	}
+	if _, err := a.Store.Load(domain.CoreSingBox); !errors.Is(err, system.ErrNoState) {
+		t.Fatalf("state error = %v, want ErrNoState", err)
+	}
+	if got, err := a.Store.Load(domain.CoreXray); err != nil || got.Port != otherState.Port {
+		t.Fatalf("other core state changed: state=%#v error=%v", got, err)
+	}
+	backups, err := filepath.Glob(filepath.Join(root, "var/lib/proxyforge/backups/sing-box/*/config.json"))
+	if err != nil || len(backups) != 1 {
+		t.Fatalf("backups=%v error=%v", backups, err)
+	}
+	if got, _ := os.ReadFile(backups[0]); !bytes.Equal(got, config) {
+		t.Fatalf("backup=%q, want %q", got, config)
+	}
+	if _, err := os.Stat(a.Layout.TrustPath(domain.CoreSingBox)); err != nil {
+		t.Fatalf("trust record was not retained: %v", err)
+	}
+	if !strings.Contains(r.callLog(), "dpkg --remove sing-box") {
+		t.Fatalf("package removal was not called: %s", r.callLog())
+	}
+}
+
+func TestUninstallFailureKeepsManagedConfigAndState(t *testing.T) {
+	r := &fakeRunner{failRemove: true}
+	a, root := testApp(t, r)
+	writeSupportedPlatform(t, root)
+	config := []byte("managed config")
+	configPath := a.Layout.Resolve(singbox.New().ConfigPath())
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, config, 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := domain.NodeSpec{ManagedBy: "proxyforge", Core: domain.CoreSingBox, ConfigSHA256: system.SHA256(config)}
+	if err := a.Store.Save(state); err != nil {
+		t.Fatal(err)
+	}
+
+	err := a.Uninstall(context.Background(), domain.CoreSingBox, install.Options{})
+	if err == nil || !strings.Contains(err.Error(), "injected package removal failure") {
+		t.Fatalf("error=%v, want package removal failure", err)
+	}
+	if got, readErr := os.ReadFile(configPath); readErr != nil || !bytes.Equal(got, config) {
+		t.Fatalf("config=%q error=%v", got, readErr)
+	}
+	if _, loadErr := a.Store.Load(domain.CoreSingBox); loadErr != nil {
+		t.Fatalf("state was removed after failed uninstall: %v", loadErr)
+	}
+}
+
+func TestUninstallPreservesExternallyModifiedConfig(t *testing.T) {
+	r := &fakeRunner{}
+	a, root := testApp(t, r)
+	writeSupportedPlatform(t, root)
+	configPath := a.Layout.Resolve(singbox.New().ConfigPath())
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte("external edit"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Store.Save(domain.NodeSpec{
+		ManagedBy: "proxyforge", Core: domain.CoreSingBox, ConfigSHA256: system.SHA256([]byte("old managed config")),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.Uninstall(context.Background(), domain.CoreSingBox, install.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(configPath); err != nil || string(got) != "external edit" {
+		t.Fatalf("external config=%q error=%v", got, err)
+	}
+	if _, err := a.Store.Load(domain.CoreSingBox); !errors.Is(err, system.ErrNoState) {
+		t.Fatalf("state error = %v, want ErrNoState", err)
+	}
+}
+
 func TestClientOutputPermissionsAndForce(t *testing.T) {
 	r := &fakeRunner{}
 	a, _ := testApp(t, r)
@@ -203,6 +336,20 @@ func TestClientOutputPermissionsAndForce(t *testing.T) {
 	}
 	if _, err := a.Client(context.Background(), domain.CoreSingBox, path, true); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestClientRequiresRoot(t *testing.T) {
+	a := &App{RootCheck: func() error { return errors.New("root required") }}
+	if _, err := a.Client(context.Background(), domain.CoreSingBox, "", false); err == nil || !strings.Contains(err.Error(), "root required") {
+		t.Fatalf("error = %v, want root requirement", err)
+	}
+}
+
+func TestServiceRequiresRoot(t *testing.T) {
+	a := &App{RootCheck: func() error { return errors.New("root required") }}
+	if _, err := a.Service(context.Background(), domain.CoreSingBox, "status"); err == nil || !strings.Contains(err.Error(), "root required") {
+		t.Fatalf("error = %v, want root requirement", err)
 	}
 }
 

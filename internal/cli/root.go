@@ -32,10 +32,15 @@ type commandSet struct {
 }
 
 func New(version string) *cobra.Command {
+	return newCommand(version, app.RequireRoot)
+}
+
+func newCommand(version string, rootCheck func() error) *cobra.Command {
 	runner := system.ExecRunner{}
 	layout := system.Layout{Root: os.Getenv("PROXYFORGE_ROOT")}
 	reg := provider.NewRegistry(singbox.New(), xray.New())
 	a := app.New(reg, runner, layout, os.Stdout)
+	a.RootCheck = rootCheck
 	c := &commandSet{
 		app: a, in: os.Stdin, reader: bufio.NewReader(os.Stdin), out: os.Stdout, errOut: os.Stderr,
 		probeSNI: app.ProbeSNICandidates, randomIndex: secureRandomIndex,
@@ -43,14 +48,43 @@ func New(version string) *cobra.Command {
 	root := &cobra.Command{
 		Use: "proxyforge", Short: "Linux 双内核 VLESS + REALITY + Vision 管理器", Version: version,
 		SilenceUsage: true, SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, args []string) error { return c.menu(cmd.Context()) },
+		PersistentPreRunE: func(*cobra.Command, []string) error { return rootCheck() },
+		RunE:              func(cmd *cobra.Command, args []string) error { return c.menu(cmd.Context()) },
 	}
 	root.SetOut(os.Stdout)
 	root.SetErr(os.Stderr)
 	root.SetIn(os.Stdin)
-	root.PersistentFlags().BoolVarP(&c.yes, "yes", "y", false, "非交互模式（安装仍必须提供脚本 SHA-256）")
-	root.AddCommand(c.installCommand(false), c.installCommand(true), c.configCommand(), c.serviceCommand())
+	root.PersistentFlags().BoolVarP(&c.yes, "yes", "y", false, "非交互模式（执行下载的管理脚本仍必须提供 SHA-256）")
+	root.AddCommand(c.installCommand(false), c.installCommand(true), c.uninstallCommand(), c.configCommand(), c.serviceCommand())
 	return root
+}
+
+func (c *commandSet) uninstallCommand() *cobra.Command {
+	var trust, scriptURL string
+	cmd := &cobra.Command{
+		Use: "uninstall <sing-box|xray>", Short: "卸载指定内核", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			interactive := !c.yes && readerInteractive(c.in)
+			if !c.yes {
+				if !interactive {
+					return fmt.Errorf("非交互模式卸载必须显式提供 --yes")
+				}
+				confirmed, err := c.confirmUninstall(args[0])
+				if err != nil {
+					return err
+				}
+				if !confirmed {
+					return fmt.Errorf("用户取消卸载")
+				}
+			}
+			return c.app.Uninstall(cmd.Context(), args[0], install.Options{
+				URL: scriptURL, NonInteractive: !interactive, TrustScriptSHA256: trust, Confirm: c.confirm,
+			})
+		},
+	}
+	cmd.Flags().StringVar(&trust, "trust-script-sha256", "", "非交互卸载 Xray 时固定的官方脚本 SHA-256")
+	cmd.Flags().StringVar(&scriptURL, "script-url", "", "Xray 官方管理脚本地址（高级选项，仍受主机白名单限制）")
+	return cmd
 }
 
 func (c *commandSet) installCommand(upgrade bool) *cobra.Command {
@@ -214,7 +248,7 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		o.Target = netJoinHostPort(o.SNI, "443")
 	}
 	fmt.Fprintf(c.out, "将使用 SNI %s、目标 %s。请确认该目标归属可信且允许作为 REALITY 回落站点。\n", o.SNI, o.Target)
-	ok, err := c.confirm("确认 SNI 和 REALITY target？输入 yes 继续")
+	ok, err := c.confirm("确认 SNI 和 REALITY target？输入 yes/y 继续")
 	if err != nil {
 		return err
 	}
@@ -228,7 +262,7 @@ func (c *commandSet) runGenerate(ctx context.Context, core string, o domain.Gene
 	n, err := c.app.Generate(ctx, core, o)
 	if err != nil && interactive && !o.TakeOver && strings.Contains(err.Error(), "--take-over") {
 		fmt.Fprintln(c.errOut, err)
-		ok, confirmErr := c.confirm("是否备份并接管现有配置？输入 yes 继续")
+		ok, confirmErr := c.confirm("是否备份并接管现有配置？输入 yes/y 继续")
 		if confirmErr != nil {
 			return confirmErr
 		}
@@ -248,7 +282,7 @@ func (c *commandSet) menu(ctx context.Context) error {
 	for {
 		c.clearScreen()
 		c.printMainMenu()
-		choice, err := c.chooseNumber("请选择", 0, 6, 0)
+		choice, err := c.chooseNumber("请选择", 0, 7, 0)
 		if err != nil {
 			if err == io.EOF {
 				return nil
@@ -299,6 +333,14 @@ func (c *commandSet) menu(ctx context.Context) error {
 			}
 		case 5:
 			shouldPause, err = c.resetMenu(ctx, core)
+		case 7:
+			var confirmed bool
+			confirmed, err = c.confirmUninstall(core)
+			if err == nil && confirmed {
+				err = c.app.Uninstall(ctx, core, install.Options{Confirm: c.confirm})
+			} else if err == nil {
+				fmt.Fprintln(c.out, "已取消卸载。")
+			}
 		}
 		if err != nil {
 			c.printMenuError(err)
@@ -320,8 +362,15 @@ func (c *commandSet) printMainMenu() {
 	fmt.Fprintln(c.out, "4) 查看客户端配置")
 	fmt.Fprintln(c.out, "5) 重置节点/凭证")
 	fmt.Fprintln(c.out, "6) 管理服务")
+	fmt.Fprintln(c.out, "7) 卸载内核")
 	fmt.Fprintln(c.out, "0) 退出")
 	fmt.Fprintln(c.out, "----------------------------------------")
+}
+
+func (c *commandSet) confirmUninstall(core string) (bool, error) {
+	fmt.Fprintf(c.out, "即将停止并卸载 %s，删除其 ProxyForge 状态和受管活动配置。\n", core)
+	fmt.Fprintln(c.out, "客户端将立即失效；历史备份和安装脚本信任记录会保留。")
+	return c.confirm("确认卸载？输入 yes/y 继续")
 }
 
 func (c *commandSet) resetMenu(ctx context.Context, core string) (bool, error) {
@@ -397,7 +446,7 @@ func (c *commandSet) fillReset(ctx context.Context, core string, opts *domain.Re
 func (c *commandSet) confirmCredentialReset(core string, opts domain.ResetOptions) (bool, error) {
 	fmt.Fprintf(c.out, "即将重置 %s 的 UUID、REALITY 密钥和 short ID；所有旧客户端配置会立即失效。\n", core)
 	fmt.Fprintf(c.out, "新 SNI：%s\n新 target：%s\n", opts.SNI, opts.Target)
-	return c.confirm("确认重置？输入 yes 继续")
+	return c.confirm("确认重置？输入 yes/y 继续")
 }
 
 func (c *commandSet) confirmCredentialOnlyReset(core string) (bool, error) {
@@ -407,7 +456,7 @@ func (c *commandSet) confirmCredentialOnlyReset(core string) (bool, error) {
 	}
 	fmt.Fprintf(c.out, "即将仅重置 %s 的 UUID、REALITY 密钥和 short ID；所有旧客户端配置会立即失效。\n", core)
 	fmt.Fprintf(c.out, "SNI 和 target 保持不变：%s，%s\n", current.SNI, current.Target)
-	return c.confirm("确认重置凭证？输入 yes 继续")
+	return c.confirm("确认重置凭证？输入 yes/y 继续")
 }
 
 func (c *commandSet) runCredentialReset(ctx context.Context, core string, opts domain.ResetOptions) error {
@@ -524,7 +573,8 @@ func (c *commandSet) confirm(message string) (bool, error) {
 	if err != nil && len(line) == 0 {
 		return false, err
 	}
-	return strings.EqualFold(strings.TrimSpace(line), "yes"), nil
+	value := strings.TrimSpace(line)
+	return strings.EqualFold(value, "yes") || strings.EqualFold(value, "y"), nil
 }
 
 func readerInteractive(r io.Reader) bool {

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"proxyforge/internal/provider/xray"
 	"proxyforge/internal/system"
 )
 
@@ -20,6 +21,8 @@ type streamingRunnerStub struct {
 	streamErr       error
 	bufferedCalled  bool
 	streamingCalled bool
+	command         string
+	args            []string
 }
 
 func (r *streamingRunnerStub) Run(context.Context, string, ...string) ([]byte, error) {
@@ -27,8 +30,10 @@ func (r *streamingRunnerStub) Run(context.Context, string, ...string) ([]byte, e
 	return nil, errors.New("不应调用缓冲执行")
 }
 
-func (r *streamingRunnerStub) RunStreaming(_ context.Context, stdout, stderr io.Writer, _ string, _ ...string) error {
+func (r *streamingRunnerStub) RunStreaming(_ context.Context, stdout, stderr io.Writer, command string, args ...string) error {
 	r.streamingCalled = true
+	r.command = command
+	r.args = append([]string(nil), args...)
 	_, _ = io.WriteString(stdout, "stdout step\n")
 	_, _ = io.WriteString(stderr, "stderr step\n")
 	return r.streamErr
@@ -142,10 +147,30 @@ func TestExecuteScriptStreamsOutput(t *testing.T) {
 	if !runner.streamingCalled || runner.bufferedCalled {
 		t.Fatalf("streaming=%v buffered=%v", runner.streamingCalled, runner.bufferedCalled)
 	}
-	for _, want := range []string{"以下为实时输出", "stdout step", "stderr step", "安装脚本执行完成"} {
+	for _, want := range []string{"以下为实时输出", "stdout step", "stderr step", "官方管理脚本执行完成"} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("output missing %q: %s", want, output.String())
 		}
+	}
+}
+
+func TestUninstallRunsXrayOfficialRemoveAction(t *testing.T) {
+	script := []byte("#!/usr/bin/env bash\nexit 0\n")
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: make(http.Header), Body: io.NopCloser(strings.NewReader(string(script))), Request: r}, nil
+	})
+	runner := &streamingRunnerStub{}
+	i := Installer{
+		Client: &http.Client{Transport: transport}, Runner: runner,
+		Layout: system.Layout{Root: t.TempDir()}, Output: io.Discard,
+	}
+	if err := i.Uninstall(context.Background(), xray.New(), Options{
+		NonInteractive: true, TrustScriptSHA256: system.SHA256(script),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if runner.command != "bash" || len(runner.args) != 2 || runner.args[1] != "remove" {
+		t.Fatalf("command=%q args=%v, want bash <script> remove", runner.command, runner.args)
 	}
 }
 
