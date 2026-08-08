@@ -128,7 +128,7 @@ func TestGenerateTakeoverPreserveRotateAndRollback(t *testing.T) {
 	if second.UUID != first.UUID || second.ShortID != first.ShortID || second.PrivateKey != first.PrivateKey {
 		t.Fatal("credentials changed without rotation")
 	}
-	third, err := a.ResetCredentials(context.Background(), domain.CoreSingBox)
+	third, err := a.ResetCredentials(context.Background(), domain.CoreSingBox, domain.ResetOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,10 +138,20 @@ func TestGenerateTakeoverPreserveRotateAndRollback(t *testing.T) {
 	if third.Server != second.Server || third.Port != second.Port || third.SNI != second.SNI || third.Target != second.Target {
 		t.Fatal("reset changed node connection settings")
 	}
+	changedSNI, err := a.ResetCredentials(context.Background(), domain.CoreSingBox, domain.ResetOptions{SNI: "alt.example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changedSNI.SNI != "alt.example.com" || changedSNI.Target != "alt.example.com:443" {
+		t.Fatalf("SNI reset result = SNI %q target %q", changedSNI.SNI, changedSNI.Target)
+	}
+	if changedSNI.Server != third.Server || changedSNI.Port != third.Port {
+		t.Fatal("SNI reset changed server address or port")
+	}
 	beforeConfig, _ := os.ReadFile(configPath)
 	beforeState, _ := os.ReadFile(a.Layout.StatePath(domain.CoreSingBox))
 	r.failRestart = true
-	_, err = a.ResetCredentials(context.Background(), domain.CoreSingBox)
+	_, err = a.ResetCredentials(context.Background(), domain.CoreSingBox, domain.ResetOptions{})
 	if err == nil || !strings.Contains(err.Error(), "已恢复") {
 		t.Fatalf("rollback error=%v", err)
 	}

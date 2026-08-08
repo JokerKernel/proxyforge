@@ -240,9 +240,9 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	return n, nil
 }
 
-// ResetCredentials atomically rotates every client credential while preserving
-// the managed node's address, port, SNI, and REALITY target.
-func (a *App) ResetCredentials(ctx context.Context, core string) (domain.NodeSpec, error) {
+// ResetCredentials atomically rotates every client credential, optionally
+// changing SNI and target while preserving the node's address and port.
+func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.ResetOptions) (domain.NodeSpec, error) {
 	if err := a.RootCheck(); err != nil {
 		return domain.NodeSpec{}, err
 	}
@@ -250,11 +250,22 @@ func (a *App) ResetCredentials(ctx context.Context, core string) (domain.NodeSpe
 	if err != nil {
 		return domain.NodeSpec{}, err
 	}
+	desiredSNI := strings.TrimSpace(opts.SNI)
+	if desiredSNI == "" {
+		desiredSNI = current.SNI
+	}
+	desiredTarget := strings.TrimSpace(opts.Target)
+	if desiredTarget == "" {
+		desiredTarget = current.Target
+		if opts.SNI != "" && desiredSNI != current.SNI {
+			desiredTarget = net.JoinHostPort(desiredSNI, "443")
+		}
+	}
 	return a.Generate(ctx, core, domain.GenerateOptions{
 		Server:            current.Server,
 		Port:              current.Port,
-		SNI:               current.SNI,
-		Target:            current.Target,
+		SNI:               desiredSNI,
+		Target:            desiredTarget,
 		RotateCredentials: true,
 		NonInteractive:    true,
 	})

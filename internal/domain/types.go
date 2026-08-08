@@ -34,6 +34,11 @@ type GenerateOptions struct {
 	NonInteractive    bool
 }
 
+type ResetOptions struct {
+	SNI    string
+	Target string
+}
+
 type KeyPair struct {
 	Private string
 	Public  string

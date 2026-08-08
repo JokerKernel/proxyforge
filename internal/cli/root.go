@@ -76,14 +76,18 @@ func (c *commandSet) configCommand() *cobra.Command {
 }
 
 func (c *commandSet) resetCommand() *cobra.Command {
-	return &cobra.Command{
+	var opts domain.ResetOptions
+	cmd := &cobra.Command{
 		Use: "reset <sing-box|xray>", Short: "重置 UUID、REALITY 密钥和 short ID", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !c.yes {
 				if !readerInteractive(c.in) {
 					return fmt.Errorf("非交互模式重置凭据必须显式提供 --yes")
 				}
-				confirmed, err := c.confirmCredentialReset(args[0])
+				if err := c.fillReset(args[0], &opts); err != nil {
+					return err
+				}
+				confirmed, err := c.confirmCredentialReset(args[0], opts)
 				if err != nil {
 					return err
 				}
@@ -91,9 +95,12 @@ func (c *commandSet) resetCommand() *cobra.Command {
 					return fmt.Errorf("用户取消凭据重置")
 				}
 			}
-			return c.runCredentialReset(cmd.Context(), args[0])
+			return c.runCredentialReset(cmd.Context(), args[0], opts)
 		},
 	}
+	cmd.Flags().StringVar(&opts.SNI, "sni", "", "重置时使用的新 SNI（默认保留当前值）")
+	cmd.Flags().StringVar(&opts.Target, "target", "", "新的 REALITY target（仅修改 SNI 时默认新 SNI:443）")
+	return cmd
 }
 
 func (c *commandSet) generateCommand() *cobra.Command {
@@ -266,10 +273,14 @@ func (c *commandSet) menu(ctx context.Context) error {
 				_, err = c.out.Write(b)
 			}
 		case 5:
+			opts := domain.ResetOptions{}
+			if err = c.fillReset(core, &opts); err != nil {
+				break
+			}
 			var confirmed bool
-			confirmed, err = c.confirmCredentialReset(core)
+			confirmed, err = c.confirmCredentialReset(core, opts)
 			if err == nil && confirmed {
-				err = c.runCredentialReset(ctx, core)
+				err = c.runCredentialReset(ctx, core, opts)
 			} else if err == nil {
 				fmt.Fprintln(c.out, "已取消凭据重置。")
 			}
@@ -295,16 +306,36 @@ func (c *commandSet) printMainMenu() {
 	fmt.Fprintln(c.out, "----------------------------------------")
 }
 
-func (c *commandSet) confirmCredentialReset(core string) (bool, error) {
+func (c *commandSet) fillReset(core string, opts *domain.ResetOptions) error {
+	current, err := c.app.Store.Load(core)
+	if err != nil {
+		return err
+	}
+	if opts.SNI == "" {
+		opts.SNI = c.askDefault("新的 REALITY SNI", current.SNI)
+	}
+	if opts.Target == "" {
+		defaultTarget := current.Target
+		if defaultTarget == "" || opts.SNI != current.SNI {
+			defaultTarget = netJoinHostPort(opts.SNI, "443")
+		}
+		opts.Target = c.askDefault("新的 REALITY target", defaultTarget)
+	}
+	return nil
+}
+
+func (c *commandSet) confirmCredentialReset(core string, opts domain.ResetOptions) (bool, error) {
 	fmt.Fprintf(c.out, "即将重置 %s 的 UUID、REALITY 密钥和 short ID；所有旧客户端配置会立即失效。\n", core)
+	fmt.Fprintf(c.out, "新 SNI：%s\n新 target：%s\n", opts.SNI, opts.Target)
 	return c.confirm("确认重置？输入 yes 继续")
 }
 
-func (c *commandSet) runCredentialReset(ctx context.Context, core string) error {
-	if _, err := c.app.ResetCredentials(ctx, core); err != nil {
+func (c *commandSet) runCredentialReset(ctx context.Context, core string, opts domain.ResetOptions) error {
+	n, err := c.app.ResetCredentials(ctx, core, opts)
+	if err != nil {
 		return err
 	}
-	fmt.Fprintf(c.out, "%s 节点凭据已全部重置；请重新导出并分发客户端配置。\n", core)
+	fmt.Fprintf(c.out, "%s 节点凭据已全部重置，SNI=%s，target=%s；请重新导出并分发客户端配置。\n", core, n.SNI, n.Target)
 	return nil
 }
 

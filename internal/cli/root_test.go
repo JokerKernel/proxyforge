@@ -6,6 +6,10 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"proxyforge/internal/app"
+	"proxyforge/internal/domain"
+	"proxyforge/internal/system"
 )
 
 func TestStableCommandTree(t *testing.T) {
@@ -38,12 +42,32 @@ func TestResetCommandRequiresYesWhenNonInteractive(t *testing.T) {
 func TestCredentialResetConfirmationWarnsAboutOldClients(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{reader: bufio.NewReader(strings.NewReader("yes\n")), out: &out}
-	confirmed, err := c.confirmCredentialReset("xray")
+	confirmed, err := c.confirmCredentialReset("xray", domain.ResetOptions{SNI: "www.example.com", Target: "www.example.com:443"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !confirmed || !strings.Contains(out.String(), "所有旧客户端配置会立即失效") {
 		t.Fatalf("confirmed=%v output=%q", confirmed, out.String())
+	}
+}
+
+func TestFillResetDefaultsTargetToNewSNI(t *testing.T) {
+	store := system.StateStore{Layout: system.Layout{Root: t.TempDir()}}
+	if err := store.Save(domain.NodeSpec{ManagedBy: "proxyforge", Core: domain.CoreSingBox, SNI: "old.example.com", Target: "old.example.com:443"}); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	c := &commandSet{
+		app:    &app.App{Store: store},
+		reader: bufio.NewReader(strings.NewReader("new.example.com\n\n")),
+		out:    &out,
+	}
+	opts := domain.ResetOptions{}
+	if err := c.fillReset(domain.CoreSingBox, &opts); err != nil {
+		t.Fatal(err)
+	}
+	if opts.SNI != "new.example.com" || opts.Target != "new.example.com:443" {
+		t.Fatalf("reset options = %#v", opts)
 	}
 }
 
