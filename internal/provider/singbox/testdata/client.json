@@ -1,0 +1,19 @@
+{
+  "inbounds": [{"listen": "127.0.0.1", "listen_port": 2080, "tag": "mixed-in", "type": "mixed"}],
+  "log": {"level": "info", "timestamp": true},
+  "outbounds": [{
+    "flow": "xtls-rprx-vision",
+    "server": "203.0.113.10",
+    "server_port": 443,
+    "tag": "proxy",
+    "tls": {
+      "enabled": true,
+      "reality": {"enabled": true, "public_key": "public-key", "short_id": "0123456789abcdef"},
+      "server_name": "example.com",
+      "utls": {"enabled": true, "fingerprint": "chrome"}
+    },
+    "type": "vless",
+    "uuid": "123e4567-e89b-42d3-a456-426614174000"
+  }],
+  "route": {"final": "proxy"}
+}

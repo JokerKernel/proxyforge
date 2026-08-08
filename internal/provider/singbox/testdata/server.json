@@ -1,0 +1,21 @@
+{
+  "inbounds": [{
+    "listen": "::",
+    "listen_port": 443,
+    "tag": "vless-reality",
+    "tls": {
+      "enabled": true,
+      "reality": {
+        "enabled": true,
+        "handshake": {"server": "example.com", "server_port": 443},
+        "private_key": "private-key",
+        "short_id": ["0123456789abcdef"]
+      },
+      "server_name": "example.com"
+    },
+    "type": "vless",
+    "users": [{"flow": "xtls-rprx-vision", "uuid": "123e4567-e89b-42d3-a456-426614174000"}]
+  }],
+  "log": {"level": "info", "timestamp": true},
+  "outbounds": [{"tag": "direct", "type": "direct"}]
+}
