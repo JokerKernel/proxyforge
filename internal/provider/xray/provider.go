@@ -87,6 +87,7 @@ func (*Provider) GenerateKeyPair(ctx context.Context, r provider.Runner) (domain
 func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 	v := map[string]any{
 		"log": map[string]any{"loglevel": "warning"},
+		"dns": systemDNS(),
 		"inbounds": []any{map[string]any{
 			"listen": "0.0.0.0", "port": n.Port, "protocol": "vless", "tag": n.InboundTag,
 			"settings": map[string]any{"clients": []any{map[string]any{"email": n.UserName, "id": n.UUID, "flow": domain.VisionFlow}}, "decryption": "none"},
@@ -103,6 +104,7 @@ func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 func (*Provider) RenderClient(n domain.NodeSpec) ([]byte, error) {
 	v := map[string]any{
 		"log": map[string]any{"loglevel": "warning"},
+		"dns": systemDNS(),
 		"inbounds": []any{
 			map[string]any{"listen": "127.0.0.1", "port": 10808, "protocol": "socks", "settings": map[string]any{"udp": true}},
 			map[string]any{"listen": "127.0.0.1", "port": 10809, "protocol": "http", "settings": map[string]any{}},
@@ -118,6 +120,13 @@ func (*Provider) RenderClient(n domain.NodeSpec) ([]byte, error) {
 		"routing": privateNetworkRouting(),
 	}
 	return jsonutil.Marshal(v)
+}
+
+func systemDNS() map[string]any {
+	return map[string]any{
+		"servers":       []any{"localhost"},
+		"queryStrategy": "UseIP",
+	}
 }
 
 func privateNetworkRouting() map[string]any {

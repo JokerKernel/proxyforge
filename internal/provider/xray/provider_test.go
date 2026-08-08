@@ -38,6 +38,32 @@ func TestGoldenConfigs(t *testing.T) {
 	}
 }
 
+func TestRenderedConfigsExplicitlyUseSystemDNS(t *testing.T) {
+	p := New()
+	n := domain.NodeSpec{
+		InboundTag: "xray-one", Server: "203.0.113.10", Port: 443, SNI: "example.com", Target: "example.com:443",
+		UserName: "one", UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private", PublicKey: "public", ShortID: "0123456789abcdef",
+	}
+	for _, render := range []func(domain.NodeSpec) ([]byte, error){p.RenderServer, p.RenderClient} {
+		config, err := render(n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var root map[string]any
+		if err := json.Unmarshal(config, &root); err != nil {
+			t.Fatal(err)
+		}
+		dns, ok := root["dns"].(map[string]any)
+		if !ok || dns["queryStrategy"] != "UseIP" {
+			t.Fatalf("dns=%#v", root["dns"])
+		}
+		servers, ok := dns["servers"].([]any)
+		if !ok || len(servers) != 1 || servers[0] != "localhost" {
+			t.Fatalf("dns servers=%#v", dns["servers"])
+		}
+	}
+}
+
 func TestPatchServerPreservesManualConfiguration(t *testing.T) {
 	p := New()
 	old := domain.NodeSpec{

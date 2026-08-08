@@ -81,6 +81,8 @@ sudo proxyforge cleanup all --yes
 
 运行输出会明确标记来源：`[ProxyForge/步骤]` 表示程序自身流程，`[ProxyForge/命令]` 表示程序调用的本机命令，`[系统命令/输出]` 表示软件包管理器等本机命令的实时输出；官方脚本分别使用 `[官方脚本/信息]`、`[官方脚本/风险]`、`[官方脚本/状态]` 和 `[官方脚本/输出]`，systemd journal 使用 `[服务日志/<内核>]`。步骤和命令日志写入 stderr，客户端 JSON 仍单独写入 stdout 或 `--output` 指定的文件；密钥生成命令的返回内容不会作为命令日志输出。
 
+Xray 服务端和原生客户端模板会显式配置系统 DNS：`servers: ["localhost"]`、`queryStrategy: "UseIP"`。路由仍使用 `IPOnDemand` 在私网 IP 规则前解析域名，Freedom 出站仍使用 `UseIP` 连接解析结果；该配置只是将原先隐式使用的系统 DNS 明确写入 JSON，不改用第三方 DNS。
+
 示例：
 
 ```bash
