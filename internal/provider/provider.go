@@ -18,6 +18,13 @@ type StreamingRunner interface {
 	RunStreaming(ctx context.Context, stdout, stderr io.Writer, name string, args ...string) error
 }
 
+// ScriptProxyProvider is implemented by providers whose management script
+// requires an explicit proxy argument instead of honoring proxy environment
+// variables directly.
+type ScriptProxyProvider interface {
+	ScriptProxyArgs(proxyURL string) []string
+}
+
 type CoreProvider interface {
 	Name() string
 	Binary() string

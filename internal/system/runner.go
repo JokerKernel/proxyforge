@@ -57,12 +57,28 @@ func (r *LoggingRunner) log(label, name string, args []string) {
 	}
 	parts := make([]string, 0, len(args)+1)
 	parts = append(parts, quoteCommandArg(name))
-	for _, arg := range args {
+	for _, arg := range redactCommandArgs(args) {
 		parts = append(parts, quoteCommandArg(arg))
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	fmt.Fprintf(r.Out, "[命令] %s：%s\n", label, strings.Join(parts, " "))
+}
+
+func redactCommandArgs(args []string) []string {
+	redacted := append([]string(nil), args...)
+	for index, arg := range redacted {
+		if arg == "--proxy" || arg == "-p" {
+			if index+1 < len(redacted) {
+				redacted[index+1] = "[REDACTED]"
+			}
+			continue
+		}
+		if strings.HasPrefix(arg, "--proxy=") {
+			redacted[index] = "--proxy=[REDACTED]"
+		}
+	}
+	return redacted
 }
 
 func (r *LoggingRunner) logResult(label, name string) {

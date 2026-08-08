@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -151,6 +152,35 @@ func TestExecuteScriptStreamsOutput(t *testing.T) {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("output missing %q: %s", want, output.String())
 		}
+	}
+}
+
+func TestRunPassesRuntimeProxyToXrayScript(t *testing.T) {
+	script := []byte("#!/usr/bin/env bash\nexit 0\n")
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: make(http.Header), Body: io.NopCloser(strings.NewReader(string(script))), Request: r}, nil
+	})
+	runner := &streamingRunnerStub{}
+	proxyURL, err := url.Parse("http://user:secret@127.0.0.1:7890")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output strings.Builder
+	i := Installer{
+		Client: &http.Client{Transport: transport}, Runner: runner,
+		Layout: system.Layout{Root: t.TempDir()}, Output: &output,
+		ProxyForRequest: func(*http.Request) (*url.URL, error) { return proxyURL, nil },
+	}
+	if _, err := i.Run(context.Background(), xray.New(), Options{
+		NonInteractive: true, TrustScriptSHA256: system.SHA256(script),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(runner.args) != 4 || runner.args[1] != "install" || runner.args[2] != "--proxy" || runner.args[3] != proxyURL.String() {
+		t.Fatalf("args=%v, want <script> install --proxy <runtime proxy>", runner.args)
+	}
+	if !strings.Contains(output.String(), "检测到运行时代理") || strings.Contains(output.String(), proxyURL.String()) {
+		t.Fatalf("proxy notice missing or proxy URL leaked: %s", output.String())
 	}
 }
 

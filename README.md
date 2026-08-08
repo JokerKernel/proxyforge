@@ -51,6 +51,7 @@ proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
 ```
 
 `install` 同时用于首次安装和后续升级；旧的 `upgrade` 名称保留为兼容别名。无参数运行时会先选择 sing-box 或 Xray-core，再进入该内核独立的安装/升级、配置、客户端、重置、服务、卸载和清理菜单。
+安装 Xray 时会按 `HTTPS_PROXY`/`HTTP_PROXY` 和 `NO_PROXY` 检查当前进程的运行时代理；检测到代理后会自动传递给 Xray 官方管理脚本。通过 `sudo` 运行时需确保这些环境变量被保留，例如使用经过本机 sudo 策略允许的 `sudo -E`。日志只会提示已检测到代理，不会输出代理地址或认证信息。
 
 非交互安装必须显式固定本次下载内容，`--yes` 不能跳过：
 

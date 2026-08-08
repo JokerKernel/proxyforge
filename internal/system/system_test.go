@@ -101,6 +101,21 @@ func TestLoggingRunnerReportsCommandWithoutLeakingBufferedOutput(t *testing.T) {
 	}
 }
 
+func TestLoggingRunnerRedactsProxyArgument(t *testing.T) {
+	var log bytes.Buffer
+	runner := &LoggingRunner{Runner: outputRunner{}, Out: &log}
+	proxyURL := "http://user:secret@127.0.0.1:7890"
+	if _, err := runner.Run(context.Background(), "bash", "/tmp/install.sh", "install", "--proxy", proxyURL); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(log.String(), proxyURL) || strings.Contains(log.String(), "secret") {
+		t.Fatalf("proxy URL leaked into log: %s", log.String())
+	}
+	if !strings.Contains(log.String(), "--proxy [REDACTED]") {
+		t.Fatalf("redacted proxy argument missing: %s", log.String())
+	}
+}
+
 func TestRandomCredentialFormats(t *testing.T) {
 	seen := map[string]bool{}
 	for i := 0; i < 64; i++ {

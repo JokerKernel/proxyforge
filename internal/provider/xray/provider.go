@@ -31,6 +31,12 @@ func (*Provider) InstallArgs(version string) []string {
 	}
 	return args
 }
+func (*Provider) ScriptProxyArgs(proxyURL string) []string {
+	if proxyURL == "" {
+		return nil
+	}
+	return []string{"--proxy", proxyURL}
+}
 func (*Provider) PackageName() string     { return "" }
 func (*Provider) UninstallArgs() []string { return []string{"remove"} }
 func (*Provider) CleanupPaths() []string {

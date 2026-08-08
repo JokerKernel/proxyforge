@@ -33,14 +33,26 @@ type Options struct {
 }
 
 type Installer struct {
-	Client *http.Client
-	Runner provider.Runner
-	Layout system.Layout
-	Output io.Writer
+	Client          *http.Client
+	Runner          provider.Runner
+	Layout          system.Layout
+	Output          io.Writer
+	ProxyForRequest func(*http.Request) (*url.URL, error)
 }
 
 func (i Installer) Run(ctx context.Context, p provider.CoreProvider, opts Options) (string, error) {
-	return i.runScript(ctx, p, opts, p.InstallArgs(opts.Version), "安装/升级")
+	args := p.InstallArgs(opts.Version)
+	if proxyProvider, ok := p.(provider.ScriptProxyProvider); ok {
+		proxyURL, err := i.runtimeProxy(p.OfficialScriptURL())
+		if err != nil {
+			return "", fmt.Errorf("检查运行时代理: %w", err)
+		}
+		if proxyURL != "" && i.Output != nil {
+			fmt.Fprintln(i.Output, "检测到运行时代理，将传递给官方管理脚本。")
+		}
+		args = append(args, proxyProvider.ScriptProxyArgs(proxyURL)...)
+	}
+	return i.runScript(ctx, p, opts, args, "安装/升级")
 }
 
 func (i Installer) Uninstall(ctx context.Context, p provider.CoreProvider, opts Options) error {
@@ -175,6 +187,25 @@ func (i Installer) secureClient(hosts []string) *http.Client {
 		return checkURL(req.URL, hosts)
 	}
 	return &c
+}
+
+func (i Installer) runtimeProxy(rawURL string) (string, error) {
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return "", err
+	}
+	proxyForRequest := i.ProxyForRequest
+	if proxyForRequest == nil {
+		proxyForRequest = http.ProxyFromEnvironment
+	}
+	proxyURL, err := proxyForRequest(req)
+	if err != nil {
+		return "", err
+	}
+	if proxyURL == nil {
+		return "", nil
+	}
+	return proxyURL.String(), nil
 }
 
 func (i Installer) trust(core, hash string, opts Options) error {
