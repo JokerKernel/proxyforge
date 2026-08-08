@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"io"
 	"sort"
 	"sync"
 
@@ -11,6 +12,10 @@ import (
 
 type Runner interface {
 	Run(ctx context.Context, name string, args ...string) ([]byte, error)
+}
+
+type StreamingRunner interface {
+	RunStreaming(ctx context.Context, stdout, stderr io.Writer, name string, args ...string) error
 }
 
 type CoreProvider interface {

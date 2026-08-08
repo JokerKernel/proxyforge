@@ -2,6 +2,7 @@ package install
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -14,6 +15,24 @@ import (
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+type streamingRunnerStub struct {
+	streamErr       error
+	bufferedCalled  bool
+	streamingCalled bool
+}
+
+func (r *streamingRunnerStub) Run(context.Context, string, ...string) ([]byte, error) {
+	r.bufferedCalled = true
+	return nil, errors.New("不应调用缓冲执行")
+}
+
+func (r *streamingRunnerStub) RunStreaming(_ context.Context, stdout, stderr io.Writer, _ string, _ ...string) error {
+	r.streamingCalled = true
+	_, _ = io.WriteString(stdout, "stdout step\n")
+	_, _ = io.WriteString(stderr, "stderr step\n")
+	return r.streamErr
+}
 
 func TestValidateScript(t *testing.T) {
 	ctx := context.Background()
@@ -109,5 +128,51 @@ func TestTrustPinning(t *testing.T) {
 	}
 	if err := i.trust("xray", h1, Options{NonInteractive: true, TrustScriptSHA256: h2}); err == nil || !strings.Contains(err.Error(), "不匹配") {
 		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestExecuteScriptStreamsOutput(t *testing.T) {
+	runner := &streamingRunnerStub{}
+	var output strings.Builder
+	i := Installer{Runner: runner, Output: &output}
+
+	if err := i.executeScript(context.Background(), []string{"/tmp/install.sh"}); err != nil {
+		t.Fatal(err)
+	}
+	if !runner.streamingCalled || runner.bufferedCalled {
+		t.Fatalf("streaming=%v buffered=%v", runner.streamingCalled, runner.bufferedCalled)
+	}
+	for _, want := range []string{"以下为实时输出", "stdout step", "stderr step", "安装脚本执行完成"} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("output missing %q: %s", want, output.String())
+		}
+	}
+}
+
+func TestExecuteScriptFailureIncludesRecentOutput(t *testing.T) {
+	runner := &streamingRunnerStub{streamErr: errors.New("exit status 1")}
+	var output strings.Builder
+	i := Installer{Runner: runner, Output: &output}
+
+	err := i.executeScript(context.Background(), []string{"/tmp/install.sh"})
+	if err == nil {
+		t.Fatal("expected script failure")
+	}
+	for _, want := range []string{"stdout step", "stderr step", "exit status 1"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error missing %q: %v", want, err)
+		}
+	}
+	if !strings.Contains(output.String(), "stdout step") || !strings.Contains(output.String(), "stderr step") {
+		t.Fatalf("script output was not forwarded: %s", output.String())
+	}
+}
+
+func TestScriptOutputCaptureKeepsBoundedTail(t *testing.T) {
+	capture := &scriptOutputCapture{output: io.Discard, limit: 5}
+	_, _ = capture.Write([]byte("123"))
+	_, _ = capture.Write([]byte("4567"))
+	if got := capture.String(); got != "34567" {
+		t.Fatalf("tail=%q", got)
 	}
 }

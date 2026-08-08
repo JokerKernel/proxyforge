@@ -3,6 +3,7 @@ package system
 import (
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 )
@@ -20,4 +21,14 @@ func (ExecRunner) Run(ctx context.Context, name string, args ...string) ([]byte,
 		return b, fmt.Errorf("%s: %w", name, err)
 	}
 	return b, nil
+}
+
+func (ExecRunner) RunStreaming(ctx context.Context, stdout, stderr io.Writer, name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	return nil
 }

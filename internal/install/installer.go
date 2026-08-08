@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -19,6 +20,7 @@ import (
 )
 
 const MaxScriptSize = 2 << 20
+const maxCapturedScriptOutput = 64 << 10
 
 type ConfirmFunc func(summary string) (bool, error)
 
@@ -78,10 +80,71 @@ func (i Installer) Run(ctx context.Context, p provider.CoreProvider, opts Option
 		return hash, err
 	}
 	args := append([]string{path}, p.InstallArgs(opts.Version, opts.Upgrade)...)
-	if _, err := i.Runner.Run(ctx, "bash", args...); err != nil {
-		return hash, fmt.Errorf("官方安装脚本执行失败: %w", err)
+	if err := i.executeScript(ctx, args); err != nil {
+		return hash, err
 	}
 	return hash, nil
+}
+
+func (i Installer) executeScript(ctx context.Context, args []string) error {
+	output := i.Output
+	if output == nil {
+		output = io.Discard
+	}
+	fmt.Fprintln(output, "开始执行官方安装脚本，以下为实时输出：")
+	if streaming, ok := i.Runner.(provider.StreamingRunner); ok {
+		capture := &scriptOutputCapture{output: output, limit: maxCapturedScriptOutput}
+		if err := streaming.RunStreaming(ctx, capture, capture, "bash", args...); err != nil {
+			if tail := strings.TrimSpace(capture.String()); tail != "" {
+				return fmt.Errorf("官方安装脚本执行失败（末尾输出如下）:\n%s\n%w", tail, err)
+			}
+			return fmt.Errorf("官方安装脚本执行失败: %w", err)
+		}
+		fmt.Fprintln(output, "安装脚本执行完成。")
+		return nil
+	}
+
+	b, err := i.Runner.Run(ctx, "bash", args...)
+	if len(b) > 0 {
+		_, _ = output.Write(b)
+		if b[len(b)-1] != '\n' {
+			fmt.Fprintln(output)
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("官方安装脚本执行失败: %w", err)
+	}
+	fmt.Fprintln(output, "安装脚本执行完成。")
+	return nil
+}
+
+type scriptOutputCapture struct {
+	mu     sync.Mutex
+	output io.Writer
+	tail   []byte
+	limit  int
+}
+
+func (w *scriptOutputCapture) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if len(p) >= w.limit {
+		w.tail = append(w.tail[:0], p[len(p)-w.limit:]...)
+	} else {
+		overflow := len(w.tail) + len(p) - w.limit
+		if overflow > 0 {
+			copy(w.tail, w.tail[overflow:])
+			w.tail = w.tail[:len(w.tail)-overflow]
+		}
+		w.tail = append(w.tail, p...)
+	}
+	return w.output.Write(p)
+}
+
+func (w *scriptOutputCapture) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return string(w.tail)
 }
 
 func (i Installer) secureClient(hosts []string) *http.Client {

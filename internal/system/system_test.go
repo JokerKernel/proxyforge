@@ -1,6 +1,8 @@
 package system
 
 import (
+	"bytes"
+	"context"
 	"os"
 	"regexp"
 	"testing"
@@ -8,6 +10,27 @@ import (
 
 	"proxyforge/internal/domain"
 )
+
+func TestExecRunnerStreamsStdoutAndStderr(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := (ExecRunner{}).RunStreaming(
+		context.Background(),
+		&stdout,
+		&stderr,
+		"bash",
+		"-c",
+		"printf stdout-data; printf stderr-data >&2",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stdout.String() != "stdout-data" {
+		t.Fatalf("stdout=%q", stdout.String())
+	}
+	if stderr.String() != "stderr-data" {
+		t.Fatalf("stderr=%q", stderr.String())
+	}
+}
 
 func TestRandomCredentialFormats(t *testing.T) {
 	seen := map[string]bool{}

@@ -55,7 +55,7 @@ proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
 sudo proxyforge install sing-box --yes --trust-script-sha256 <64位哈希>
 ```
 
-首次交互安装会展示来源、最终重定向地址、大小、危险操作摘要和 SHA-256，只有输入完整的 `yes` 才执行。脚本变化后，非交互执行会被阻止，必须重新进行交互确认。安装器下载受限临时文件，不使用 `curl | sh`，并检查 HTTPS 主机白名单、重定向、HTTP 状态、大小、shebang、NUL/文本格式和 `bash -n`。
+首次交互安装会展示来源、最终重定向地址、大小、危险操作摘要和 SHA-256，只有输入完整的 `yes` 才执行。脚本变化后，非交互执行会被阻止，必须重新进行交互确认。安装器下载受限临时文件，不使用 `curl | sh`，并检查 HTTPS 主机白名单、重定向、HTTP 状态、大小、shebang、NUL/文本格式和 `bash -n`。执行安装脚本时会实时转发 stdout/stderr，并保留最近 64 KiB 输出用于失败诊断。
 
 生成首个节点时交互默认端口为 443；检测到另一个受管节点后默认建议 8443。重新生成会保留 UUID、REALITY 密钥和 short ID；只有 `--rotate-credentials` 或 `config reset` 会同时轮换它们并让旧客户端失效。`config reset` 保留地址和端口，并允许同时修改 SNI/target；只指定新 SNI 时 target 默认变为 `<新 SNI>:443`。交互模式要求确认，自动化必须显式传入 `--yes`。未知或被外部修改的配置必须交互确认，自动化时使用 `--take-over`。
 
