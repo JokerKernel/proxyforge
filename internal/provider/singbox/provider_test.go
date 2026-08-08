@@ -46,6 +46,65 @@ func TestGoldenConfigs(t *testing.T) {
 	}
 }
 
+func TestPatchServerPreservesManualConfiguration(t *testing.T) {
+	p := New()
+	old := domain.NodeSpec{
+		InboundTag: "managed-in", SNI: "old.example.com", Target: "old.example.com:443", UserName: "managed-user",
+		UUID: "old-uuid", PrivateKey: "old-private", PublicKey: "old-public", ShortID: "old-short",
+	}
+	config, err := p.RenderServer(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(config, &root); err != nil {
+		t.Fatal(err)
+	}
+	root["manual_top_level"] = map[string]any{"keep": true}
+	inbound := root["inbounds"].([]any)[0].(map[string]any)
+	inbound["manual_inbound"] = "keep"
+	users := inbound["users"].([]any)
+	users = append(users, map[string]any{"name": "other-user", "uuid": "other-uuid", "flow": "other-flow"})
+	inbound["users"] = users
+	tls := inbound["tls"].(map[string]any)
+	reality := tls["reality"].(map[string]any)
+	reality["short_id"] = append(reality["short_id"].([]any), "other-short")
+	root["outbounds"] = append(root["outbounds"].([]any), map[string]any{"type": "direct", "tag": "manual-out"})
+	modified, err := json.Marshal(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := old
+	next.SNI, next.Target = "new.example.com", "origin.example.com:8443"
+	next.UUID, next.PrivateKey, next.PublicKey, next.ShortID = "new-uuid", "new-private", "new-public", "new-short"
+	patched, err := p.PatchServer(modified, old, next, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(patched, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got["manual_top_level"], root["manual_top_level"]) || len(got["outbounds"].([]any)) != 2 {
+		t.Fatalf("manual top-level configuration changed: %s", patched)
+	}
+	gotInbound := got["inbounds"].([]any)[0].(map[string]any)
+	if gotInbound["manual_inbound"] != "keep" || len(gotInbound["users"].([]any)) != 2 {
+		t.Fatalf("manual inbound/users changed: %s", patched)
+	}
+	managedUser := gotInbound["users"].([]any)[0].(map[string]any)
+	otherUser := gotInbound["users"].([]any)[1].(map[string]any)
+	gotTLS := gotInbound["tls"].(map[string]any)
+	gotReality := gotTLS["reality"].(map[string]any)
+	shortIDs := gotReality["short_id"].([]any)
+	handshake := gotReality["handshake"].(map[string]any)
+	if managedUser["uuid"] != "new-uuid" || otherUser["uuid"] != "other-uuid" || gotReality["private_key"] != "new-private" ||
+		shortIDs[0] != "new-short" || shortIDs[1] != "other-short" || gotTLS["server_name"] != "new.example.com" ||
+		handshake["server"] != "origin.example.com" || handshake["server_port"] != float64(8443) {
+		t.Fatalf("managed fields were not patched correctly: %s", patched)
+	}
+}
+
 func TestGenerateKeyPairParsesNativeOutput(t *testing.T) {
 	pair, err := New().GenerateKeyPair(context.Background(), outputRunner{"PrivateKey: private\nPublicKey: public\n"})
 	if err != nil {

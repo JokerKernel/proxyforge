@@ -478,7 +478,15 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if err != nil {
 		return n, err
 	}
-	n.ConfigSHA256 = system.SHA256(config)
+	return a.applyServerConfig(ctx, p, core, n, old, hasOld, config, true)
+}
+
+func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, core string, n, old domain.NodeSpec, hasOld bool, config []byte, managedConfig bool) (domain.NodeSpec, error) {
+	if managedConfig {
+		n.ConfigSHA256 = system.SHA256(config)
+	} else {
+		n.ConfigSHA256 = ""
+	}
 	configPath := a.Layout.Resolve(p.ConfigPath())
 	oldConfig, readErr := os.ReadFile(configPath)
 	hadConfig := readErr == nil
@@ -513,7 +521,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		serviceStopped = false
 		return cause
 	}
-	if !hasOld || old.Port != opts.Port {
+	if !hasOld || old.Port != n.Port {
 		status, _ := a.Services.IsActive(ctx, p.ServiceName())
 		if status.Active {
 			a.progressf("临时停止 systemd 服务 %s 以检查监听端口", p.ServiceName())
@@ -522,8 +530,8 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 			}
 			serviceStopped = true
 		}
-		a.progressf("检查监听端口 %d 是否可用", opts.Port)
-		if err := a.PortFree(opts.Port); err != nil {
+		a.progressf("检查监听端口 %d 是否可用", n.Port)
+		if err := a.PortFree(n.Port); err != nil {
 			return n, restoreStoppedService(err)
 		}
 	}
@@ -555,19 +563,19 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if err := a.Services.Restart(ctx, p.ServiceName()); err != nil {
 		return n, rollback(fmt.Errorf("重启 %s 失败: %w", p.ServiceName(), err))
 	}
-	a.progressf("确认服务 active 并监听端口 %d", opts.Port)
+	a.progressf("确认服务 active 并监听端口 %d", n.Port)
 	status, err := a.Services.IsActive(ctx, p.ServiceName())
 	if err != nil || !status.Active {
 		return n, rollback(fmt.Errorf("%s 未进入 active 状态: %s: %w", p.ServiceName(), status.Detail, err))
 	}
-	if err := a.Listening(ctx, opts.Port, 4*time.Second); err != nil {
+	if err := a.Listening(ctx, n.Port, 4*time.Second); err != nil {
 		return n, rollback(err)
 	}
 	a.progressf("保存 ProxyForge 节点状态")
 	if err := a.Store.Save(n); err != nil {
 		return n, rollback(fmt.Errorf("保存状态失败: %w", err))
 	}
-	a.firewallHint(opts.Port)
+	a.firewallHint(n.Port)
 	return n, nil
 }
 
@@ -578,32 +586,80 @@ func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.Res
 	if err := a.RootCheck(); err != nil {
 		return domain.NodeSpec{}, err
 	}
+	p, err := a.Registry.Get(core)
+	if err != nil {
+		return domain.NodeSpec{}, err
+	}
 	current, err := a.Store.Load(core)
 	if err != nil {
 		return domain.NodeSpec{}, err
 	}
-	desiredSNI := strings.TrimSpace(opts.SNI)
+	requestedSNI := strings.TrimSpace(opts.SNI)
+	requestedTarget := strings.TrimSpace(opts.Target)
+	updateEndpoint := requestedSNI != "" || requestedTarget != ""
+	desiredSNI := requestedSNI
 	if desiredSNI == "" {
 		desiredSNI = current.SNI
 	}
-	desiredTarget := strings.TrimSpace(opts.Target)
+	desiredTarget := requestedTarget
 	if desiredTarget == "" {
 		desiredTarget = current.Target
-		if opts.SNI != "" && desiredSNI != current.SNI {
+		if requestedSNI != "" && desiredSNI != current.SNI {
 			desiredTarget = net.JoinHostPort(desiredSNI, "443")
 		}
 	}
-	return a.Generate(ctx, core, domain.GenerateOptions{
-		Server:            current.Server,
-		Port:              current.Port,
-		SNI:               desiredSNI,
-		Target:            desiredTarget,
-		UserName:          current.UserName,
-		InboundTag:        current.InboundTag,
-		SimplifiedConfig:  current.SimplifiedConfig,
-		RotateCredentials: true,
-		NonInteractive:    true,
-	})
+	if updateEndpoint {
+		a.progressf("验证新的 SNI 和 REALITY target")
+		warnings, err := a.Targets.Validate(ctx, desiredTarget, desiredSNI, current.Server)
+		if err != nil {
+			return domain.NodeSpec{}, err
+		}
+		for _, warning := range warnings {
+			fmt.Fprintln(a.Out, "警告："+warning)
+		}
+	}
+	a.progressf("检测 %s 版本并生成新的 UUID、REALITY 密钥和 short ID", core)
+	version, err := p.Version(ctx, a.Runner)
+	if err != nil {
+		return domain.NodeSpec{}, fmt.Errorf("内核不可用或不支持所需能力: %w", err)
+	}
+	n := current
+	n.SNI = desiredSNI
+	n.Target = desiredTarget
+	n.CoreVersion = version
+	n.UpdatedAt = a.Now().UTC()
+	if n.UUID, err = system.UUID(); err != nil {
+		return n, err
+	}
+	if n.ShortID, err = system.ShortID(); err != nil {
+		return n, err
+	}
+	keys, err := p.GenerateKeyPair(ctx, a.Runner)
+	if err != nil {
+		return n, err
+	}
+	n.PrivateKey, n.PublicKey = keys.Private, keys.Public
+	if n.UUID == current.UUID || n.PrivateKey == current.PrivateKey || n.PublicKey == current.PublicKey || n.ShortID == current.ShortID {
+		return n, fmt.Errorf("凭据生成器返回了重复值，已拒绝修改现有节点")
+	}
+	configPath := a.Layout.Resolve(p.ConfigPath())
+	currentConfig, err := os.ReadFile(configPath)
+	if os.IsNotExist(err) {
+		return n, fmt.Errorf("尚未找到 %s 服务端配置 %s，无法定点重置", core, p.ConfigPath())
+	}
+	if err != nil {
+		return n, fmt.Errorf("读取现有 %s 服务端配置: %w", core, err)
+	}
+	managedConfig := current.ConfigSHA256 != "" && system.SHA256(currentConfig) == current.ConfigSHA256
+	if !managedConfig {
+		fmt.Fprintln(a.Out, "检测到配置包含手动修改；本次只更新受管节点字段，其他内容和外部配置属性将保留。")
+	}
+	a.progressf("仅更新现有配置中的受管节点字段，保留其他手动配置")
+	patched, err := p.PatchServer(currentConfig, current, n, updateEndpoint)
+	if err != nil {
+		return n, err
+	}
+	return a.applyServerConfig(ctx, p, core, n, current, true, patched, managedConfig)
 }
 
 func (a *App) Client(ctx context.Context, core, output string, force bool) ([]byte, error) {

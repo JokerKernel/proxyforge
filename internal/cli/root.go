@@ -760,6 +760,7 @@ func (c *commandSet) fillReset(ctx context.Context, core string, opts *domain.Re
 func (c *commandSet) confirmCredentialReset(core string, opts domain.ResetOptions) (bool, error) {
 	fmt.Fprintf(c.out, "即将重置 %s 的 UUID、REALITY 密钥和 short ID；所有旧客户端配置会立即失效。\n", core)
 	fmt.Fprintf(c.out, "新 SNI：%s\n新 target：%s\n", opts.SNI, opts.Target)
+	fmt.Fprintln(c.out, "只会定点更新受管入站的上述字段；DNS、路由、出站、日志、其他用户等手动配置会保留，并在修改前备份。")
 	return c.confirm("确认重置？输入 yes/y 继续")
 }
 
@@ -770,6 +771,7 @@ func (c *commandSet) confirmCredentialOnlyReset(core string) (bool, error) {
 	}
 	fmt.Fprintf(c.out, "即将仅重置 %s 的 UUID、REALITY 密钥和 short ID；所有旧客户端配置会立即失效。\n", core)
 	fmt.Fprintf(c.out, "SNI 和 target 保持不变：%s，%s\n", current.SNI, current.Target)
+	fmt.Fprintln(c.out, "只会定点更新受管入站的凭证字段；DNS、路由、出站、日志、其他用户等手动配置会保留，并在修改前备份。")
 	return c.confirm("确认重置凭证？输入 yes/y 继续")
 }
 

@@ -363,7 +363,7 @@ func TestCredentialResetConfirmationWarnsAboutOldClients(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !confirmed || !strings.Contains(out.String(), "所有旧客户端配置会立即失效") {
+	if !confirmed || !strings.Contains(out.String(), "所有旧客户端配置会立即失效") || !strings.Contains(out.String(), "手动配置会保留") {
 		t.Fatalf("confirmed=%v output=%q", confirmed, out.String())
 	}
 }
@@ -442,7 +442,7 @@ func TestConfirmCredentialOnlyResetPreservesTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !confirmed || !strings.Contains(out.String(), "SNI 和 target 保持不变：keep.example.com，origin.example.com:443") {
+	if !confirmed || !strings.Contains(out.String(), "SNI 和 target 保持不变：keep.example.com，origin.example.com:443") || !strings.Contains(out.String(), "手动配置会保留") {
 		t.Fatalf("confirmed=%v output=%q", confirmed, out.String())
 	}
 }

@@ -3,11 +3,13 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -199,6 +201,22 @@ func TestGenerateOverwritePreserveRotateAndRollback(t *testing.T) {
 	if second.UUID != first.UUID || second.ShortID != first.ShortID || second.PrivateKey != first.PrivateKey {
 		t.Fatal("credentials changed without rotation")
 	}
+	secondConfig, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var customized map[string]any
+	if err := json.Unmarshal(secondConfig, &customized); err != nil {
+		t.Fatal(err)
+	}
+	customized["manual_top_level"] = map[string]any{"keep": true}
+	customizedConfig, err := json.Marshal(customized)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, customizedConfig, 0600); err != nil {
+		t.Fatal(err)
+	}
 	third, err := a.ResetCredentials(context.Background(), domain.CoreSingBox, domain.ResetOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -215,6 +233,24 @@ func TestGenerateOverwritePreserveRotateAndRollback(t *testing.T) {
 	if third.InboundTag != second.InboundTag {
 		t.Fatal("reset changed inbound tag")
 	}
+	if third.ConfigSHA256 != "" {
+		t.Fatal("manually modified config was incorrectly marked as fully managed")
+	}
+	assertManualConfigRetained := func() {
+		t.Helper()
+		b, readErr := os.ReadFile(configPath)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		var value map[string]any
+		if err := json.Unmarshal(b, &value); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(value["manual_top_level"], map[string]any{"keep": true}) {
+			t.Fatalf("manual configuration was not retained: %s", b)
+		}
+	}
+	assertManualConfigRetained()
 	changedSNI, err := a.ResetCredentials(context.Background(), domain.CoreSingBox, domain.ResetOptions{SNI: "alt.example.com"})
 	if err != nil {
 		t.Fatal(err)
@@ -225,6 +261,7 @@ func TestGenerateOverwritePreserveRotateAndRollback(t *testing.T) {
 	if changedSNI.Server != third.Server || changedSNI.Port != third.Port {
 		t.Fatal("SNI reset changed server address or port")
 	}
+	assertManualConfigRetained()
 	beforeConfig, _ := os.ReadFile(configPath)
 	beforeState, _ := os.ReadFile(a.Layout.StatePath(domain.CoreSingBox))
 	r.failRestart = true
