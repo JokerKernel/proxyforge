@@ -6,7 +6,7 @@ const (
 	CoreSingBox     = "sing-box"
 	CoreXray        = "xray"
 	VisionFlow      = "xtls-rprx-vision"
-	DefaultUserName = "proxyforge-user"
+	DefaultUserName = "one"
 )
 
 type NodeSpec struct {
@@ -41,7 +41,14 @@ type GenerateOptions struct {
 }
 
 func DefaultInboundTag(core string) string {
-	return "proxyforge-" + core + "-in"
+	switch core {
+	case CoreSingBox:
+		return "singbox-one"
+	case CoreXray:
+		return "xray-one"
+	default:
+		return core + "-one"
+	}
 }
 
 type ResetOptions struct {

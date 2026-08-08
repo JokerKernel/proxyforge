@@ -2,7 +2,7 @@
   "inbounds": [{
     "listen": "::",
     "listen_port": 443,
-    "tag": "proxyforge-sing-box-in",
+    "tag": "singbox-one",
     "tls": {
       "enabled": true,
       "reality": {
@@ -14,7 +14,7 @@
       "server_name": "example.com"
     },
     "type": "vless",
-    "users": [{"flow": "xtls-rprx-vision", "name": "proxyforge-user", "uuid": "123e4567-e89b-42d3-a456-426614174000"}]
+    "users": [{"flow": "xtls-rprx-vision", "name": "one", "uuid": "123e4567-e89b-42d3-a456-426614174000"}]
   }],
   "log": {"level": "info", "timestamp": true},
   "outbounds": [{"tag": "direct", "type": "direct"}],

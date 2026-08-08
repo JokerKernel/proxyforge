@@ -208,7 +208,7 @@ func (c *commandSet) generateCommand() *cobra.Command {
 	cmd.Flags().IntVar(&o.Port, "port", 0, "监听 TCP 端口")
 	cmd.Flags().StringVar(&o.SNI, "sni", "", "REALITY SNI 域名")
 	cmd.Flags().StringVar(&o.Target, "target", "", "REALITY 目标 host:port（默认 SNI:443）")
-	cmd.Flags().StringVar(&o.UserName, "user-name", "", "服务端用户名称（默认 proxyforge-user）")
+	cmd.Flags().StringVar(&o.UserName, "user-name", "", "服务端用户名称（默认 one）")
 	cmd.Flags().StringVar(&o.InboundTag, "inbound-tag", "", "入站标签（默认按内核自动生成）")
 	cmd.Flags().BoolVar(&o.SimplifiedConfig, "simplified-config", false, "sing-box 使用简化配置（系统 DNS、较少 DNS 日志，但私网域名拦截较弱）")
 	cmd.Flags().BoolVar(&o.RotateCredentials, "rotate-credentials", false, "轮换 UUID、密钥和 short ID，使旧客户端失效")
