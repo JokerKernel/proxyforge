@@ -6,6 +6,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"proxyforge/internal/app"
 	"proxyforge/internal/domain"
@@ -125,5 +126,55 @@ func TestMenuCanReturnFromCoreSelection(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "已退出 ProxyForge") {
 		t.Fatalf("missing exit message: %q", out.String())
+	}
+}
+
+func TestFillGenerateSelectsRandomDefaultFromFastCandidates(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{
+		reader: bufio.NewReader(strings.NewReader("\n\nyes\n")),
+		out:    &out,
+		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
+			if len(candidates) < 10 || server != "server.example.com" || limit != 10 {
+				t.Fatalf("probe candidates=%d server=%q limit=%d", len(candidates), server, limit)
+			}
+			return []app.SNICandidate{
+				{Domain: "fast.example.com", Latency: 5 * time.Millisecond},
+				{Domain: "second.example.com", Latency: 8 * time.Millisecond},
+			}, nil
+		},
+		randomIndex: func(size int) int {
+			if size != 2 {
+				t.Fatalf("random size=%d", size)
+			}
+			return 1
+		},
+	}
+	opts := domain.GenerateOptions{Server: "server.example.com", Port: 443}
+	if err := c.fillGenerate(context.Background(), domain.CoreSingBox, &opts); err != nil {
+		t.Fatal(err)
+	}
+	if opts.SNI != "second.example.com" || opts.Target != "second.example.com:443" {
+		t.Fatalf("generate options=%#v", opts)
+	}
+	if !strings.Contains(out.String(), "最快的候选域名") || !strings.Contains(out.String(), "[2]") {
+		t.Fatalf("candidate menu output=%q", out.String())
+	}
+}
+
+func TestDefaultSNICandidatesAreUniqueAndValid(t *testing.T) {
+	seen := make(map[string]struct{}, len(defaultSNICandidates))
+	for _, candidate := range defaultSNICandidates {
+		if err := system.ValidateSNI(candidate); err != nil {
+			t.Errorf("invalid candidate %q: %v", candidate, err)
+		}
+		normalized := strings.ToLower(strings.TrimSpace(candidate))
+		if _, exists := seen[normalized]; exists {
+			t.Errorf("duplicate candidate %q", candidate)
+		}
+		seen[normalized] = struct{}{}
+	}
+	if len(seen) < 10 {
+		t.Fatalf("candidate pool too small: %d", len(seen))
 	}
 }

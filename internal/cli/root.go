@@ -21,12 +21,14 @@ import (
 )
 
 type commandSet struct {
-	app    *app.App
-	in     io.Reader
-	reader *bufio.Reader
-	out    io.Writer
-	errOut io.Writer
-	yes    bool
+	app         *app.App
+	in          io.Reader
+	reader      *bufio.Reader
+	out         io.Writer
+	errOut      io.Writer
+	yes         bool
+	probeSNI    sniCandidateProbeFunc
+	randomIndex func(int) int
 }
 
 func New(version string) *cobra.Command {
@@ -34,7 +36,10 @@ func New(version string) *cobra.Command {
 	layout := system.Layout{Root: os.Getenv("PROXYFORGE_ROOT")}
 	reg := provider.NewRegistry(singbox.New(), xray.New())
 	a := app.New(reg, runner, layout, os.Stdout)
-	c := &commandSet{app: a, in: os.Stdin, reader: bufio.NewReader(os.Stdin), out: os.Stdout, errOut: os.Stderr}
+	c := &commandSet{
+		app: a, in: os.Stdin, reader: bufio.NewReader(os.Stdin), out: os.Stdout, errOut: os.Stderr,
+		probeSNI: app.ProbeSNICandidates, randomIndex: secureRandomIndex,
+	}
 	root := &cobra.Command{
 		Use: "proxyforge", Short: "Linux 双内核 VLESS + REALITY + Vision 管理器", Version: version,
 		SilenceUsage: true, SilenceErrors: true,
@@ -186,7 +191,14 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		o.Port = port
 	}
 	if o.SNI == "" {
-		o.SNI = c.askDefault("REALITY SNI（必须是可信目标证书域名）", "")
+		o.SNI = c.askDefault("REALITY SNI（输入域名；直接回车自动测速候选）", "")
+		if o.SNI == "" {
+			selected, err := c.selectSNICandidate(ctx, o.Server)
+			if err != nil {
+				return fmt.Errorf("自动选择 SNI 失败: %w", err)
+			}
+			o.SNI = selected
+		}
 	}
 	if o.Target == "" {
 		o.Target = netJoinHostPort(o.SNI, "443")
