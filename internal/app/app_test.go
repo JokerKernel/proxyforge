@@ -310,6 +310,29 @@ func TestGenerateOverwritePreserveRotateAndRollback(t *testing.T) {
 	}
 }
 
+func TestGenerateReplacesEmptyPlaceholderWithoutBackup(t *testing.T) {
+	r := &fakeRunner{port: freePort(t)}
+	a, root := testApp(t, r)
+	configPath := a.Layout.Resolve(singbox.New().ConfigPath())
+	if err := system.AtomicWrite(configPath, []byte("{\n}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	o := domain.GenerateOptions{
+		Server: "server.example.com", Port: r.port, SNI: "www.example.com", NonInteractive: true,
+	}
+	if _, err := a.Generate(context.Background(), domain.CoreSingBox, o); err != nil {
+		t.Fatal(err)
+	}
+	backups, err := filepath.Glob(filepath.Join(root, "var/lib/proxyforge/backups/sing-box/*/config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(backups) != 0 {
+		t.Fatalf("empty placeholder was backed up: %v", backups)
+	}
+}
+
 func TestGenerateStopsActiveServiceBeforeFirstPortCheck(t *testing.T) {
 	r := &fakeRunner{port: freePort(t)}
 	a, _ := testApp(t, r)
@@ -803,6 +826,36 @@ func TestServerConfigReadsCurrentActiveFile(t *testing.T) {
 	}
 	if _, err := a.ServerConfig(domain.CoreXray); err == nil || !strings.Contains(err.Error(), "尚未找到") {
 		t.Fatalf("missing config error=%v", err)
+	}
+}
+
+func TestServerConfigExistsIgnoresEmptyPlaceholders(t *testing.T) {
+	a, _ := testApp(t, &fakeRunner{})
+	path := a.Layout.Resolve(xray.New().ConfigPath())
+	tests := []struct {
+		name string
+		data string
+		want bool
+	}{
+		{name: "zero bytes", data: "", want: false},
+		{name: "whitespace", data: " \n\t", want: false},
+		{name: "empty object", data: "{\n  }\n", want: false},
+		{name: "configured object", data: `{"inbounds": []}`, want: true},
+		{name: "invalid but nonempty", data: "custom configuration", want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := system.AtomicWrite(path, []byte(tt.data), 0600); err != nil {
+				t.Fatal(err)
+			}
+			got, err := a.ServerConfigExists(domain.CoreXray)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Fatalf("ServerConfigExists() = %v, want %v for %q", got, tt.want, tt.data)
+			}
+		})
 	}
 }
 

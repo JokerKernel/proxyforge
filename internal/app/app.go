@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -544,7 +545,7 @@ func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, co
 	}
 	configPath := a.Layout.Resolve(p.ConfigPath())
 	oldConfig, readErr := os.ReadFile(configPath)
-	hadConfig := readErr == nil
+	hadConfig := readErr == nil && !isEmptyServerConfigPlaceholder(oldConfig)
 	if readErr != nil && !os.IsNotExist(readErr) {
 		return n, readErr
 	}
@@ -764,7 +765,20 @@ func (a *App) ServerConfigExists(core string) (bool, error) {
 	if !info.Mode().IsRegular() {
 		return false, fmt.Errorf("服务端配置路径不是普通文件: %s", p.ConfigPath())
 	}
-	return true, nil
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return false, fmt.Errorf("读取 %s 服务端配置 %s: %w", core, p.ConfigPath(), err)
+	}
+	return !isEmptyServerConfigPlaceholder(b), nil
+}
+
+func isEmptyServerConfigPlaceholder(b []byte) bool {
+	trimmed := strings.TrimSpace(string(b))
+	if trimmed == "" {
+		return true
+	}
+	var object map[string]json.RawMessage
+	return json.Unmarshal([]byte(trimmed), &object) == nil && object != nil && len(object) == 0
 }
 
 func (a *App) ClientConfig(ctx context.Context, core, format, output string, force bool) ([]byte, error) {
