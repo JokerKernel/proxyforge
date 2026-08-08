@@ -48,7 +48,7 @@ func (i Installer) Run(ctx context.Context, p provider.CoreProvider, opts Option
 			return "", fmt.Errorf("检查运行时代理: %w", err)
 		}
 		if proxyURL != "" && i.Output != nil {
-			fmt.Fprintln(i.Output, "检测到运行时代理，将传递给官方管理脚本。")
+			fmt.Fprintln(i.Output, "[ProxyForge/信息] 检测到运行时代理，将传递给官方管理脚本。")
 		}
 		args = append(args, proxyProvider.ScriptProxyArgs(proxyURL)...)
 	}
@@ -85,8 +85,11 @@ func (i Installer) runScript(ctx context.Context, p provider.CoreProvider, opts 
 	}
 	hash := system.SHA256(body)
 	if i.Output != nil {
-		fmt.Fprintf(i.Output, "官方管理脚本: %s\n最终地址: %s\n大小: %d bytes\nSHA-256: %s\n", scriptURL, finalURL, len(body), hash)
-		fmt.Fprintf(i.Output, "危险操作摘要: 脚本将以 root 执行%s操作，可能修改二进制、systemd unit 和软件包文件。\n", operation)
+		fmt.Fprintf(i.Output, "[官方脚本/信息] 来源：%s\n", scriptURL)
+		fmt.Fprintf(i.Output, "[官方脚本/信息] 最终地址：%s\n", finalURL)
+		fmt.Fprintf(i.Output, "[官方脚本/信息] 大小：%d bytes\n", len(body))
+		fmt.Fprintf(i.Output, "[官方脚本/信息] SHA-256：%s\n", hash)
+		fmt.Fprintf(i.Output, "[官方脚本/风险] 将以 root 执行%s操作，可能修改二进制、systemd unit 和软件包文件。\n", operation)
 	}
 	if err := i.trust(p.Name(), hash, opts); err != nil {
 		return hash, err
@@ -118,43 +121,55 @@ func (i Installer) executeScript(ctx context.Context, args []string) error {
 	if output == nil {
 		output = io.Discard
 	}
-	fmt.Fprintln(output, "开始执行官方管理脚本，以下为实时输出：")
+	fmt.Fprintln(output, "[官方脚本/状态] 开始执行，以下为实时输出：")
+	capture := &scriptOutputCapture{
+		output: system.NewLinePrefixWriter(output, "[官方脚本/输出] "),
+		limit:  maxCapturedScriptOutput,
+	}
 	if streaming, ok := i.Runner.(provider.StreamingRunner); ok {
-		capture := &scriptOutputCapture{output: output, limit: maxCapturedScriptOutput}
-		if err := streaming.RunStreaming(ctx, capture, capture, "bash", args...); err != nil {
+		runErr := streaming.RunStreaming(ctx, capture, capture, "bash", args...)
+		capture.FinishLine()
+		if runErr != nil {
 			if tail := strings.TrimSpace(capture.String()); tail != "" {
-				return fmt.Errorf("官方管理脚本执行失败（末尾输出如下）:\n%s\n%w", tail, err)
+				prefixedTail := strings.TrimSpace(string(system.PrefixLines([]byte(tail), "[官方脚本/输出] ")))
+				return fmt.Errorf("官方管理脚本执行失败（末尾输出如下）:\n%s\n%w", prefixedTail, runErr)
 			}
-			return fmt.Errorf("官方管理脚本执行失败: %w", err)
+			return fmt.Errorf("官方管理脚本执行失败: %w", runErr)
 		}
-		fmt.Fprintln(output, "官方管理脚本执行完成。")
+		fmt.Fprintln(output, "[官方脚本/状态] 执行完成。")
 		return nil
 	}
 
 	b, err := i.Runner.Run(ctx, "bash", args...)
 	if len(b) > 0 {
-		_, _ = output.Write(b)
+		_, _ = capture.Write(b)
 		if b[len(b)-1] != '\n' {
-			fmt.Fprintln(output)
+			_, _ = capture.Write([]byte("\n"))
 		}
 	}
 	if err != nil {
 		return fmt.Errorf("官方管理脚本执行失败: %w", err)
 	}
-	fmt.Fprintln(output, "官方管理脚本执行完成。")
+	fmt.Fprintln(output, "[官方脚本/状态] 执行完成。")
 	return nil
 }
 
 type scriptOutputCapture struct {
-	mu     sync.Mutex
-	output io.Writer
-	tail   []byte
-	limit  int
+	mu      sync.Mutex
+	output  io.Writer
+	tail    []byte
+	limit   int
+	wrote   bool
+	newline bool
 }
 
 func (w *scriptOutputCapture) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if len(p) > 0 {
+		w.wrote = true
+		w.newline = p[len(p)-1] == '\n'
+	}
 	if len(p) >= w.limit {
 		w.tail = append(w.tail[:0], p[len(p)-w.limit:]...)
 	} else {
@@ -166,6 +181,15 @@ func (w *scriptOutputCapture) Write(p []byte) (int, error) {
 		w.tail = append(w.tail, p...)
 	}
 	return w.output.Write(p)
+}
+
+func (w *scriptOutputCapture) FinishLine() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.wrote && !w.newline {
+		_, _ = w.output.Write([]byte("\n"))
+		w.newline = true
+	}
 }
 
 func (w *scriptOutputCapture) String() string {
@@ -362,17 +386,17 @@ func bashSyntaxLogged(ctx context.Context, b []byte, output io.Writer) error {
 		return err
 	}
 	if output != nil {
-		fmt.Fprintf(output, "[命令] 执行命令：bash -n %s\n", path)
+		fmt.Fprintf(output, "[ProxyForge/命令] 执行命令：bash -n %s\n", path)
 	}
 	cmd := exec.CommandContext(ctx, "bash", "-n", path)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if output != nil {
-			fmt.Fprintln(output, "[命令] 命令失败：bash")
+			fmt.Fprintln(output, "[ProxyForge/命令] 命令失败：bash")
 		}
 		return fmt.Errorf("安装脚本 bash -n 校验失败: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 	if output != nil {
-		fmt.Fprintln(output, "[命令] 命令完成：bash")
+		fmt.Fprintln(output, "[ProxyForge/命令] 命令完成：bash")
 	}
 	return nil
 }

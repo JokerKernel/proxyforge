@@ -98,8 +98,41 @@ func TestServiceManagerFollowsJournalLogs(t *testing.T) {
 	if runner.name != "journalctl" || !reflect.DeepEqual(runner.args, wantArgs) {
 		t.Fatalf("command=%s args=%v, want journalctl %v", runner.name, runner.args, wantArgs)
 	}
-	if output.String() != "live log line\n" {
+	if output.String() != "[服务日志/xray] live log line\n" {
 		t.Fatalf("output=%q", output.String())
+	}
+}
+
+func TestServiceManagerLabelsBufferedOutput(t *testing.T) {
+	runner := outputRunner{output: []byte("line one\nline two\n")}
+	manager := ServiceManager{Runner: runner}
+	logs, err := manager.Action(context.Background(), "sing-box.service", "logs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(logs), "[服务日志/sing-box] line one\n[服务日志/sing-box] line two\n"; got != want {
+		t.Fatalf("logs=%q, want %q", got, want)
+	}
+	status, err := manager.Action(context.Background(), "sing-box.service", "status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(status), "[系统命令/输出] line one\n[系统命令/输出] line two\n"; got != want {
+		t.Fatalf("status=%q, want %q", got, want)
+	}
+}
+
+func TestLinePrefixWriterHandlesFragmentedLines(t *testing.T) {
+	var output bytes.Buffer
+	w := NewLinePrefixWriter(&output, "[来源] ")
+	if _, err := io.WriteString(w, "first\npart"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(w, "ial\nlast"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := output.String(), "[来源] first\n[来源] partial\n[来源] last"; got != want {
+		t.Fatalf("output=%q, want %q", got, want)
 	}
 }
 
@@ -134,7 +167,7 @@ func TestLoggingRunnerReportsCommandWithoutLeakingBufferedOutput(t *testing.T) {
 	if string(b) != "private-key-output" {
 		t.Fatalf("output=%q", b)
 	}
-	for _, want := range []string{"[命令] 执行命令：sing-box generate reality-keypair", "[命令] 命令完成：sing-box"} {
+	for _, want := range []string{"[ProxyForge/命令] 执行命令：sing-box generate reality-keypair", "[ProxyForge/命令] 命令完成：sing-box"} {
 		if !strings.Contains(log.String(), want) {
 			t.Fatalf("log missing %q: %s", want, log.String())
 		}
@@ -152,7 +185,7 @@ func TestLoggingRunnerReportsCanceledStreamingCommandAsStopped(t *testing.T) {
 	if err := runner.RunStreaming(ctx, io.Discard, io.Discard, "journalctl", "-f"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("error=%v, want context cancellation", err)
 	}
-	if !strings.Contains(log.String(), "[命令] 命令已停止：journalctl") || strings.Contains(log.String(), "命令失败") {
+	if !strings.Contains(log.String(), "[ProxyForge/命令] 命令已停止：journalctl") || strings.Contains(log.String(), "命令失败") {
 		t.Fatalf("unexpected cancellation log: %s", log.String())
 	}
 }
@@ -358,5 +391,23 @@ func TestRemovePackageUsesDistributionNativeDatabase(t *testing.T) {
 				t.Fatalf("command=%q args=%v, want %q %v", runner.name, runner.args, tt.command, tt.args)
 			}
 		})
+	}
+}
+
+func TestRemovePackageLabelsStreamingCommandOutput(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(root+"/etc", 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(root+"/etc/os-release", []byte("ID=debian\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runner := &streamingRecordingRunner{}
+	var output bytes.Buffer
+	if err := RemovePackage(context.Background(), runner, Layout{Root: root}, "sing-box", &output); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := output.String(), "[系统命令/输出] live log line\n"; got != want {
+		t.Fatalf("output=%q, want %q", got, want)
 	}
 }

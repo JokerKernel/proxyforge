@@ -66,7 +66,7 @@ func (r *LoggingRunner) log(label, name string, args []string) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	fmt.Fprintf(r.Out, "[命令] %s：%s\n", label, strings.Join(parts, " "))
+	fmt.Fprintf(r.Out, "[ProxyForge/命令] %s：%s\n", label, strings.Join(parts, " "))
 }
 
 func redactCommandArgs(args []string) []string {
@@ -91,7 +91,7 @@ func (r *LoggingRunner) logResult(label, name string) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	fmt.Fprintf(r.Out, "[命令] %s：%s\n", label, name)
+	fmt.Fprintf(r.Out, "[ProxyForge/命令] %s：%s\n", label, name)
 }
 
 func quoteCommandArg(value string) string {

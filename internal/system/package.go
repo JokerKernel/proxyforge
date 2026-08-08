@@ -31,7 +31,8 @@ func RemovePackage(ctx context.Context, runner provider.Runner, layout Layout, p
 		if output == nil {
 			output = io.Discard
 		}
-		removeErr = streaming.RunStreaming(ctx, output, output, command, args...)
+		prefixed := NewLinePrefixWriter(output, "[系统命令/输出] ")
+		removeErr = streaming.RunStreaming(ctx, prefixed, prefixed, command, args...)
 	} else {
 		_, removeErr = runner.Run(ctx, command, args...)
 	}

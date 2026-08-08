@@ -18,13 +18,15 @@ func (m ServiceManager) Action(ctx context.Context, service, action string) ([]b
 		return nil, fmt.Errorf("不支持的服务操作 %q", action)
 	}
 	if action == "logs" {
-		return m.Runner.Run(ctx, "journalctl", "-u", service, "-n", "100", "--no-pager")
+		b, err := m.Runner.Run(ctx, "journalctl", "-u", service, "-n", "100", "--no-pager")
+		return PrefixLines(b, serviceLogPrefix(service)), err
 	}
 	args := []string{action, service}
 	if action == "status" {
 		args = append(args, "--no-pager")
 	}
-	return m.Runner.Run(ctx, "systemctl", args...)
+	b, err := m.Runner.Run(ctx, "systemctl", args...)
+	return PrefixLines(b, "[系统命令/输出] "), err
 }
 
 func (m ServiceManager) FollowLogs(ctx context.Context, service string, output io.Writer) error {
@@ -32,7 +34,12 @@ func (m ServiceManager) FollowLogs(ctx context.Context, service string, output i
 	if !ok {
 		return fmt.Errorf("当前命令执行器不支持实时日志输出")
 	}
-	return streaming.RunStreaming(ctx, output, output, "journalctl", "-u", service, "-n", "100", "-f", "--no-pager")
+	prefixed := NewLinePrefixWriter(output, serviceLogPrefix(service))
+	return streaming.RunStreaming(ctx, prefixed, prefixed, "journalctl", "-u", service, "-n", "100", "-f", "--no-pager")
+}
+
+func serviceLogPrefix(service string) string {
+	return "[服务日志/" + strings.TrimSuffix(service, ".service") + "] "
 }
 
 func (m ServiceManager) Restart(ctx context.Context, service string) error {

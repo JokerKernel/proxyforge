@@ -64,7 +64,7 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 		Use: "proxyforge", Short: "Linux 双内核 VLESS + REALITY + Vision 管理器", Version: version,
 		SilenceUsage: true, SilenceErrors: true,
 		PersistentPreRunE: func(*cobra.Command, []string) error {
-			fmt.Fprintln(os.Stderr, "[步骤] 验证 root 运行权限")
+			fmt.Fprintln(os.Stderr, "[ProxyForge/步骤] 验证 root 运行权限")
 			return rootCheck()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error { return c.menu(cmd.Context()) },
@@ -492,7 +492,7 @@ func printGenerateSuccess(w io.Writer, n domain.NodeSpec) {
 	const border = "========================================================"
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, border)
-	fmt.Fprintf(w, "  %s 服务端配置生成成功\n", n.Core)
+	fmt.Fprintf(w, "  [ProxyForge/结果] %s 服务端配置生成成功\n", n.Core)
 	fmt.Fprintln(w, border)
 	fmt.Fprintf(w, "服务状态：active（运行中）\n")
 	fmt.Fprintf(w, "开机启动：enabled（已启用）\n")
@@ -1009,7 +1009,7 @@ func eraseChoiceRetry(w io.Writer, invalidShown bool) {
 }
 
 func (c *commandSet) printMenuError(err error) {
-	fmt.Fprintf(c.errOut, "操作失败：%v\n", err)
+	fmt.Fprintf(c.errOut, "[ProxyForge/错误] 操作失败：%v\n", err)
 }
 
 func (c *commandSet) askDefault(label, def string) string {

@@ -148,7 +148,12 @@ func TestExecuteScriptStreamsOutput(t *testing.T) {
 	if !runner.streamingCalled || runner.bufferedCalled {
 		t.Fatalf("streaming=%v buffered=%v", runner.streamingCalled, runner.bufferedCalled)
 	}
-	for _, want := range []string{"以下为实时输出", "stdout step", "stderr step", "官方管理脚本执行完成"} {
+	for _, want := range []string{
+		"[官方脚本/状态] 开始执行，以下为实时输出",
+		"[官方脚本/输出] stdout step",
+		"[官方脚本/输出] stderr step",
+		"[官方脚本/状态] 执行完成",
+	} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("output missing %q: %s", want, output.String())
 		}
@@ -181,6 +186,19 @@ func TestRunPassesRuntimeProxyToXrayScript(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "检测到运行时代理") || strings.Contains(output.String(), proxyURL.String()) {
 		t.Fatalf("proxy notice missing or proxy URL leaked: %s", output.String())
+	}
+	for _, want := range []string{
+		"[ProxyForge/信息] 检测到运行时代理",
+		"[ProxyForge/命令] 执行命令：bash -n",
+		"[官方脚本/信息] 来源：",
+		"[官方脚本/信息] SHA-256：",
+		"[官方脚本/风险]",
+		"[官方脚本/输出] stdout step",
+		"[官方脚本/状态] 执行完成",
+	} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("labeled output missing %q: %s", want, output.String())
+		}
 	}
 }
 
