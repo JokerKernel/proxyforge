@@ -186,9 +186,9 @@ func (a *App) Uninstall(ctx context.Context, core string, opts install.Options) 
 	if err != nil {
 		return err
 	}
-	alreadyUninstalled := !before.binary && !before.unit && !before.serviceRunning
+	alreadyUninstalled := !before.binary && !before.unit && !before.serviceRunning && !before.serviceEnabled
 	if alreadyUninstalled {
-		a.progressf("未检测到 %s 二进制、systemd unit 或运行中的服务；跳过重复卸载", core)
+		a.progressf("未检测到 %s 二进制、systemd unit、运行中或已启用的服务；跳过重复卸载", core)
 	}
 
 	configPath := a.Layout.Resolve(p.ConfigPath())
@@ -213,11 +213,21 @@ func (a *App) Uninstall(ctx context.Context, core string, opts install.Options) 
 	}
 
 	if !alreadyUninstalled {
-		a.progressf("停止服务并卸载内核和 systemd unit")
+		if before.unit || before.serviceRunning || before.serviceEnabled {
+			a.progressf("手动停止并禁用 systemd 服务 %s", p.ServiceName())
+			if err := a.Services.DisableNow(ctx, p.ServiceName()); err != nil {
+				return fmt.Errorf("停止并禁用 %s 失败: %w", p.ServiceName(), err)
+			}
+		}
+		a.progressf("卸载内核软件包和 systemd unit")
 		if err := a.Installer.Uninstall(ctx, p, opts); err != nil {
 			return err
 		}
-		a.progressf("核验二进制、systemd unit 和服务状态")
+		a.progressf("刷新 systemd unit 缓存")
+		if err := a.Services.DaemonReload(ctx); err != nil {
+			return fmt.Errorf("内核卸载后刷新 systemd 失败；活动配置和 ProxyForge 状态已保留: %w", err)
+		}
+		a.progressf("核验二进制、systemd unit、运行状态和开机启动状态")
 		if err := a.verifyUninstalled(ctx, p); err != nil {
 			return err
 		}
@@ -242,8 +252,10 @@ type uninstallArtifacts struct {
 	binary         bool
 	unit           bool
 	serviceRunning bool
+	serviceEnabled bool
 	unitLoadState  string
 	serviceState   string
+	enabledState   string
 }
 
 func (a *App) inspectUninstallArtifacts(ctx context.Context, p provider.CoreProvider) (uninstallArtifacts, error) {
@@ -275,6 +287,22 @@ func (a *App) inspectUninstallArtifacts(ctx context.Context, p provider.CoreProv
 	if status.Active {
 		result.serviceRunning = true
 	}
+	enabledState, enabledErr := a.Services.EnabledState(ctx, p.ServiceName())
+	result.enabledState = enabledState
+	switch enabledState {
+	case "enabled", "enabled-runtime", "linked", "linked-runtime", "alias":
+		result.serviceEnabled = true
+	case "disabled", "static", "indirect", "generated", "transient", "not-found", "masked", "masked-runtime":
+		// These states do not install a persistent boot-time enablement link.
+	case "":
+		if enabledErr != nil && result.unit {
+			return result, fmt.Errorf("检查 %s 开机启动状态: %w", p.ServiceName(), enabledErr)
+		}
+	default:
+		// Treat an unfamiliar state as a remaining artifact instead of silently
+		// accepting a potentially enabled service.
+		result.serviceEnabled = true
+	}
 	return result, nil
 }
 
@@ -292,6 +320,9 @@ func (a *App) verifyUninstalled(ctx context.Context, p provider.CoreProvider) er
 	}
 	if artifacts.serviceRunning {
 		remaining = append(remaining, fmt.Sprintf("服务 %s（状态=%s）", p.ServiceName(), artifacts.serviceState))
+	}
+	if artifacts.serviceEnabled {
+		remaining = append(remaining, fmt.Sprintf("服务 %s 仍启用开机启动（状态=%s）", p.ServiceName(), artifacts.enabledState))
 	}
 	if len(remaining) > 0 {
 		return fmt.Errorf("卸载命令已完成，但卸载后核验失败，仍存在：%s；活动配置和 ProxyForge 状态已保留", strings.Join(remaining, "、"))

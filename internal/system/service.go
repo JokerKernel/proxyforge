@@ -36,6 +36,21 @@ func (m ServiceManager) Enable(ctx context.Context, service string) error {
 	return err
 }
 
+func (m ServiceManager) DisableNow(ctx context.Context, service string) error {
+	_, err := m.Runner.Run(ctx, "systemctl", "disable", "--now", service)
+	return err
+}
+
+func (m ServiceManager) DaemonReload(ctx context.Context) error {
+	_, err := m.Runner.Run(ctx, "systemctl", "daemon-reload")
+	return err
+}
+
+func (m ServiceManager) EnabledState(ctx context.Context, service string) (string, error) {
+	b, err := m.Runner.Run(ctx, "systemctl", "is-enabled", service)
+	return strings.TrimSpace(string(b)), err
+}
+
 func (m ServiceManager) IsActive(ctx context.Context, service string) (domain.ServiceStatus, error) {
 	b, err := m.Runner.Run(ctx, "systemctl", "is-active", service)
 	detail := strings.TrimSpace(string(b))

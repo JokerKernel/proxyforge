@@ -667,7 +667,8 @@ func (c *commandSet) printCoreMenu(core string) {
 }
 
 func (c *commandSet) confirmUninstall(core string) (bool, error) {
-	fmt.Fprintf(c.out, "即将停止并卸载 %s，删除其 ProxyForge 状态和受管活动配置。\n", core)
+	fmt.Fprintf(c.out, "即将停止并禁用 %s 的 systemd 服务，然后卸载内核并检查服务残留。\n", core)
+	fmt.Fprintln(c.out, "卸载成功后会删除其 ProxyForge 状态和受管活动配置。")
 	fmt.Fprintln(c.out, "客户端将立即失效；历史备份和安装脚本信任记录会保留。")
 	return c.confirm("确认卸载？输入 yes/y 继续")
 }

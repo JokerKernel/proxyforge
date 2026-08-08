@@ -35,12 +35,14 @@ type fakeRunner struct {
 	port             int
 	failRestart      bool
 	failEnable       bool
+	failDisable      bool
 	failRemove       bool
 	incompleteRemove bool
 	missingBinary    bool
 	unitRemoved      bool
 	keyGeneration    int
 	serviceStopped   bool
+	serviceEnabled   bool
 }
 
 func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
@@ -82,6 +84,15 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte
 		}
 		return []byte("active\n"), nil
 	}
+	if name == "systemctl" && len(args) > 0 && args[0] == "is-enabled" {
+		if f.unitRemoved {
+			return []byte("not-found\n"), errors.New("unit not found")
+		}
+		if f.serviceEnabled {
+			return []byte("enabled\n"), nil
+		}
+		return []byte("disabled\n"), errors.New("service disabled")
+	}
 	if name == "systemctl" && len(args) > 0 && args[0] == "stop" {
 		f.serviceStopped = true
 		return nil, nil
@@ -102,6 +113,18 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte
 		if f.failEnable {
 			return nil, errors.New("injected enable failure")
 		}
+		f.serviceEnabled = true
+		return nil, nil
+	}
+	if name == "systemctl" && len(args) > 0 && args[0] == "disable" {
+		if f.failDisable {
+			return nil, errors.New("injected disable failure")
+		}
+		f.serviceStopped = true
+		f.serviceEnabled = false
+		return nil, nil
+	}
+	if name == "systemctl" && len(args) > 0 && args[0] == "daemon-reload" {
 		return nil, nil
 	}
 	if name == "dpkg" || name == "rpm" {
@@ -473,6 +496,15 @@ func TestUninstallBacksUpAndRemovesManagedConfigAndState(t *testing.T) {
 	if !strings.Contains(r.callLog(), "dpkg --remove sing-box") {
 		t.Fatalf("package removal was not called: %s", r.callLog())
 	}
+	for _, want := range []string{
+		"systemctl disable --now sing-box.service",
+		"systemctl daemon-reload",
+		"systemctl is-enabled sing-box.service",
+	} {
+		if !strings.Contains(r.callLog(), want) {
+			t.Fatalf("uninstall did not clean and verify systemd service with %q: %s", want, r.callLog())
+		}
+	}
 }
 
 func TestUninstallFailureKeepsManagedConfigAndState(t *testing.T) {
@@ -525,10 +557,13 @@ func TestUninstallVerificationFailureKeepsManagedConfigAndState(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "卸载后核验失败") {
 		t.Fatalf("error=%v, want verification failure", err)
 	}
-	for _, want := range []string{"二进制 sing-box", "systemd unit sing-box.service", "状态=active"} {
+	for _, want := range []string{"二进制 sing-box", "systemd unit sing-box.service"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error=%v, want remaining artifact %q", err, want)
 		}
+	}
+	if strings.Contains(err.Error(), "状态=active") || strings.Contains(err.Error(), "仍启用开机启动") {
+		t.Fatalf("service was not stopped and disabled before package removal: %v", err)
 	}
 	if got, readErr := os.ReadFile(configPath); readErr != nil || !bytes.Equal(got, config) {
 		t.Fatalf("config=%q error=%v", got, readErr)

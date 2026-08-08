@@ -43,6 +43,23 @@ func TestServiceManagerEnable(t *testing.T) {
 	}
 }
 
+func TestServiceManagerUninstallActions(t *testing.T) {
+	runner := &recordingRunner{}
+	manager := ServiceManager{Runner: runner}
+	if err := manager.DisableNow(context.Background(), "sing-box.service"); err != nil {
+		t.Fatal(err)
+	}
+	if runner.name != "systemctl" || !reflect.DeepEqual(runner.args, []string{"disable", "--now", "sing-box.service"}) {
+		t.Fatalf("disable command=%s args=%v", runner.name, runner.args)
+	}
+	if err := manager.DaemonReload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if runner.name != "systemctl" || !reflect.DeepEqual(runner.args, []string{"daemon-reload"}) {
+		t.Fatalf("reload command=%s args=%v", runner.name, runner.args)
+	}
+}
+
 func TestExecRunnerStreamsStdoutAndStderr(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := (ExecRunner{}).RunStreaming(
