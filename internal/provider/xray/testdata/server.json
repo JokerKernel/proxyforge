@@ -3,6 +3,7 @@
     "listen": "0.0.0.0",
     "port": 443,
     "protocol": "vless",
+    "tag": "proxyforge-xray-in",
     "settings": {"clients": [{"email": "proxyforge-user", "flow": "xtls-rprx-vision", "id": "123e4567-e89b-42d3-a456-426614174000"}], "decryption": "none"},
     "streamSettings": {
       "network": "raw",

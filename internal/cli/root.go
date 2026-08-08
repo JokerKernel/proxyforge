@@ -187,6 +187,7 @@ func (c *commandSet) generateCommand() *cobra.Command {
 	cmd.Flags().StringVar(&o.SNI, "sni", "", "REALITY SNI 域名")
 	cmd.Flags().StringVar(&o.Target, "target", "", "REALITY 目标 host:port（默认 SNI:443）")
 	cmd.Flags().StringVar(&o.UserName, "user-name", "", "服务端用户名称（默认 proxyforge-user）")
+	cmd.Flags().StringVar(&o.InboundTag, "inbound-tag", "", "入站标签（默认按内核自动生成）")
 	cmd.Flags().BoolVar(&o.RotateCredentials, "rotate-credentials", false, "轮换 UUID、密钥和 short ID，使旧客户端失效")
 	cmd.Flags().BoolVar(&o.TakeOver, "take-over", false, "备份并接管现有未知配置")
 	return cmd
@@ -263,6 +264,15 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		}
 		o.UserName = c.askDefault("用户名称", defaultUserName)
 	}
+	if o.InboundTag == "" {
+		defaultInboundTag := domain.DefaultInboundTag(core)
+		if c.app != nil {
+			if current, err := c.app.Store.Load(core); err == nil && strings.TrimSpace(current.InboundTag) != "" {
+				defaultInboundTag = current.InboundTag
+			}
+		}
+		o.InboundTag = c.askDefault("入站标签", defaultInboundTag)
+	}
 	if o.SNI == "" {
 		o.SNI = c.askDefault("REALITY SNI（输入域名；直接回车自动测速候选）", "")
 		if o.SNI == "" {
@@ -307,7 +317,7 @@ func (c *commandSet) runGenerate(ctx context.Context, core string, o domain.Gene
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(c.out, "%s 节点已启用：%s:%d，SNI=%s，用户=%s，内核=%s\n", core, n.Server, n.Port, n.SNI, n.UserName, n.CoreVersion)
+	fmt.Fprintf(c.out, "%s 节点已启用：%s:%d，SNI=%s，用户=%s，入站标签=%s，内核=%s\n", core, n.Server, n.Port, n.SNI, n.UserName, n.InboundTag, n.CoreVersion)
 	return nil
 }
 

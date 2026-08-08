@@ -12,6 +12,7 @@ const (
 type NodeSpec struct {
 	ManagedBy    string    `json:"managed_by"`
 	Core         string    `json:"core"`
+	InboundTag   string    `json:"inbound_tag"`
 	Server       string    `json:"server"`
 	Port         int       `json:"port"`
 	SNI          string    `json:"sni"`
@@ -32,9 +33,14 @@ type GenerateOptions struct {
 	SNI               string
 	Target            string
 	UserName          string
+	InboundTag        string
 	RotateCredentials bool
 	TakeOver          bool
 	NonInteractive    bool
+}
+
+func DefaultInboundTag(core string) string {
+	return "proxyforge-" + core + "-in"
 }
 
 type ResetOptions struct {

@@ -68,6 +68,22 @@ func ValidateUserName(name string) error {
 	return nil
 }
 
+func ValidateTag(tag string) error {
+	if tag == "" {
+		return fmt.Errorf("入站标签不能为空")
+	}
+	if strings.TrimSpace(tag) != tag {
+		return fmt.Errorf("入站标签首尾不能包含空白")
+	}
+	if utf8.RuneCountInString(tag) > 128 {
+		return fmt.Errorf("入站标签不能超过 128 个字符")
+	}
+	if strings.IndexFunc(tag, unicode.IsControl) >= 0 {
+		return fmt.Errorf("入站标签不能包含控制字符")
+	}
+	return nil
+}
+
 func ValidateSNI(sni string) error {
 	if strings.TrimSpace(sni) == "" || net.ParseIP(sni) != nil || !validHostname(sni, true) {
 		return fmt.Errorf("SNI 必须是有效域名")

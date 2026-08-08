@@ -3,7 +3,7 @@
   "inbounds": [{
     "listen": "::",
     "listen_port": 443,
-    "tag": "vless-reality",
+    "tag": "proxyforge-sing-box-in",
     "tls": {
       "enabled": true,
       "reality": {

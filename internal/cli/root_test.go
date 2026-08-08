@@ -46,11 +46,14 @@ func TestClientCommandOffersClashFormat(t *testing.T) {
 	}
 }
 
-func TestGenerateCommandOffersUserName(t *testing.T) {
+func TestGenerateCommandOffersUserNameAndInboundTag(t *testing.T) {
 	c := &commandSet{}
-	flag := c.generateCommand().Flags().Lookup("user-name")
-	if flag == nil || flag.DefValue != "" {
-		t.Fatalf("user-name flag=%v", flag)
+	cmd := c.generateCommand()
+	for _, name := range []string{"user-name", "inbound-tag"} {
+		flag := cmd.Flags().Lookup(name)
+		if flag == nil || flag.DefValue != "" {
+			t.Fatalf("%s flag=%v", name, flag)
+		}
 	}
 }
 
@@ -390,7 +393,7 @@ func TestScreenControlsAreDisabledForRedirectedIO(t *testing.T) {
 func TestFillGenerateSelectsRandomDefaultFromFastCandidates(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("\n\n\nyes\n")),
+		reader: bufio.NewReader(strings.NewReader("\n\n\n\nyes\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
 			if len(candidates) < 10 || server != "server.example.com" || limit != 10 {
@@ -412,7 +415,7 @@ func TestFillGenerateSelectsRandomDefaultFromFastCandidates(t *testing.T) {
 	if err := c.fillGenerate(context.Background(), domain.CoreSingBox, &opts); err != nil {
 		t.Fatal(err)
 	}
-	if opts.SNI != "second.example.com" || opts.Target != "second.example.com:443" || opts.UserName != domain.DefaultUserName {
+	if opts.SNI != "second.example.com" || opts.Target != "second.example.com:443" || opts.UserName != domain.DefaultUserName || opts.InboundTag != domain.DefaultInboundTag(domain.CoreSingBox) {
 		t.Fatalf("generate options=%#v", opts)
 	}
 	if !strings.Contains(out.String(), "最快的候选域名") || !strings.Contains(out.String(), "[2]") ||
