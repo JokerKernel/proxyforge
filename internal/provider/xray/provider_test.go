@@ -98,6 +98,45 @@ func TestPatchServerPreservesManualConfiguration(t *testing.T) {
 	}
 }
 
+func TestPatchLogLevelPreservesOtherSettings(t *testing.T) {
+	p := New()
+	config := []byte(`{
+  "log": {"loglevel": "warning", "dnsLog": true, "maskAddress": "half"},
+  "inbounds": [],
+  "manual": {"keep": true}
+}`)
+	patched, err := p.PatchLogLevel(config, "debug")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(patched, &root); err != nil {
+		t.Fatal(err)
+	}
+	log := root["log"].(map[string]any)
+	if log["loglevel"] != "debug" || log["dnsLog"] != true || log["maskAddress"] != "half" {
+		t.Fatalf("patched log=%#v", log)
+	}
+	if root["manual"].(map[string]any)["keep"] != true {
+		t.Fatalf("manual settings changed: %s", patched)
+	}
+
+	disabled, err := p.PatchLogLevel(patched, "off")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var disabledRoot map[string]any
+	if err := json.Unmarshal(disabled, &disabledRoot); err != nil {
+		t.Fatal(err)
+	}
+	if got := disabledRoot["log"].(map[string]any)["loglevel"]; got != "none" {
+		t.Fatalf("disabled loglevel=%v", got)
+	}
+	if current, err := p.CurrentLogLevel(disabled); err != nil || current != "off" {
+		t.Fatalf("disabled current=%q error=%v", current, err)
+	}
+}
+
 func TestGenerateKeyPairParsesSupportedNativeOutputs(t *testing.T) {
 	tests := []struct {
 		name, output string

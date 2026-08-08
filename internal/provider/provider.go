@@ -25,6 +25,14 @@ type ScriptProxyProvider interface {
 	ScriptProxyArgs(proxyURL string) []string
 }
 
+// LogLevelProvider updates only the top-level logging settings while
+// preserving every unrelated field in an existing server configuration.
+type LogLevelProvider interface {
+	LogLevels() []string
+	CurrentLogLevel([]byte) (string, error)
+	PatchLogLevel([]byte, string) ([]byte, error)
+}
+
 type CoreProvider interface {
 	Name() string
 	Binary() string

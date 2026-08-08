@@ -105,6 +105,41 @@ func TestPatchServerPreservesManualConfiguration(t *testing.T) {
 	}
 }
 
+func TestPatchLogLevelPreservesOtherSettings(t *testing.T) {
+	p := New()
+	config := []byte(`{
+  "log": {"level": "info", "timestamp": true, "output": "custom.log"},
+  "inbounds": [],
+  "manual": {"keep": true}
+}`)
+	patched, err := p.PatchLogLevel(config, "debug")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(patched, &root); err != nil {
+		t.Fatal(err)
+	}
+	log := root["log"].(map[string]any)
+	if log["level"] != "debug" || log["disabled"] != false || log["timestamp"] != true || log["output"] != "custom.log" {
+		t.Fatalf("patched log=%#v", log)
+	}
+	if root["manual"].(map[string]any)["keep"] != true {
+		t.Fatalf("manual settings changed: %s", patched)
+	}
+	if current, err := p.CurrentLogLevel(patched); err != nil || current != "debug" {
+		t.Fatalf("current=%q error=%v", current, err)
+	}
+
+	disabled, err := p.PatchLogLevel(patched, "off")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current, err := p.CurrentLogLevel(disabled); err != nil || current != "off" {
+		t.Fatalf("disabled current=%q error=%v", current, err)
+	}
+}
+
 func TestGenerateKeyPairParsesNativeOutput(t *testing.T) {
 	pair, err := New().GenerateKeyPair(context.Background(), outputRunner{"PrivateKey: private\nPublicKey: public\n"})
 	if err != nil {

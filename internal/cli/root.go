@@ -906,8 +906,9 @@ func (c *commandSet) serviceMenu(ctx context.Context, core string) error {
 		fmt.Fprintln(c.out, "4) 查看状态")
 		fmt.Fprintln(c.out, "5) 查看最近日志")
 		fmt.Fprintln(c.out, "6) 实时日志查看（Ctrl+C 返回服务管理）")
+		fmt.Fprintln(c.out, "7) 设置日志级别")
 		fmt.Fprintln(c.out, "0) 返回内核菜单")
-		choice, chooseErr := c.chooseNumber("请选择", 0, 6, 4)
+		choice, chooseErr := c.chooseNumber("请选择", 0, 7, 4)
 		if chooseErr != nil {
 			return chooseErr
 		}
@@ -922,6 +923,18 @@ func (c *commandSet) serviceMenu(ctx context.Context, core string) error {
 			}
 			continue
 		}
+		if choice == 7 {
+			c.clearScreen()
+			logErr := c.logLevelMenu(ctx, core)
+			if errors.Is(logErr, errReturnToMenu) {
+				continue
+			}
+			if logErr != nil {
+				c.printMenuError(logErr)
+			}
+			c.pauseForMenu()
+			continue
+		}
 		b, actionErr := c.app.Service(ctx, core, actions[choice])
 		if len(b) > 0 {
 			fmt.Fprint(c.out, string(b))
@@ -934,6 +947,108 @@ func (c *commandSet) serviceMenu(ctx context.Context, core string) error {
 		}
 		c.pauseForMenu()
 	}
+}
+
+func (c *commandSet) logLevelMenu(ctx context.Context, core string) error {
+	settings, err := c.app.LogLevelSettings(ctx, core)
+	if err != nil {
+		return err
+	}
+	c.clearScreen()
+	fmt.Fprintf(c.out, "设置日志级别：%s\n", core)
+	fmt.Fprintf(c.out, "当前级别：%s\n\n", logLevelDisplay(core, settings.Current))
+	defaultChoice := 1
+	for index, level := range settings.Levels {
+		fmt.Fprintf(c.out, "%d) %s\n", index+1, logLevelDisplay(core, level))
+		if level == settings.Current {
+			defaultChoice = index + 1
+		}
+	}
+	fmt.Fprintln(c.out, "0) 返回服务管理")
+	choice, err := c.chooseNumber("请选择日志级别", 0, len(settings.Levels), defaultChoice)
+	if err != nil {
+		return err
+	}
+	if choice == 0 {
+		return errReturnToMenu
+	}
+	selected := settings.Levels[choice-1]
+	if selected == settings.Current {
+		fmt.Fprintf(c.out, "[ProxyForge/提示] 日志级别已经是 %s，无需修改。\n", logLevelDisplay(core, selected))
+		return nil
+	}
+
+	sections := []confirmationSection{{title: "将执行", items: []string{
+		"使用内核原生命令校验候选配置",
+		"备份并原子更新当前服务端配置",
+		"服务正在运行时自动重启使设置立即生效",
+	}}}
+	if selected == "off" {
+		sections = append(sections, confirmationSection{title: "注意", items: []string{
+			"关闭后将无法通过 systemd journal 查看内核运行日志",
+			"排查故障时需要重新开启日志",
+		}})
+	}
+	c.printConfirmationPanel(
+		"操作确认：设置日志级别",
+		[]string{
+			"目标内核：" + core,
+			"当前级别：" + logLevelDisplay(core, settings.Current),
+			"新的级别：" + logLevelDisplay(core, selected),
+		},
+		sections...,
+	)
+	confirmed, err := c.confirmCancelable("应用新的日志级别？")
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		fmt.Fprintln(c.out, "已取消日志级别修改。")
+		return nil
+	}
+	change, err := c.app.SetLogLevel(ctx, core, selected)
+	if err != nil {
+		return err
+	}
+	if !change.Changed {
+		fmt.Fprintf(c.out, "[ProxyForge/提示] 日志级别已经是 %s，无需修改。\n", logLevelDisplay(core, change.Current))
+		return nil
+	}
+	effect := "服务当前未运行，将在下次启动时生效"
+	if change.Restarted {
+		effect = "服务已重启，设置已生效"
+	}
+	fmt.Fprintf(c.out, "[ProxyForge/结果] %s 日志级别已从 %s 修改为 %s；%s。\n",
+		core, logLevelDisplay(core, change.Previous), logLevelDisplay(core, change.Current), effect)
+	return nil
+}
+
+func logLevelDisplay(core, level string) string {
+	if level == "default" {
+		return "未显式设置（使用内核默认值）"
+	}
+	descriptions := map[string]string{
+		"trace":   "trace（最详细跟踪）",
+		"debug":   "debug（调试信息）",
+		"info":    "info（常规运行信息）",
+		"warn":    "warn（警告及错误）",
+		"warning": "warning（警告及错误）",
+		"error":   "error（仅错误）",
+		"fatal":   "fatal（仅致命错误）",
+		"panic":   "panic（仅崩溃信息）",
+		"off":     "关闭日志",
+	}
+	display := descriptions[level]
+	if display == "" {
+		return level
+	}
+	if (core == domain.CoreSingBox && level == "info") || (core == domain.CoreXray && level == "warning") {
+		return display + "（ProxyForge 默认）"
+	}
+	if core == domain.CoreXray && level == "off" {
+		return "关闭访问日志和错误日志"
+	}
+	return display
 }
 
 func (c *commandSet) followServiceLogs(ctx context.Context, core string) error {

@@ -111,6 +111,23 @@ func TestServiceMenuLiveLogsReturnsAfterInterrupt(t *testing.T) {
 	}
 }
 
+func TestServiceMenuOffersLogLevelSettings(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{reader: bufio.NewReader(strings.NewReader("0\n")), out: &out}
+	if err := c.serviceMenu(context.Background(), domain.CoreSingBox); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "7) 设置日志级别") {
+		t.Fatalf("service menu output=%q", out.String())
+	}
+	if got := logLevelDisplay(domain.CoreSingBox, "info"); !strings.Contains(got, "ProxyForge 默认") {
+		t.Fatalf("sing-box info display=%q", got)
+	}
+	if got := logLevelDisplay(domain.CoreXray, "warning"); !strings.Contains(got, "ProxyForge 默认") {
+		t.Fatalf("xray warning display=%q", got)
+	}
+}
+
 func TestGenerateCommandOffersUserNameAndInboundTag(t *testing.T) {
 	c := &commandSet{}
 	cmd := c.generateCommand()
