@@ -443,7 +443,7 @@ func TestGenerateRejectsManagedPortConflict(t *testing.T) {
 	}
 }
 
-func TestUninstallBacksUpAndRemovesManagedConfigAndState(t *testing.T) {
+func TestUninstallAutomaticallyCleansSelectedCoreData(t *testing.T) {
 	r := &fakeRunner{}
 	a, root := testApp(t, r)
 	writeSupportedPlatform(t, root)
@@ -483,15 +483,10 @@ func TestUninstallBacksUpAndRemovesManagedConfigAndState(t *testing.T) {
 	if got, err := a.Store.Load(domain.CoreXray); err != nil || got.Port != otherState.Port {
 		t.Fatalf("other core state changed: state=%#v error=%v", got, err)
 	}
-	backups, err := filepath.Glob(filepath.Join(root, "var/lib/proxyforge/backups/sing-box/*/config.json"))
-	if err != nil || len(backups) != 1 {
-		t.Fatalf("backups=%v error=%v", backups, err)
-	}
-	if got, _ := os.ReadFile(backups[0]); !bytes.Equal(got, config) {
-		t.Fatalf("backup=%q, want %q", got, config)
-	}
-	if _, err := os.Stat(a.Layout.TrustPath(domain.CoreSingBox)); err != nil {
-		t.Fatalf("trust record was not retained: %v", err)
+	for _, path := range []string{a.Layout.BackupRoot(domain.CoreSingBox), a.Layout.TrustPath(domain.CoreSingBox)} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("automatic cleanup left %s: %v", path, err)
+		}
 	}
 	if !strings.Contains(r.callLog(), "dpkg --remove sing-box") {
 		t.Fatalf("package removal was not called: %s", r.callLog())
@@ -603,9 +598,12 @@ func TestUninstallAlreadyAbsentSkipsInstallerAndCleansManagedData(t *testing.T) 
 	if _, err := a.Store.Load(domain.CoreXray); !errors.Is(err, system.ErrNoState) {
 		t.Fatalf("state error = %v, want ErrNoState", err)
 	}
+	if _, err := os.Stat(a.Layout.Resolve("/var/lib/proxyforge")); !os.IsNotExist(err) {
+		t.Fatalf("empty ProxyForge data root still exists: %v", err)
+	}
 }
 
-func TestUninstallPreservesExternallyModifiedConfig(t *testing.T) {
+func TestUninstallCleanupRemovesExternallyModifiedConfig(t *testing.T) {
 	r := &fakeRunner{}
 	a, root := testApp(t, r)
 	writeSupportedPlatform(t, root)
@@ -625,8 +623,8 @@ func TestUninstallPreservesExternallyModifiedConfig(t *testing.T) {
 	if err := a.Uninstall(context.Background(), domain.CoreSingBox, install.Options{}); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := os.ReadFile(configPath); err != nil || string(got) != "external edit" {
-		t.Fatalf("external config=%q error=%v", got, err)
+	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+		t.Fatalf("external config was not removed by confirmed cleanup: %v", err)
 	}
 	if _, err := a.Store.Load(domain.CoreSingBox); !errors.Is(err, system.ErrNoState) {
 		t.Fatalf("state error = %v, want ErrNoState", err)

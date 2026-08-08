@@ -248,15 +248,26 @@ func TestUninstallCommandRequiresYesWhenNonInteractive(t *testing.T) {
 	}
 }
 
-func TestUninstallConfirmationDescribesRetainedRecoveryData(t *testing.T) {
+func TestUninstallConfirmationDescribesAutomaticCleanup(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{reader: bufio.NewReader(strings.NewReader("yes\n")), out: &out}
 	ok, err := c.confirmUninstall("xray")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ok || !strings.Contains(out.String(), "历史备份") || !strings.Contains(out.String(), "客户端将立即失效") {
-		t.Fatalf("confirmed=%v output=%q", ok, out.String())
+	for _, want := range []string{"自动清理", "历史备份", "永久删除", "卸载或核验失败时不会"} {
+		if !ok || !strings.Contains(out.String(), want) {
+			t.Fatalf("confirmed=%v output missing %q: %q", ok, want, out.String())
+		}
+	}
+}
+
+func TestCoreMenuMergesUninstallAndCleanup(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{out: &out}
+	c.printCoreMenu(domain.CoreXray)
+	if !strings.Contains(out.String(), "6) 卸载内核并清理数据") || strings.Contains(out.String(), "7)") {
+		t.Fatalf("menu did not merge uninstall and cleanup: %q", out.String())
 	}
 }
 

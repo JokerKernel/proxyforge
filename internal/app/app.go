@@ -177,7 +177,7 @@ func (a *App) Uninstall(ctx context.Context, core string, opts install.Options) 
 	if err := system.CheckPlatform(a.Layout); err != nil {
 		return err
 	}
-	a.progressf("检查现有配置和 ProxyForge 管理状态")
+	a.progressf("检查现有配置和卸载状态")
 	p, err := a.Registry.Get(core)
 	if err != nil {
 		return err
@@ -192,19 +192,13 @@ func (a *App) Uninstall(ctx context.Context, core string, opts install.Options) 
 	}
 
 	configPath := a.Layout.Resolve(p.ConfigPath())
-	config, readErr := os.ReadFile(configPath)
+	_, readErr := os.Stat(configPath)
 	hadConfig := readErr == nil
 	if readErr != nil && !os.IsNotExist(readErr) {
 		return readErr
 	}
-	state, stateErr := a.Store.Load(core)
-	hasManagedState := stateErr == nil
-	if stateErr != nil && !errors.Is(stateErr, system.ErrNoState) {
-		fmt.Fprintf(a.Out, "警告：无法验证现有 ProxyForge 状态（%v）；活动配置将保留。\n", stateErr)
-	}
-	managedConfig := hasManagedState && hadConfig && state.ConfigSHA256 != "" && system.SHA256(config) == state.ConfigSHA256
 	if hadConfig {
-		a.progressf("卸载前备份配置 %s", configPath)
+		a.progressf("卸载前临时备份配置 %s（卸载成功后会自动清理）", configPath)
 		if backup, err := system.BackupFile(configPath, a.Layout.BackupRoot(core), a.Now()); err != nil {
 			return err
 		} else if backup != "" {
@@ -232,19 +226,11 @@ func (a *App) Uninstall(ctx context.Context, core string, opts install.Options) 
 			return err
 		}
 	}
-	if managedConfig {
-		a.progressf("删除受管活动配置 %s", configPath)
-		if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("内核已卸载，但删除受管配置失败: %w", err)
-		}
-	} else if hadConfig {
-		fmt.Fprintf(a.Out, "检测到非受管或已被外部修改的配置，已保留：%s\n", p.ConfigPath())
+	a.progressf("卸载完成，自动清理 %s 的所有残留", core)
+	if err := a.Cleanup(ctx, core); err != nil {
+		return fmt.Errorf("内核已卸载，但自动清理失败: %w", err)
 	}
-	a.progressf("删除 %s 的 ProxyForge 状态", core)
-	if err := a.Store.Delete(core); err != nil {
-		return fmt.Errorf("内核已卸载，但删除 ProxyForge 状态失败: %w", err)
-	}
-	fmt.Fprintf(a.Out, "%s 已卸载；历史备份和安装脚本信任记录已保留。\n", core)
+	fmt.Fprintf(a.Out, "%s 已卸载并完成残留清理。\n", core)
 	return nil
 }
 
@@ -394,12 +380,41 @@ func (a *App) Cleanup(ctx context.Context, target string) error {
 		if err := removeCleanupPath(path); err != nil {
 			cleanupErrors = append(cleanupErrors, fmt.Errorf("删除 %s: %w", path, err))
 		}
+	} else if err := a.removeEmptyProxyForgeRoot(); err != nil {
+		cleanupErrors = append(cleanupErrors, err)
 	}
 	if len(cleanupErrors) != 0 {
 		return fmt.Errorf("清理未完全完成: %w", errors.Join(cleanupErrors...))
 	}
 	fmt.Fprintf(a.Out, "%s 的卸载残留已清理。\n", target)
 	return nil
+}
+
+func (a *App) removeEmptyProxyForgeRoot() error {
+	root := a.Layout.Resolve("/var/lib/proxyforge")
+	for _, path := range []string{
+		filepath.Join(root, "state"),
+		filepath.Join(root, "trust"),
+		filepath.Join(root, "backups"),
+		root,
+	} {
+		if err := removeEmptyCleanupDirectory(path); err != nil {
+			return fmt.Errorf("删除空目录 %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
+func removeEmptyCleanupDirectory(path string) error {
+	clean := filepath.Clean(path)
+	if !filepath.IsAbs(clean) || clean == "/" {
+		return fmt.Errorf("拒绝不安全的清理路径 %q", path)
+	}
+	err := os.Remove(clean)
+	if err == nil || os.IsNotExist(err) || errors.Is(err, syscall.ENOTEMPTY) || errors.Is(err, syscall.EEXIST) {
+		return nil
+	}
+	return err
 }
 
 func removeCleanupPath(path string) error {

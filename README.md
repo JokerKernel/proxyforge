@@ -50,7 +50,7 @@ proxyforge config reset <sing-box|xray> [--sni DOMAIN] [--target HOST:PORT] [--y
 proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
 ```
 
-`install` 同时用于首次安装和后续升级；旧的 `upgrade` 名称保留为兼容别名。无参数运行时会先选择 sing-box 或 Xray-core，再进入该内核独立的安装/升级、配置、客户端、重置、服务、卸载和清理菜单。
+`install` 同时用于首次安装和后续升级；旧的 `upgrade` 名称保留为兼容别名。无参数运行时会先选择 sing-box 或 Xray-core，再进入该内核独立的安装/升级、配置、客户端、重置、服务和卸载菜单。
 安装 Xray 时会按 `HTTPS_PROXY`/`HTTP_PROXY` 和 `NO_PROXY` 检查当前进程的运行时代理；检测到代理后会自动传递给 Xray 官方管理脚本。通过 `sudo` 运行时需确保这些环境变量被保留，例如使用经过本机 sudo 策略允许的 `sudo -E`。日志只会提示已检测到代理，不会输出代理地址或认证信息。
 
 非交互安装必须显式固定本次下载内容，`--yes` 不能跳过：
@@ -59,14 +59,14 @@ proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
 sudo proxyforge install sing-box --yes --trust-script-sha256 <64位哈希>
 ```
 
-卸载必须交互确认，自动化时必须显式提供 `--yes`。卸载前会备份当前服务端配置；卸载命令完成后会核验二进制、systemd unit 和服务状态，核验通过后才删除受管配置和状态，核验失败时保留两者并报告残留项。若三项均已不存在，会跳过重复卸载并清理受管数据。外部修改或非受管配置、历史备份及脚本信任记录始终保留。Xray 卸载仍会执行其官方管理脚本，因此非交互模式还必须提供当前脚本哈希（已确认内核不存在并跳过官方脚本时除外）：
+卸载必须交互确认，自动化时必须显式提供 `--yes`。卸载前会临时备份当前服务端配置；卸载命令完成后会核验二进制、systemd unit、服务运行状态和开机启用状态。核验通过后会自动清理该内核的配置目录、运行数据、文件日志、ProxyForge 状态、信任记录和所有历史备份，包括外部修改或非受管的内核配置。卸载或核验失败时不会执行自动清理；若内核本来就已完全卸载，会跳过重复卸载并直接清理残留。Xray 卸载仍会执行其官方管理脚本，因此非交互模式还必须提供当前脚本哈希（已确认内核不存在并跳过官方脚本时除外）：
 
 ```bash
 sudo proxyforge uninstall sing-box --yes
 sudo proxyforge uninstall xray --yes --trust-script-sha256 <64位哈希>
 ```
 
-需要彻底删除卸载后保留的数据时，可使用清理命令。程序会同时检查内核二进制、systemd unit、服务运行状态和开机启用状态；无法完成检查或检测到任一残留时会拒绝清理，必须先执行 `uninstall`。清理不会创建新备份，会永久删除所选内核的配置目录、运行数据、文件日志、ProxyForge 状态、信任记录和历史备份；`all` 会先确认两个内核均已完全卸载，再同时清理。程序不会删除 systemd journal，也不会记录或删除此前导出到用户指定位置的客户端配置。
+独立的 `cleanup` 命令作为兼容和故障恢复入口保留，不再出现在交互菜单中。它会同时检查内核二进制、systemd unit、服务运行状态和开机启用状态；无法完成检查或检测到任一残留时会拒绝清理，必须先执行 `uninstall`。`all` 会先确认两个内核均已完全卸载，再同时清理。程序不会删除 systemd journal，也不会记录或删除此前导出到用户指定位置的客户端配置。
 
 ```bash
 sudo proxyforge cleanup sing-box

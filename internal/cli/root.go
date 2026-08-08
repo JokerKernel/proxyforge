@@ -73,7 +73,7 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 func (c *commandSet) uninstallCommand() *cobra.Command {
 	var trust, scriptURL string
 	cmd := &cobra.Command{
-		Use: "uninstall <sing-box|xray>", Short: "卸载指定内核", Args: cobra.ExactArgs(1),
+		Use: "uninstall <sing-box|xray>", Short: "卸载指定内核并清理数据", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			interactive := !c.yes && readerInteractive(c.in)
 			if !c.yes {
@@ -515,7 +515,7 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 	for {
 		c.clearScreen()
 		c.printCoreMenu(core)
-		choice, err := c.chooseNumber("请选择", 0, 7, 0)
+		choice, err := c.chooseNumber("请选择", 0, 6, 0)
 		if err != nil {
 			return err
 		}
@@ -551,14 +551,6 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 				err = c.app.Uninstall(ctx, core, install.Options{Confirm: c.confirm})
 			} else if err == nil {
 				fmt.Fprintln(c.out, "已取消卸载。")
-			}
-		case 7:
-			var confirmed bool
-			confirmed, err = c.confirmCleanup(core)
-			if err == nil && confirmed {
-				err = c.app.Cleanup(ctx, core)
-			} else if err == nil {
-				fmt.Fprintln(c.out, "已取消清理。")
 			}
 		}
 		if err != nil {
@@ -660,17 +652,16 @@ func (c *commandSet) printCoreMenu(core string) {
 	fmt.Fprintln(c.out, "3) 查看客户端配置")
 	fmt.Fprintln(c.out, "4) 重置节点/凭证")
 	fmt.Fprintln(c.out, "5) 管理服务")
-	fmt.Fprintln(c.out, "6) 卸载内核")
-	fmt.Fprintln(c.out, "7) 清理卸载残留")
+	fmt.Fprintln(c.out, "6) 卸载内核并清理数据")
 	fmt.Fprintln(c.out, "0) 返回内核选择")
 	fmt.Fprintln(c.out, "----------------------------------------")
 }
 
 func (c *commandSet) confirmUninstall(core string) (bool, error) {
-	fmt.Fprintf(c.out, "即将停止并禁用 %s 的 systemd 服务，然后卸载内核并检查服务残留。\n", core)
-	fmt.Fprintln(c.out, "卸载成功后会删除其 ProxyForge 状态和受管活动配置。")
-	fmt.Fprintln(c.out, "客户端将立即失效；历史备份和安装脚本信任记录会保留。")
-	return c.confirm("确认卸载？输入 yes/y 继续")
+	fmt.Fprintf(c.out, "即将停止并禁用 %s 的 systemd 服务，卸载内核并完成核验。\n", core)
+	fmt.Fprintln(c.out, "卸载成功后会自动清理配置目录、运行数据、文件日志、ProxyForge 状态、信任记录和历史备份。")
+	fmt.Fprintln(c.out, "上述数据将永久删除，客户端将立即失效；卸载或核验失败时不会执行自动清理。")
+	return c.confirm("确认卸载并清理？输入 yes/y 继续")
 }
 
 func (c *commandSet) confirmInstall(core string) (bool, error) {
