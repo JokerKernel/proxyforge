@@ -1,0 +1,172 @@
+package singbox
+
+import (
+	"encoding/json"
+	"fmt"
+	"slices"
+	"strings"
+
+	"proxyforge/internal/provider"
+	"proxyforge/internal/provider/jsonutil"
+)
+
+var supportedDNSProfiles = []string{provider.DNSProfileSystem, provider.DNSProfileCloudflare, provider.DNSProfileGoogle}
+
+func (*Provider) DNSProfiles() []string {
+	return append([]string(nil), supportedDNSProfiles...)
+}
+
+func (*Provider) CurrentDNSProfile(config []byte) (string, error) {
+	root, err := parseDNSRoot(config)
+	if err != nil {
+		return "", err
+	}
+	dns, ok := root["dns"].(map[string]any)
+	if !ok {
+		if _, exists := root["dns"]; exists {
+			return "", fmt.Errorf("现有 sing-box dns 不是对象")
+		}
+		return "none", nil
+	}
+	servers, ok := dns["servers"].([]any)
+	if !ok || len(servers) != 1 {
+		return "custom", nil
+	}
+	server, ok := servers[0].(map[string]any)
+	if !ok {
+		return "custom", nil
+	}
+	serverType, _ := server["type"].(string)
+	tag, _ := server["tag"].(string)
+	address, _ := server["server"].(string)
+	expectedTag := ""
+	switch {
+	case serverType == "local" && tag == "local":
+		expectedTag = "local"
+	case serverType == "udp" && tag == "cloudflare" && address == "1.1.1.1":
+		expectedTag = "cloudflare"
+	case serverType == "udp" && tag == "google" && address == "8.8.8.8":
+		expectedTag = "google"
+	default:
+		return "custom", nil
+	}
+	if rawFinal, exists := dns["final"]; exists {
+		final, ok := rawFinal.(string)
+		if !ok || (final != "" && final != expectedTag) {
+			return "custom", nil
+		}
+	}
+	route, ok := root["route"].(map[string]any)
+	if !ok {
+		return "custom", nil
+	}
+	if resolver, _ := route["default_domain_resolver"].(string); resolver != expectedTag {
+		return "custom", nil
+	}
+	rules, ok := route["rules"].([]any)
+	if !ok {
+		return "custom", nil
+	}
+	foundResolve := false
+	for _, rawRule := range rules {
+		rule, ok := rawRule.(map[string]any)
+		if !ok {
+			continue
+		}
+		if action, _ := rule["action"].(string); action == "resolve" {
+			foundResolve = true
+			if resolver, _ := rule["server"].(string); resolver != expectedTag {
+				return "custom", nil
+			}
+		}
+	}
+	if !foundResolve {
+		return "custom", nil
+	}
+	switch expectedTag {
+	case "local":
+		return provider.DNSProfileSystem, nil
+	case "cloudflare":
+		return provider.DNSProfileCloudflare, nil
+	case "google":
+		return provider.DNSProfileGoogle, nil
+	default:
+		return "custom", nil
+	}
+}
+
+func (*Provider) PatchDNSProfile(config []byte, profile string) ([]byte, error) {
+	profile = strings.ToLower(strings.TrimSpace(profile))
+	if !slices.Contains(supportedDNSProfiles, profile) {
+		return nil, fmt.Errorf("sing-box DNS 配置 %q 无效", profile)
+	}
+	root, err := parseDNSRoot(config)
+	if err != nil {
+		return nil, err
+	}
+	dns, exists := root["dns"].(map[string]any)
+	if !exists {
+		if raw, present := root["dns"]; present && raw != nil {
+			return nil, fmt.Errorf("现有 sing-box dns 不是对象")
+		}
+		dns = make(map[string]any)
+		root["dns"] = dns
+	}
+
+	tag := "local"
+	server := map[string]any{"type": "local", "tag": tag}
+	switch profile {
+	case provider.DNSProfileCloudflare:
+		tag = "cloudflare"
+		server = map[string]any{"type": "udp", "tag": tag, "server": "1.1.1.1", "server_port": 53}
+	case provider.DNSProfileGoogle:
+		tag = "google"
+		server = map[string]any{"type": "udp", "tag": tag, "server": "8.8.8.8", "server_port": 53}
+	}
+	dns["servers"] = []any{server}
+	dns["final"] = tag
+
+	route, ok := root["route"].(map[string]any)
+	if !ok {
+		if _, exists := root["route"]; exists {
+			return nil, fmt.Errorf("现有 sing-box route 不是对象")
+		}
+		route = make(map[string]any)
+		root["route"] = route
+	}
+	route["default_domain_resolver"] = tag
+	rules, exists := route["rules"].([]any)
+	if !exists {
+		if _, present := route["rules"]; present {
+			return nil, fmt.Errorf("现有 sing-box route.rules 不是数组")
+		}
+		rules = []any{}
+	}
+	updatedResolve := false
+	for _, rawRule := range rules {
+		rule, ok := rawRule.(map[string]any)
+		if !ok {
+			continue
+		}
+		if action, _ := rule["action"].(string); action == "resolve" {
+			rule["server"] = tag
+			updatedResolve = true
+		}
+	}
+	if !updatedResolve {
+		rules = append([]any{map[string]any{"action": "resolve", "server": tag}}, rules...)
+	}
+	route["rules"] = rules
+	return jsonutil.Marshal(root)
+}
+
+func parseDNSRoot(config []byte) (map[string]any, error) {
+	var root map[string]any
+	if err := json.Unmarshal(config, &root); err != nil {
+		return nil, fmt.Errorf("解析现有 sing-box 配置: %w", err)
+	}
+	if root == nil {
+		return nil, fmt.Errorf("解析现有 sing-box 配置: 顶层不是 JSON 对象")
+	}
+	return root, nil
+}

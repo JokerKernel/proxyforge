@@ -33,6 +33,18 @@ type LogLevelProvider interface {
 	PatchLogLevel([]byte, string) ([]byte, error)
 }
 
+const (
+	DNSProfileSystem     = "system"
+	DNSProfileCloudflare = "cloudflare"
+	DNSProfileGoogle     = "google"
+)
+
+type DNSProfileProvider interface {
+	DNSProfiles() []string
+	CurrentDNSProfile([]byte) (string, error)
+	PatchDNSProfile([]byte, string) ([]byte, error)
+}
+
 type CoreProvider interface {
 	Name() string
 	Binary() string

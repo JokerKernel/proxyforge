@@ -240,7 +240,7 @@ func isDisplayHeading(value string) bool {
 	if value == "请选择要管理的内核" || value == "REALITY SNI 候选检测" || value == "公网地址获取方式" || value == "配置模式" {
 		return true
 	}
-	for _, marker := range []string{"管理菜单", "服务管理：", "服务端配置管理：", "查看客户端配置：", "生成服务端配置：", "安装/升级内核：", "实时日志：", "设置日志级别：", "操作确认：", "危险操作确认：", "配置确认："} {
+	for _, marker := range []string{"管理菜单", "服务管理：", "服务端配置管理：", "DNS 设置：", "查看客户端配置：", "生成服务端配置：", "安装/升级内核：", "实时日志：", "设置日志级别：", "操作确认：", "危险操作确认：", "配置确认："} {
 		if strings.Contains(value, marker) {
 			return true
 		}

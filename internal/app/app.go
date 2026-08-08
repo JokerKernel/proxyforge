@@ -40,6 +40,18 @@ type LogLevelChange struct {
 	Changed   bool
 }
 
+type DNSSettings struct {
+	Current  string
+	Profiles []string
+}
+
+type DNSChange struct {
+	Previous  string
+	Current   string
+	Restarted bool
+	Changed   bool
+}
+
 type App struct {
 	Registry  *provider.Registry
 	Runner    provider.Runner
@@ -992,10 +1004,6 @@ func (a *App) SetLogLevel(ctx context.Context, core, requested string) (LogLevel
 	if err != nil {
 		return change, fmt.Errorf("读取 %s 服务端配置: %w", core, err)
 	}
-	metadata, err := readMetadata(configPath, true)
-	if err != nil {
-		return change, err
-	}
 	change.Previous, err = logProvider.CurrentLogLevel(oldConfig)
 	if err != nil {
 		return change, err
@@ -1007,22 +1015,111 @@ func (a *App) SetLogLevel(ctx context.Context, core, requested string) (LogLevel
 	if change.Previous == change.Current {
 		return change, nil
 	}
+	change.Restarted, err = a.applyServerSetting(ctx, p, core, "日志级别", oldConfig, patched)
+	if err != nil {
+		return change, err
+	}
+	change.Changed = true
+	return change, nil
+}
+
+func (a *App) DNSSettings(ctx context.Context, core string) (DNSSettings, error) {
+	if err := a.RootCheck(); err != nil {
+		return DNSSettings{}, err
+	}
+	p, err := a.Registry.Get(core)
+	if err != nil {
+		return DNSSettings{}, err
+	}
+	if err := a.checkCoreInstalled(ctx, p); err != nil {
+		return DNSSettings{}, err
+	}
+	dnsProvider, ok := p.(provider.DNSProfileProvider)
+	if !ok {
+		return DNSSettings{}, fmt.Errorf("%s 不支持 DNS 设置", core)
+	}
+	configPath := a.Layout.Resolve(p.ConfigPath())
+	a.progressf("读取 %s 当前 DNS 设置", core)
+	config, err := os.ReadFile(configPath)
+	if os.IsNotExist(err) {
+		return DNSSettings{}, fmt.Errorf("尚未找到 %s 服务端配置 %s", core, p.ConfigPath())
+	}
+	if err != nil {
+		return DNSSettings{}, fmt.Errorf("读取 %s 服务端配置: %w", core, err)
+	}
+	current, err := dnsProvider.CurrentDNSProfile(config)
+	if err != nil {
+		return DNSSettings{}, err
+	}
+	return DNSSettings{Current: current, Profiles: dnsProvider.DNSProfiles()}, nil
+}
+
+func (a *App) SetDNSProfile(ctx context.Context, core, requested string) (DNSChange, error) {
+	change := DNSChange{Current: strings.ToLower(strings.TrimSpace(requested))}
+	if err := a.RootCheck(); err != nil {
+		return change, err
+	}
+	p, err := a.Registry.Get(core)
+	if err != nil {
+		return change, err
+	}
+	if err := a.checkCoreInstalled(ctx, p); err != nil {
+		return change, err
+	}
+	dnsProvider, ok := p.(provider.DNSProfileProvider)
+	if !ok {
+		return change, fmt.Errorf("%s 不支持 DNS 设置", core)
+	}
+	configPath := a.Layout.Resolve(p.ConfigPath())
+	a.progressf("读取并修改 %s DNS 设置", core)
+	oldConfig, err := os.ReadFile(configPath)
+	if os.IsNotExist(err) {
+		return change, fmt.Errorf("尚未找到 %s 服务端配置 %s", core, p.ConfigPath())
+	}
+	if err != nil {
+		return change, fmt.Errorf("读取 %s 服务端配置: %w", core, err)
+	}
+	change.Previous, err = dnsProvider.CurrentDNSProfile(oldConfig)
+	if err != nil {
+		return change, err
+	}
+	patched, err := dnsProvider.PatchDNSProfile(oldConfig, change.Current)
+	if err != nil {
+		return change, err
+	}
+	if change.Previous == change.Current {
+		return change, nil
+	}
+	change.Restarted, err = a.applyServerSetting(ctx, p, core, "DNS", oldConfig, patched)
+	if err != nil {
+		return change, err
+	}
+	change.Changed = true
+	return change, nil
+}
+
+func (a *App) applyServerSetting(ctx context.Context, p provider.CoreProvider, core, setting string, oldConfig, patched []byte) (bool, error) {
+	configPath := a.Layout.Resolve(p.ConfigPath())
+	metadata, err := readMetadata(configPath, true)
+	if err != nil {
+		return false, err
+	}
 
 	oldState, stateErr := a.Store.Load(core)
 	hasState := stateErr == nil
 	if stateErr != nil && !errors.Is(stateErr, system.ErrNoState) {
-		return change, fmt.Errorf("读取 ProxyForge 节点状态: %w", stateErr)
+		return false, fmt.Errorf("读取 ProxyForge 节点状态: %w", stateErr)
 	}
 	managedState := hasState && oldState.ConfigSHA256 != "" && oldState.ConfigSHA256 == system.SHA256(oldConfig)
 
-	a.progressf("使用 %s 原生命令校验日志配置", core)
+	a.progressf("使用 %s 原生命令校验 %s 配置", core, setting)
 	if err := validateRendered(ctx, p, a.Runner, configPath, patched); err != nil {
-		return change, err
+		return false, err
 	}
 	status, statusErr := a.Services.IsActive(ctx, p.ServiceName())
 	running, err := installedServiceRunning(status, statusErr)
 	if err != nil {
-		return change, fmt.Errorf("检查 %s 运行状态: %w", p.ServiceName(), err)
+		return false, fmt.Errorf("检查 %s 运行状态: %w", p.ServiceName(), err)
 	}
 	now := time.Now()
 	if a.Now != nil {
@@ -1030,13 +1127,13 @@ func (a *App) SetLogLevel(ctx context.Context, core, requested string) (LogLevel
 	}
 	a.progressf("备份现有服务端配置 %s", configPath)
 	if backup, err := system.BackupFile(configPath, a.Layout.BackupRoot(core), now); err != nil {
-		return change, err
+		return false, err
 	} else if backup != "" {
 		a.progressf("现有配置已备份到 %s", backup)
 	}
 
 	rollback := func(cause error) error {
-		a.progressf("日志级别修改失败，正在恢复旧配置和服务")
+		a.progressf("%s 修改失败，正在恢复旧配置和服务", setting)
 		restoreErr := restoreFile(configPath, oldConfig, true, metadata)
 		if running {
 			_ = a.Services.Restart(ctx, p.ServiceName())
@@ -1047,39 +1144,37 @@ func (a *App) SetLogLevel(ctx context.Context, core, requested string) (LogLevel
 		return fmt.Errorf("%v；已恢复旧配置", cause)
 	}
 
-	a.progressf("原子写入日志配置 %s", configPath)
+	a.progressf("原子写入 %s 配置 %s", setting, configPath)
 	mode := metadata.mode
 	if mode == 0 {
 		mode = 0600
 	}
 	if err := system.AtomicWrite(configPath, patched, mode); err != nil {
-		return change, err
+		return false, err
 	}
 	serviceUser := a.Services.User(ctx, p.ServiceName())
 	if err := secureConfigForUser(configPath, serviceUser); err != nil {
-		return change, rollback(err)
+		return false, rollback(err)
 	}
 	if running {
-		a.progressf("重启 systemd 服务 %s 使日志级别立即生效", p.ServiceName())
+		a.progressf("重启 systemd 服务 %s 使 %s 设置立即生效", p.ServiceName(), setting)
 		if err := a.Services.Restart(ctx, p.ServiceName()); err != nil {
-			return change, rollback(fmt.Errorf("重启 %s 失败: %w", p.ServiceName(), err))
+			return false, rollback(fmt.Errorf("重启 %s 失败: %w", p.ServiceName(), err))
 		}
 		active, activeErr := a.Services.IsActive(ctx, p.ServiceName())
 		if activeErr != nil || !active.Active {
-			return change, rollback(fmt.Errorf("%s 未进入 active 状态: %s: %w", p.ServiceName(), active.Detail, activeErr))
+			return false, rollback(fmt.Errorf("%s 未进入 active 状态: %s: %w", p.ServiceName(), active.Detail, activeErr))
 		}
-		change.Restarted = true
 	}
 	if managedState {
 		updatedState := oldState
 		updatedState.ConfigSHA256 = system.SHA256(patched)
 		updatedState.UpdatedAt = now.UTC()
 		if err := a.Store.Save(updatedState); err != nil {
-			return change, rollback(fmt.Errorf("更新 ProxyForge 节点状态失败: %w", err))
+			return false, rollback(fmt.Errorf("更新 ProxyForge 节点状态失败: %w", err))
 		}
 	}
-	change.Changed = true
-	return change, nil
+	return running, nil
 }
 
 func validateGenerate(o domain.GenerateOptions) error {

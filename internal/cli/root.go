@@ -597,8 +597,9 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		fmt.Fprintf(c.out, "服务端配置管理：%s\n\n", core)
 		fmt.Fprintln(c.out, "1) 生成/更新服务端配置")
 		fmt.Fprintln(c.out, "2) 查看当前配置")
+		fmt.Fprintln(c.out, "3) DNS 设置")
 		fmt.Fprintln(c.out, "0) 返回内核菜单")
-		choice, err := c.chooseNumber("请选择", 0, 2, 0)
+		choice, err := c.chooseNumber("请选择", 0, 3, 0)
 		if err != nil {
 			return err
 		}
@@ -642,11 +643,111 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 					fmt.Fprintln(c.out)
 				}
 			}
+		case 3:
+			err = c.dnsSettingsMenu(ctx, core)
+			if errors.Is(err, errReturnToMenu) {
+				continue
+			}
 		}
 		if err != nil {
 			c.printMenuError(err)
 		}
 		c.pauseForMenu()
+	}
+}
+
+func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
+	settings, err := c.app.DNSSettings(ctx, core)
+	if err != nil {
+		return err
+	}
+	c.clearScreen()
+	fmt.Fprintf(c.out, "DNS 设置：%s\n", core)
+	fmt.Fprintf(c.out, "当前配置：%s\n\n", dnsProfileDisplay(settings.Current))
+	defaultChoice := 1
+	for index, profile := range settings.Profiles {
+		fmt.Fprintf(c.out, "%d) %s\n", index+1, dnsProfileDisplay(profile))
+		if profile == settings.Current {
+			defaultChoice = index + 1
+		}
+	}
+	fmt.Fprintln(c.out, "0) 返回服务端配置管理")
+	choice, err := c.chooseNumber("请选择 DNS", 0, len(settings.Profiles), defaultChoice)
+	if err != nil {
+		return err
+	}
+	if choice == 0 {
+		return errReturnToMenu
+	}
+	selected := settings.Profiles[choice-1]
+	if selected == settings.Current {
+		fmt.Fprintf(c.out, "[ProxyForge/提示] DNS 已经是 %s，无需修改。\n", dnsProfileDisplay(selected))
+		return nil
+	}
+
+	sections := []confirmationSection{{title: "将执行", items: []string{
+		"按 " + core + " 原生格式更新 DNS 配置",
+		"保留私网和保留地址拦截",
+		"使用内核原生命令校验候选配置",
+		"备份并原子更新当前服务端配置",
+		"服务正在运行时自动重启使设置立即生效",
+	}}}
+	if selected != provider.DNSProfileSystem {
+		sections = append(sections, confirmationSection{title: "注意", items: []string{
+			"公共 DNS 使用 UDP/53 明文查询，网络运营方可能观察或拦截",
+			"该设置只修改代理内核解析器，不修改系统全局 DNS",
+		}})
+	}
+	c.printConfirmationPanel(
+		"操作确认：设置 DNS",
+		[]string{
+			"目标内核：" + core,
+			"当前配置：" + dnsProfileDisplay(settings.Current),
+			"新的配置：" + dnsProfileDisplay(selected),
+		},
+		sections...,
+	)
+	confirmed, err := c.confirmCancelable("应用新的 DNS 设置？")
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		fmt.Fprintln(c.out, "已取消 DNS 修改。")
+		return nil
+	}
+	change, err := c.app.SetDNSProfile(ctx, core, selected)
+	if err != nil {
+		return err
+	}
+	if !change.Changed {
+		fmt.Fprintf(c.out, "[ProxyForge/提示] DNS 已经是 %s，无需修改。\n", dnsProfileDisplay(change.Current))
+		return nil
+	}
+	effect := "服务当前未运行，将在下次启动时生效"
+	if change.Restarted {
+		effect = "服务已重启，设置已生效"
+	}
+	fmt.Fprintf(c.out, "[ProxyForge/结果] %s DNS 已从 %s 修改为 %s；%s。\n",
+		core, dnsProfileDisplay(change.Previous), dnsProfileDisplay(change.Current), effect)
+	return nil
+}
+
+func dnsProfileDisplay(profile string) string {
+	switch profile {
+	case provider.DNSProfileSystem:
+		return "系统 DNS（推荐）"
+	case provider.DNSProfileCloudflare:
+		return "Cloudflare DNS（1.1.1.1）"
+	case provider.DNSProfileGoogle:
+		return "Google DNS（8.8.8.8）"
+	case "none":
+		return "未配置内核 DNS（简化模式）"
+	case "implicit-system":
+		return "隐式系统 DNS（尚未写入配置）"
+	case "custom":
+		return "自定义 DNS"
+	default:
+		return profile
 	}
 }
 

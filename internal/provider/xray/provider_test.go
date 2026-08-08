@@ -163,6 +163,54 @@ func TestPatchLogLevelPreservesOtherSettings(t *testing.T) {
 	}
 }
 
+func TestPatchDNSProfilePreservesOtherDNSSettings(t *testing.T) {
+	p := New()
+	config, err := p.RenderServer(domain.NodeSpec{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current, err := p.CurrentDNSProfile(config); err != nil || current != "system" {
+		t.Fatalf("current=%q error=%v", current, err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(config, &root); err != nil {
+		t.Fatal(err)
+	}
+	dns := root["dns"].(map[string]any)
+	dns["disableCache"] = true
+	modified, err := json.Marshal(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patched, err := p.PatchDNSProfile(modified, "google")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(patched, &got); err != nil {
+		t.Fatal(err)
+	}
+	gotDNS := got["dns"].(map[string]any)
+	servers := gotDNS["servers"].([]any)
+	if len(servers) != 1 || servers[0] != "8.8.8.8" || gotDNS["queryStrategy"] != "UseIP" || gotDNS["disableCache"] != true {
+		t.Fatalf("dns=%#v", gotDNS)
+	}
+	if current, err := p.CurrentDNSProfile(patched); err != nil || current != "google" {
+		t.Fatalf("patched current=%q error=%v", current, err)
+	}
+	gotDNS["queryStrategy"] = "UseIPv4"
+	misconfigured, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current, err := p.CurrentDNSProfile(misconfigured); err != nil || current != "custom" {
+		t.Fatalf("misconfigured current=%q error=%v", current, err)
+	}
+	if current, err := p.CurrentDNSProfile([]byte(`{"inbounds":[]}`)); err != nil || current != "implicit-system" {
+		t.Fatalf("implicit current=%q error=%v", current, err)
+	}
+}
+
 func TestGenerateKeyPairParsesSupportedNativeOutputs(t *testing.T) {
 	tests := []struct {
 		name, output string

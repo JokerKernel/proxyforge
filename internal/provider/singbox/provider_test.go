@@ -140,6 +140,75 @@ func TestPatchLogLevelPreservesOtherSettings(t *testing.T) {
 	}
 }
 
+func TestPatchDNSProfileUpdatesResolverReferences(t *testing.T) {
+	p := New()
+	config, err := p.RenderServer(domain.NodeSpec{
+		InboundTag: "singbox-one", Port: 443, SNI: "example.com", Target: "example.com:443", UserName: "one",
+		UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private", ShortID: "0123456789abcdef",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current, err := p.CurrentDNSProfile(config); err != nil || current != "system" {
+		t.Fatalf("current=%q error=%v", current, err)
+	}
+	var source map[string]any
+	if err := json.Unmarshal(config, &source); err != nil {
+		t.Fatal(err)
+	}
+	sourceRoute := source["route"].(map[string]any)
+	sourceRoute["rules"] = append(sourceRoute["rules"].([]any), map[string]any{"action": "resolve", "server": "local", "domain_suffix": []any{"example.net"}})
+	config, err = json.Marshal(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patched, err := p.PatchDNSProfile(config, "cloudflare")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(patched, &root); err != nil {
+		t.Fatal(err)
+	}
+	dns := root["dns"].(map[string]any)
+	server := dns["servers"].([]any)[0].(map[string]any)
+	route := root["route"].(map[string]any)
+	resolve := route["rules"].([]any)[0].(map[string]any)
+	if server["type"] != "udp" || server["server"] != "1.1.1.1" || server["server_port"] != float64(53) ||
+		dns["final"] != "cloudflare" || route["default_domain_resolver"] != "cloudflare" || resolve["server"] != "cloudflare" {
+		t.Fatalf("dns=%#v route=%#v", dns, route)
+	}
+	if current, err := p.CurrentDNSProfile(patched); err != nil || current != "cloudflare" {
+		t.Fatalf("patched current=%q error=%v", current, err)
+	}
+	for _, rawRule := range route["rules"].([]any) {
+		rule := rawRule.(map[string]any)
+		if rule["action"] == "resolve" && rule["server"] != "cloudflare" {
+			t.Fatalf("resolve rule still references old DNS: %#v", rule)
+		}
+	}
+
+	simplified, err := p.RenderServer(domain.NodeSpec{SimplifiedConfig: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current, err := p.CurrentDNSProfile(simplified); err != nil || current != "none" {
+		t.Fatalf("simplified current=%q error=%v", current, err)
+	}
+	withGoogle, err := p.PatchDNSProfile(simplified, "google")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var googleRoot map[string]any
+	if err := json.Unmarshal(withGoogle, &googleRoot); err != nil {
+		t.Fatal(err)
+	}
+	googleRoute := googleRoot["route"].(map[string]any)
+	if action := googleRoute["rules"].([]any)[0].(map[string]any)["action"]; action != "resolve" {
+		t.Fatalf("first route action=%v", action)
+	}
+}
+
 func TestGenerateKeyPairParsesNativeOutput(t *testing.T) {
 	pair, err := New().GenerateKeyPair(context.Background(), outputRunner{"PrivateKey: private\nPublicKey: public\n"})
 	if err != nil {
