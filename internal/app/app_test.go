@@ -216,3 +216,26 @@ func TestVersionMatches(t *testing.T) {
 		}
 	}
 }
+
+func TestInstalledServiceRunning(t *testing.T) {
+	tests := []struct {
+		name     string
+		status   domain.ServiceStatus
+		checkErr error
+		running  bool
+		wantErr  bool
+	}{
+		{name: "active", status: domain.ServiceStatus{Active: true, Detail: "active"}, running: true},
+		{name: "inactive is valid after first install", status: domain.ServiceStatus{Detail: "inactive"}, checkErr: errors.New("exit status 3")},
+		{name: "failed", status: domain.ServiceStatus{Detail: "failed"}, checkErr: errors.New("exit status 3"), wantErr: true},
+		{name: "unknown", status: domain.ServiceStatus{Detail: "activating"}, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			running, err := installedServiceRunning(tt.status, tt.checkErr)
+			if running != tt.running || (err != nil) != tt.wantErr {
+				t.Fatalf("running=%v error=%v", running, err)
+			}
+		})
+	}
+}

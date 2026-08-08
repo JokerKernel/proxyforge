@@ -106,12 +106,35 @@ func (a *App) Install(ctx context.Context, core string, opts install.Options) er
 	if _, err := a.Runner.Run(ctx, "systemctl", "cat", p.ServiceName()); err != nil {
 		return fmt.Errorf("未找到 systemd unit %s: %w", p.ServiceName(), err)
 	}
-	status, err := a.Services.IsActive(ctx, p.ServiceName())
-	if err != nil || !status.Active {
-		return fmt.Errorf("安装完成但服务不是 active（%s）: %w", status.Detail, err)
+	status, statusErr := a.Services.IsActive(ctx, p.ServiceName())
+	running, err := installedServiceRunning(status, statusErr)
+	if err != nil {
+		return fmt.Errorf("安装完成但服务状态异常（%s）: %w", status.Detail, err)
 	}
-	fmt.Fprintf(a.Out, "%s 已安装并运行：%s\n", core, version)
+	if running {
+		fmt.Fprintf(a.Out, "%s 已安装并运行：%s\n", core, version)
+		return nil
+	}
+	fmt.Fprintf(a.Out, "%s 已安装：%s\n", core, version)
+	fmt.Fprintln(a.Out, "服务当前为 inactive；这是尚未生成服务端配置时的正常状态。请继续选择“生成服务端配置”，配置成功后服务会自动启动。")
 	return nil
+}
+
+func installedServiceRunning(status domain.ServiceStatus, checkErr error) (bool, error) {
+	detail := strings.TrimSpace(status.Detail)
+	if status.Active || detail == "active" {
+		return true, nil
+	}
+	if detail == "inactive" {
+		return false, nil
+	}
+	if checkErr != nil {
+		return false, checkErr
+	}
+	if detail == "" {
+		detail = "未知"
+	}
+	return false, fmt.Errorf("未识别的服务状态 %q", detail)
 }
 
 func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOptions) (domain.NodeSpec, error) {
