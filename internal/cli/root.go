@@ -48,15 +48,17 @@ func New(version string) *cobra.Command {
 }
 
 func newCommand(version string, rootCheck func() error) *cobra.Command {
-	runner := &system.LoggingRunner{Runner: system.ExecRunner{}, Out: os.Stderr}
+	stdout := system.NewTerminalColorWriter(os.Stdout)
+	stderr := system.NewTerminalColorWriter(os.Stderr)
+	runner := &system.LoggingRunner{Runner: system.ExecRunner{}, Out: stderr}
 	layout := system.Layout{Root: os.Getenv("PROXYFORGE_ROOT")}
 	reg := provider.NewRegistry(singbox.New(), xray.New())
-	a := app.New(reg, runner, layout, os.Stdout)
+	a := app.New(reg, runner, layout, stdout)
 	a.RootCheck = rootCheck
-	a.Progress = os.Stderr
-	a.Installer.Output = os.Stderr
+	a.Progress = stderr
+	a.Installer.Output = stderr
 	c := &commandSet{
-		app: a, in: os.Stdin, reader: bufio.NewReader(os.Stdin), out: os.Stdout, errOut: os.Stderr,
+		app: a, in: os.Stdin, reader: bufio.NewReader(os.Stdin), out: stdout, errOut: stderr,
 		probeSNI: app.ProbeSNICandidates, randomIndex: secureRandomIndex,
 		physicalIPs: app.PhysicalPublicAddresses, externalIP: app.PublicAddress,
 	}
@@ -64,13 +66,13 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 		Use: "proxyforge", Short: "Linux 双内核 VLESS + REALITY + Vision 管理器", Version: version,
 		SilenceUsage: true, SilenceErrors: true,
 		PersistentPreRunE: func(*cobra.Command, []string) error {
-			fmt.Fprintln(os.Stderr, "[ProxyForge/步骤] 验证 root 运行权限")
+			fmt.Fprintln(c.errOut, "[ProxyForge/步骤] 验证 root 运行权限")
 			return rootCheck()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error { return c.menu(cmd.Context()) },
 	}
-	root.SetOut(os.Stdout)
-	root.SetErr(os.Stderr)
+	root.SetOut(stdout)
+	root.SetErr(stderr)
 	root.SetIn(os.Stdin)
 	root.PersistentFlags().BoolVarP(&c.yes, "yes", "y", false, "非交互模式（执行下载的管理脚本仍必须提供 SHA-256）")
 	root.AddCommand(c.installCommand(), c.uninstallCommand(), c.cleanupCommand(), c.configCommand(), c.serviceCommand())
@@ -1095,12 +1097,7 @@ func readerInteractive(r io.Reader) bool {
 }
 
 func writerInteractive(w io.Writer) bool {
-	f, ok := w.(*os.File)
-	if !ok {
-		return false
-	}
-	info, err := f.Stat()
-	return err == nil && (info.Mode()&os.ModeCharDevice) != 0
+	return system.WriterInteractive(w)
 }
 
 func (c *commandSet) interactiveUI() bool {

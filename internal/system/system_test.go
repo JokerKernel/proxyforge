@@ -136,6 +136,83 @@ func TestLinePrefixWriterHandlesFragmentedLines(t *testing.T) {
 	}
 }
 
+func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
+	var output bytes.Buffer
+	w := NewColorWriter(&output, true)
+	for _, line := range []string{
+		"========================================\n",
+		"1) 安装/升级内核\n",
+		"[ProxyForge/步骤] 检查环境\n",
+		"[ProxyForge/警告] 谨慎操作\n",
+		"[ProxyForge/结果] 操作成功\n",
+		"[系统命令/输出] system output\n",
+		"[官方脚本/风险] 将以 root 执行\n",
+		"[服务日志/xray] accepted connection\n",
+		"请输入 yes/y 确认；其他输入取消： ",
+	} {
+		if _, err := io.WriteString(w, line); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got := output.String()
+	for _, want := range []string{
+		"\x1b[1;36m========================================\x1b[0m",
+		"\x1b[1;32m1)\x1b[0m 安装/升级内核",
+		"\x1b[1;36m[ProxyForge/步骤]\x1b[0m",
+		"\x1b[1;33m[ProxyForge/警告]\x1b[0m",
+		"\x1b[1;32m[ProxyForge/结果]\x1b[0m",
+		"\x1b[90m[系统命令/输出]\x1b[0m",
+		"\x1b[1;33m[官方脚本/风险]\x1b[0m",
+		"\x1b[35m[服务日志/xray]\x1b[0m",
+		"\x1b[1;33m请输入 yes/y 确认；其他输入取消： \x1b[0m",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("colored output missing %q: %q", want, got)
+		}
+	}
+}
+
+func TestColorWriterDisabledKeepsPlainOutput(t *testing.T) {
+	var output bytes.Buffer
+	w := NewColorWriter(&output, false)
+	want := "[ProxyForge/错误] 操作失败\n1) 返回\n"
+	if _, err := io.WriteString(w, want); err != nil {
+		t.Fatal(err)
+	}
+	if got := output.String(); got != want {
+		t.Fatalf("plain output=%q, want %q", got, want)
+	}
+	if strings.Contains(output.String(), "\x1b[") {
+		t.Fatalf("disabled output contains ANSI controls: %q", output.String())
+	}
+}
+
+func TestTerminalColorWriterHonorsColorModeOverride(t *testing.T) {
+	t.Run("always", func(t *testing.T) {
+		t.Setenv("PROXYFORGE_COLOR", "always")
+		var output bytes.Buffer
+		if _, err := io.WriteString(NewTerminalColorWriter(&output), "[ProxyForge/结果] 完成\n"); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(output.String(), "\x1b[1;32m[ProxyForge/结果]\x1b[0m") {
+			t.Fatalf("forced color output=%q", output.String())
+		}
+	})
+
+	t.Run("never", func(t *testing.T) {
+		t.Setenv("PROXYFORGE_COLOR", "never")
+		var output bytes.Buffer
+		want := "[ProxyForge/结果] 完成\n"
+		if _, err := io.WriteString(NewTerminalColorWriter(&output), want); err != nil {
+			t.Fatal(err)
+		}
+		if got := output.String(); got != want {
+			t.Fatalf("disabled terminal color output=%q, want %q", got, want)
+		}
+	})
+}
+
 func TestExecRunnerStreamsStdoutAndStderr(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := (ExecRunner{}).RunStreaming(

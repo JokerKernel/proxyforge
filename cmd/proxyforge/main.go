@@ -5,12 +5,13 @@ import (
 	"os"
 
 	"proxyforge/internal/cli"
+	"proxyforge/internal/system"
 	"proxyforge/internal/version"
 )
 
 func main() {
 	if err := cli.New(version.String()).Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "错误:", err)
+		fmt.Fprintln(system.NewTerminalColorWriter(os.Stderr), "[ProxyForge/错误] 操作失败：", err)
 		os.Exit(1)
 	}
 }
