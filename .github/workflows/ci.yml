@@ -35,6 +35,9 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
+      - name: Validate installer syntax
+        run: bash -n scripts/install.sh
+
   build:
     name: Build linux/${{ matrix.arch }}
     needs: test

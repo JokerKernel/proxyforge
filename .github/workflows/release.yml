@@ -119,9 +119,11 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Generate checksum manifest
+      - name: Generate version file and checksum manifest
         working-directory: dist
-        run: sha256sum proxyforge_*_linux_* > SHA256SUMS
+        run: |
+          printf '%s\n' "${RELEASE_TAG}" > version
+          sha256sum proxyforge_*_linux_* version > SHA256SUMS
 
       - name: Create or update GitHub Release
         env:
@@ -129,10 +131,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-            gh release upload "${RELEASE_TAG}" dist/proxyforge_*_linux_* dist/SHA256SUMS --clobber
+            gh release upload "${RELEASE_TAG}" dist/proxyforge_*_linux_* dist/version dist/SHA256SUMS --clobber
           else
             gh release create "${RELEASE_TAG}" \
-              dist/proxyforge_*_linux_* dist/SHA256SUMS \
+              dist/proxyforge_*_linux_* dist/version dist/SHA256SUMS \
               --verify-tag \
               --generate-notes \
               --title "ProxyForge ${RELEASE_TAG}"

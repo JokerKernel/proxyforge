@@ -4,6 +4,28 @@ ProxyForge 是一个面向 Linux/systemd 的 Go 单二进制管理器，用来�
 
 首版支持 Debian/Ubuntu 与 RHEL/CentOS/Rocky/AlmaLinux/Fedora 系发行版的 amd64、arm64。除 `--help` 和 `--version` 外，菜单及所有操作命令都必须由 root 执行；PID 1 不是 systemd 时会拒绝安装。
 
+## 一键安装
+
+自动识别 amd64/arm64，通过 Release 的 `version` 取得最新正式版本，核对 `SHA256SUMS` 后原子安装或升级到 `/usr/local/sbin/proxyforge`。旧 Release 没有 `version` 时会自动兼容原来的 `latest/download` 方式：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | sudo bash
+```
+
+安装完成后直接运行：
+
+```bash
+sudo /usr/local/sbin/proxyforge
+```
+
+如需固定版本，可传入发布标签；脚本不会安装校验清单中不存在或校验失败的文件：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | sudo PROXYFORGE_VERSION=v0.0.4 bash
+```
+
+若希望先审阅脚本，请先下载 `scripts/install.sh`，确认内容后再使用 `sudo bash scripts/install.sh` 执行。一键安装只替换 ProxyForge 自身二进制，不安装或修改 sing-box、Xray、节点配置和 systemd 服务。
+
 ## 构建
 
 ```bash
@@ -150,10 +172,11 @@ Release 工作流会构建该标签并发布以下资产到当前 GitHub 仓库�
 ```text
 proxyforge_v1.0.0_linux_amd64
 proxyforge_v1.0.0_linux_arm64
+version
 SHA256SUMS
 ```
 
-下载对应架构的二进制后需要赋予执行权限，例如 `chmod +x proxyforge_v1.0.0_linux_amd64`，随后即可直接运行，不需要解压。
+`version` 只包含当前发布标签和换行，例如 `v1.0.0`，并与二进制一起纳入 `SHA256SUMS`。可通过固定地址 `https://github.com/JokerKernel/proxyforge/releases/latest/download/version` 查询最新正式版本。下载对应架构的二进制后需要赋予执行权限，例如 `chmod +x proxyforge_v1.0.0_linux_amd64`，随后即可直接运行，不需要解压。
 
 也可以在 GitHub Actions 的 `Release` 工作流中手动输入一个已经存在的标签重新发布。发布任务只在最后阶段取得 `contents: write` 权限；普通 CI 和构建任务保持只读权限。
 
