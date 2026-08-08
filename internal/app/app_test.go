@@ -34,6 +34,7 @@ type fakeRunner struct {
 	calls            []string
 	port             int
 	failRestart      bool
+	failEnable       bool
 	failRemove       bool
 	incompleteRemove bool
 	missingBinary    bool
@@ -95,6 +96,12 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte
 			return nil, errors.New("injected restart failure")
 		}
 		f.serviceStopped = false
+		return nil, nil
+	}
+	if name == "systemctl" && len(args) > 0 && args[0] == "enable" {
+		if f.failEnable {
+			return nil, errors.New("injected enable failure")
+		}
 		return nil, nil
 	}
 	if name == "dpkg" || name == "rpm" {
@@ -304,9 +311,13 @@ func TestGenerateStopsActiveServiceBeforeFirstPortCheck(t *testing.T) {
 		t.Fatal("service was not restarted after applying the config")
 	}
 	log := r.callLog()
+	if !strings.Contains(log, "systemctl enable sing-box.service") {
+		t.Fatalf("service was not enabled after applying the config:\n%s", log)
+	}
 	stopAt := strings.Index(log, "systemctl stop sing-box.service")
 	restartAt := strings.Index(log, "systemctl restart sing-box.service")
-	if stopAt < 0 || restartAt < 0 || stopAt >= restartAt {
+	enableAt := strings.Index(log, "systemctl enable sing-box.service")
+	if stopAt < 0 || restartAt < 0 || enableAt < 0 || stopAt >= restartAt || restartAt >= enableAt {
 		t.Fatalf("service was not stopped before the config was applied:\n%s", log)
 	}
 }
@@ -340,6 +351,24 @@ func TestGenerateSimplifiedSingBoxConfigAndResetPreservesMode(t *testing.T) {
 	}
 	if !reset.SimplifiedConfig {
 		t.Fatal("credential reset changed simplified mode")
+	}
+}
+
+func TestGenerateRollsBackWhenEnablingServiceFails(t *testing.T) {
+	r := &fakeRunner{port: freePort(t), failEnable: true}
+	a, root := testApp(t, r)
+	o := domain.GenerateOptions{
+		Server: "server.example.com", Port: r.port, SNI: "www.example.com", NonInteractive: true,
+	}
+	_, err := a.Generate(context.Background(), domain.CoreSingBox, o)
+	if err == nil || !strings.Contains(err.Error(), "启用 sing-box.service 开机启动失败") {
+		t.Fatalf("error=%v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "etc/sing-box/config.json")); !os.IsNotExist(statErr) {
+		t.Fatalf("new config was not rolled back: %v", statErr)
+	}
+	if _, loadErr := a.Store.Load(domain.CoreSingBox); !errors.Is(loadErr, system.ErrNoState) {
+		t.Fatalf("new state was not rolled back: %v", loadErr)
 	}
 }
 

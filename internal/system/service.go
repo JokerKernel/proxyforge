@@ -31,6 +31,11 @@ func (m ServiceManager) Restart(ctx context.Context, service string) error {
 	return err
 }
 
+func (m ServiceManager) Enable(ctx context.Context, service string) error {
+	_, err := m.Runner.Run(ctx, "systemctl", "enable", service)
+	return err
+}
+
 func (m ServiceManager) IsActive(ctx context.Context, service string) (domain.ServiceStatus, error) {
 	b, err := m.Runner.Run(ctx, "systemctl", "is-active", service)
 	detail := strings.TrimSpace(string(b))

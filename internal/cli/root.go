@@ -471,6 +471,7 @@ func printGenerateSuccess(w io.Writer, n domain.NodeSpec) {
 	fmt.Fprintf(w, "  %s 服务端配置生成成功\n", n.Core)
 	fmt.Fprintln(w, border)
 	fmt.Fprintf(w, "服务状态：active（运行中）\n")
+	fmt.Fprintf(w, "开机启动：enabled（已启用）\n")
 	fmt.Fprintf(w, "连接地址：%s\n", netJoinHostPort(n.Server, strconv.Itoa(n.Port)))
 	fmt.Fprintf(w, "REALITY SNI：%s\n", n.SNI)
 	fmt.Fprintf(w, "REALITY target：%s\n", n.Target)

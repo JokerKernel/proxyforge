@@ -72,6 +72,7 @@ func TestPrintGenerateSuccessDisplaysNodeInformation(t *testing.T) {
 	for _, want := range []string{
 		"sing-box 服务端配置生成成功",
 		"服务状态：active（运行中）",
+		"开机启动：enabled（已启用）",
 		"连接地址：[2001:db8::10]:443",
 		"REALITY SNI：www.example.com",
 		"REALITY target：www.example.com:443",

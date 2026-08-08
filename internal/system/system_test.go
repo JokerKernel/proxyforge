@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -30,6 +31,16 @@ type outputRunner struct{ output []byte }
 
 func (r outputRunner) Run(context.Context, string, ...string) ([]byte, error) {
 	return r.output, nil
+}
+
+func TestServiceManagerEnable(t *testing.T) {
+	runner := &recordingRunner{}
+	if err := (ServiceManager{Runner: runner}).Enable(context.Background(), "sing-box.service"); err != nil {
+		t.Fatal(err)
+	}
+	if runner.name != "systemctl" || !reflect.DeepEqual(runner.args, []string{"enable", "sing-box.service"}) {
+		t.Fatalf("command=%s args=%v", runner.name, runner.args)
+	}
 }
 
 func TestExecRunnerStreamsStdoutAndStderr(t *testing.T) {

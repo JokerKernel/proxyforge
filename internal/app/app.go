@@ -571,6 +571,10 @@ func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, co
 	if err := a.Listening(ctx, n.Port, 4*time.Second); err != nil {
 		return n, rollback(err)
 	}
+	a.progressf("启用 systemd 服务 %s 开机启动", p.ServiceName())
+	if err := a.Services.Enable(ctx, p.ServiceName()); err != nil {
+		return n, rollback(fmt.Errorf("启用 %s 开机启动失败: %w", p.ServiceName(), err))
+	}
 	a.progressf("保存 ProxyForge 节点状态")
 	if err := a.Store.Save(n); err != nil {
 		return n, rollback(fmt.Errorf("保存状态失败: %w", err))
