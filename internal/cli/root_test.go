@@ -71,6 +71,33 @@ func TestClientMenuOutputsClashYAML(t *testing.T) {
 	}
 }
 
+func TestServerConfigMenuShowsCurrentConfig(t *testing.T) {
+	layout := system.Layout{Root: t.TempDir()}
+	want := []byte("{\"private_key\":\"server-secret\"}\n")
+	if err := system.AtomicWrite(layout.Resolve(singbox.New().ConfigPath()), want, 0600); err != nil {
+		t.Fatal(err)
+	}
+	a := &app.App{
+		Registry: provider.NewRegistry(singbox.New(), xray.New()), Layout: layout,
+		RootCheck: func() error { return nil },
+	}
+	var out, errOut bytes.Buffer
+	c := &commandSet{
+		app: a, reader: bufio.NewReader(strings.NewReader("2\n0\n")), out: &out, errOut: &errOut,
+	}
+	if err := c.serverConfigMenu(context.Background(), domain.CoreSingBox); err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range []string{"服务端配置管理", "查看当前配置", "REALITY 私钥", "server-secret"} {
+		if !strings.Contains(out.String(), text) {
+			t.Fatalf("server config menu missing %q: %q", text, out.String())
+		}
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("server config menu error output=%q", errOut.String())
+	}
+}
+
 func TestCleanupCommandRequiresYesWhenNonInteractive(t *testing.T) {
 	input := strings.NewReader("")
 	c := &commandSet{in: input, reader: bufio.NewReader(input), out: io.Discard}
@@ -326,7 +353,7 @@ func TestMenuCanReturnFromCoreSelection(t *testing.T) {
 	if strings.Count(out.String(), "ProxyForge 双内核代理管理器") != 2 {
 		t.Fatalf("core selector was not shown twice: %q", out.String())
 	}
-	if !strings.Contains(out.String(), "sing-box 管理菜单") || !strings.Contains(out.String(), "安装/升级内核") {
+	if !strings.Contains(out.String(), "sing-box 管理菜单") || !strings.Contains(out.String(), "安装/升级内核") || !strings.Contains(out.String(), "服务端配置管理") {
 		t.Fatalf("core menu missing: %q", out.String())
 	}
 	if !strings.Contains(out.String(), "已退出 ProxyForge") {

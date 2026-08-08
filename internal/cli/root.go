@@ -341,10 +341,8 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 		case 1:
 			err = c.app.Install(ctx, core, install.Options{Confirm: c.confirm})
 		case 2:
-			o := domain.GenerateOptions{}
-			if err = c.fillGenerate(ctx, core, &o); err == nil {
-				err = c.runGenerate(ctx, core, o, true)
-			}
+			shouldPause = false
+			err = c.serverConfigMenu(ctx, core)
 		case 3:
 			shouldPause, err = c.clientMenu(ctx, core)
 		case 4:
@@ -378,6 +376,47 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 	}
 }
 
+func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
+	for {
+		c.clearScreen()
+		fmt.Fprintf(c.out, "服务端配置管理：%s\n\n", core)
+		fmt.Fprintln(c.out, "1) 生成/更新服务端配置")
+		fmt.Fprintln(c.out, "2) 查看当前配置")
+		fmt.Fprintln(c.out, "0) 返回内核菜单")
+		choice, err := c.chooseNumber("请选择", 0, 2, 0)
+		if err != nil {
+			return err
+		}
+		if choice == 0 {
+			return nil
+		}
+
+		c.clearScreen()
+		switch choice {
+		case 1:
+			o := domain.GenerateOptions{}
+			if err = c.fillGenerate(ctx, core, &o); err == nil {
+				err = c.runGenerate(ctx, core, o, true)
+			}
+		case 2:
+			fmt.Fprintln(c.out, "警告：当前服务端配置可能包含 UUID、REALITY 私钥等敏感信息，请勿泄露。")
+			fmt.Fprintln(c.out, "----------------------------------------")
+			var b []byte
+			b, err = c.app.ServerConfig(core)
+			if err == nil {
+				_, err = c.out.Write(b)
+				if err == nil && len(b) > 0 && b[len(b)-1] != '\n' {
+					fmt.Fprintln(c.out)
+				}
+			}
+		}
+		if err != nil {
+			c.printMenuError(err)
+		}
+		c.pauseForMenu()
+	}
+}
+
 func (c *commandSet) clientMenu(ctx context.Context, core string) (bool, error) {
 	c.clearScreen()
 	fmt.Fprintf(c.out, "查看客户端配置：%s\n\n", core)
@@ -408,7 +447,7 @@ func (c *commandSet) printCoreMenu(core string) {
 	fmt.Fprintf(c.out, "       %s 管理菜单\n", core)
 	fmt.Fprintln(c.out, "========================================")
 	fmt.Fprintln(c.out, "1) 安装/升级内核")
-	fmt.Fprintln(c.out, "2) 生成服务端配置")
+	fmt.Fprintln(c.out, "2) 服务端配置管理")
 	fmt.Fprintln(c.out, "3) 查看客户端配置")
 	fmt.Fprintln(c.out, "4) 重置节点/凭证")
 	fmt.Fprintln(c.out, "5) 管理服务")

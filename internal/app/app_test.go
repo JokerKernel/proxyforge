@@ -524,6 +524,26 @@ func TestClientOutputPermissionsAndForce(t *testing.T) {
 	}
 }
 
+func TestServerConfigReadsCurrentActiveFile(t *testing.T) {
+	r := &fakeRunner{}
+	a, _ := testApp(t, r)
+	path := a.Layout.Resolve(singbox.New().ConfigPath())
+	want := []byte("{\"private_key\":\"server-secret\"}\n")
+	if err := system.AtomicWrite(path, want, 0600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := a.ServerConfig(domain.CoreSingBox)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("server config=%q, want %q", got, want)
+	}
+	if _, err := a.ServerConfig(domain.CoreXray); err == nil || !strings.Contains(err.Error(), "尚未找到") {
+		t.Fatalf("missing config error=%v", err)
+	}
+}
+
 func TestClashClientOutput(t *testing.T) {
 	r := &fakeRunner{}
 	a, _ := testApp(t, r)

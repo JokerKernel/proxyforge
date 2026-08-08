@@ -502,6 +502,26 @@ func (a *App) Client(ctx context.Context, core, output string, force bool) ([]by
 	return a.ClientConfig(ctx, core, ClientFormatNative, output, force)
 }
 
+func (a *App) ServerConfig(core string) ([]byte, error) {
+	if err := a.RootCheck(); err != nil {
+		return nil, err
+	}
+	p, err := a.Registry.Get(core)
+	if err != nil {
+		return nil, err
+	}
+	path := a.Layout.Resolve(p.ConfigPath())
+	a.progressf("读取当前 %s 服务端配置 %s", core, path)
+	b, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, fmt.Errorf("尚未找到 %s 服务端配置 %s", core, p.ConfigPath())
+	}
+	if err != nil {
+		return nil, fmt.Errorf("读取 %s 服务端配置 %s: %w", core, p.ConfigPath(), err)
+	}
+	return b, nil
+}
+
 func (a *App) ClientConfig(ctx context.Context, core, format, output string, force bool) ([]byte, error) {
 	if err := a.RootCheck(); err != nil {
 		return nil, err
