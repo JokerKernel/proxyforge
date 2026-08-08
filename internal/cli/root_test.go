@@ -271,6 +271,22 @@ func TestChooseNumberRetriesInvalidInput(t *testing.T) {
 	if count := strings.Count(out.String(), "无效选择"); count != 2 {
 		t.Fatalf("invalid message count = %d, output=%q", count, out.String())
 	}
+	if strings.Contains(out.String(), "\x1b[") {
+		t.Fatalf("redirected choice output contains ANSI controls: %q", out.String())
+	}
+}
+
+func TestEraseChoiceRetryReplacesPromptAndPreviousError(t *testing.T) {
+	const eraseLine = "\x1b[1A\r\x1b[2K"
+	var first, retry bytes.Buffer
+	eraseChoiceRetry(&first, false)
+	eraseChoiceRetry(&retry, true)
+	if first.String() != eraseLine {
+		t.Fatalf("first invalid clear=%q", first.String())
+	}
+	if retry.String() != eraseLine+eraseLine {
+		t.Fatalf("repeated invalid clear=%q", retry.String())
+	}
 }
 
 func TestSelectCoreUsesNumericChoiceAndDefault(t *testing.T) {

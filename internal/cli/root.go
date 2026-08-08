@@ -582,6 +582,7 @@ func (c *commandSet) serviceMenu(ctx context.Context, core string) error {
 }
 
 func (c *commandSet) chooseNumber(label string, min, max, def int) (int, error) {
+	invalidShown := false
 	for {
 		if def >= min && def <= max {
 			fmt.Fprintf(c.out, "%s [%d]: ", label, def)
@@ -600,7 +601,19 @@ func (c *commandSet) chooseNumber(label string, min, max, def int) (int, error) 
 		if parseErr == nil && choice >= min && choice <= max {
 			return choice, nil
 		}
+		if c.interactiveUI() {
+			eraseChoiceRetry(c.out, invalidShown)
+		}
 		fmt.Fprintf(c.out, "无效选择，请输入 %d 到 %d 之间的数字。\n", min, max)
+		invalidShown = true
+	}
+}
+
+func eraseChoiceRetry(w io.Writer, invalidShown bool) {
+	erasePreviousLine := "\033[1A\r\033[2K"
+	fmt.Fprint(w, erasePreviousLine)
+	if invalidShown {
+		fmt.Fprint(w, erasePreviousLine)
 	}
 }
 
