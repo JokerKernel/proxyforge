@@ -104,7 +104,7 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 | 状态 | `/var/lib/proxyforge/state/sing-box.json` | `/var/lib/proxyforge/state/xray.json` |
 | systemd unit | `sing-box.service` | `xray.service` |
 
-信任记录位于 `/var/lib/proxyforge/trust/`，接管前备份位于 `/var/lib/proxyforge/backups/<core>/<timestamp>/`。状态、信任和备份为 root-only；服务配置按 unit 的实际 `User=` 设置为 root 私有或 root 所有、服务组只读，绝不设为世界可读。
+信任记录位于 `/var/lib/proxyforge/trust/`，备份位于 `/var/lib/proxyforge/backups/<core>/<timestamp>/`，每个内核仅保留最近 3 份，成功创建新备份后自动删除更早的 ProxyForge 时间戳备份。状态、信任和备份为 root-only；服务配置按 unit 的实际 `User=` 设置为 root 私有或 root 所有、服务组只读，绝不设为世界可读。
 
 配置更新先写临时文件并运行 `sing-box check` 或 `xray run -test`，再原子替换、只重启目标服务并确认 active/监听状态。任一步失败都会恢复该内核的旧配置和状态并重启旧服务，不触碰另一个内核。
 

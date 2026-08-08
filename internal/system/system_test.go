@@ -3,8 +3,10 @@ package system
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -185,6 +187,51 @@ func TestAtomicWriteAndBackupPermissions(t *testing.T) {
 	b, _ = os.ReadFile(path)
 	if string(b) != "new" {
 		t.Fatalf("atomic result=%q", b)
+	}
+}
+
+func TestBackupFileKeepsNewestThreeBackups(t *testing.T) {
+	root := t.TempDir()
+	path := root + "/config/config.json"
+	backupRoot := root + "/backups"
+	if err := os.MkdirAll(backupRoot+"/manual-notes", 0700); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 5; i++ {
+		content := []byte(fmt.Sprintf("version-%d", i))
+		if err := AtomicWrite(path, content, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := BackupFile(path, backupRoot, time.Unix(int64(i), 0)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	entries, err := os.ReadDir(backupRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var backups []string
+	for _, entry := range entries {
+		if _, err := time.Parse(backupTimestampLayout, entry.Name()); err == nil {
+			backups = append(backups, entry.Name())
+		}
+	}
+	if len(backups) != 3 {
+		t.Fatalf("backup directories=%v, want newest three", backups)
+	}
+	for i, name := range backups {
+		b, err := os.ReadFile(filepath.Join(backupRoot, name, "config.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := fmt.Sprintf("version-%d", i+3)
+		if string(b) != want {
+			t.Fatalf("backup %s=%q, want %q", name, b, want)
+		}
+	}
+	if _, err := os.Stat(backupRoot + "/manual-notes"); err != nil {
+		t.Fatalf("unrecognized directory was removed: %v", err)
 	}
 }
 

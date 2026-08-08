@@ -7,7 +7,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
+)
+
+const (
+	backupRetention       = 3
+	backupTimestampLayout = "20060102T150405.000000000Z"
 )
 
 func AtomicWrite(path string, data []byte, mode os.FileMode) error {
@@ -69,7 +75,7 @@ func BackupFile(source, backupRoot string, now time.Time) (string, error) {
 	if err := os.Chmod(backupRoot, 0700); err != nil {
 		return "", err
 	}
-	dir := filepath.Join(backupRoot, now.UTC().Format("20060102T150405.000000000Z"))
+	dir := filepath.Join(backupRoot, now.UTC().Format(backupTimestampLayout))
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}
@@ -88,5 +94,34 @@ func BackupFile(source, backupRoot string, now time.Time) (string, error) {
 	if copyErr != nil {
 		return "", fmt.Errorf("备份 %s: %w", source, copyErr)
 	}
+	if err := pruneBackupDirectories(backupRoot, backupRetention); err != nil {
+		return "", fmt.Errorf("清理旧备份: %w", err)
+	}
 	return dest, nil
+}
+
+func pruneBackupDirectories(backupRoot string, keep int) error {
+	entries, err := os.ReadDir(backupRoot)
+	if err != nil {
+		return err
+	}
+	var names []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if _, err := time.Parse(backupTimestampLayout, entry.Name()); err == nil {
+			names = append(names, entry.Name())
+		}
+	}
+	if len(names) <= keep {
+		return nil
+	}
+	sort.Strings(names)
+	for _, name := range names[:len(names)-keep] {
+		if err := os.RemoveAll(filepath.Join(backupRoot, name)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
