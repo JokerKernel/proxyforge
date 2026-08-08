@@ -66,7 +66,7 @@ sudo proxyforge uninstall sing-box --yes
 sudo proxyforge uninstall xray --yes --trust-script-sha256 <64位哈希>
 ```
 
-需要彻底删除卸载后保留的数据时，可使用清理命令。程序检测到内核仍安装时会拒绝清理，必须先执行 `uninstall`。清理不会创建新备份，会永久删除所选内核的配置目录、运行数据、文件日志、ProxyForge 状态、信任记录和历史备份；`all` 会先确认两个内核均已卸载，再同时清理。程序不会删除 systemd journal，也不会记录或删除此前导出到用户指定位置的客户端配置。
+需要彻底删除卸载后保留的数据时，可使用清理命令。程序会同时检查内核二进制、systemd unit、服务运行状态和开机启用状态；无法完成检查或检测到任一残留时会拒绝清理，必须先执行 `uninstall`。清理不会创建新备份，会永久删除所选内核的配置目录、运行数据、文件日志、ProxyForge 状态、信任记录和历史备份；`all` 会先确认两个内核均已完全卸载，再同时清理。程序不会删除 systemd journal，也不会记录或删除此前导出到用户指定位置的客户端配置。
 
 ```bash
 sudo proxyforge cleanup sing-box

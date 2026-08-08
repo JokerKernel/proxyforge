@@ -634,7 +634,7 @@ func TestUninstallPreservesExternallyModifiedConfig(t *testing.T) {
 }
 
 func TestCleanupRemovesOnlySelectedCoreResidue(t *testing.T) {
-	r := &fakeRunner{missingBinary: true}
+	r := &fakeRunner{missingBinary: true, unitRemoved: true, serviceStopped: true}
 	a, root := testApp(t, r)
 	singPaths := []string{
 		a.Layout.Resolve("/etc/sing-box/config.json"),
@@ -679,7 +679,7 @@ func TestCleanupRemovesOnlySelectedCoreResidue(t *testing.T) {
 }
 
 func TestCleanupAllRemovesBothCoresAndProxyForgeData(t *testing.T) {
-	r := &fakeRunner{missingBinary: true}
+	r := &fakeRunner{missingBinary: true, unitRemoved: true, serviceStopped: true}
 	a, _ := testApp(t, r)
 	paths := []string{
 		a.Layout.Resolve("/etc/sing-box/config.json"),
@@ -743,6 +743,25 @@ func TestCleanupRefusesInstalledCoreBeforeDeleting(t *testing.T) {
 	}
 	if _, err := os.Stat(marker); err != nil {
 		t.Fatalf("installed core data was removed: %v", err)
+	}
+}
+
+func TestCleanupRefusesRemainingUnitWhenBinaryIsMissing(t *testing.T) {
+	r := &fakeRunner{missingBinary: true, serviceStopped: true}
+	a, _ := testApp(t, r)
+	marker := a.Layout.Resolve("/usr/local/etc/xray/config.json")
+	if err := os.MkdirAll(filepath.Dir(marker), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(marker, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	err := a.Cleanup(context.Background(), domain.CoreXray)
+	if err == nil || !strings.Contains(err.Error(), "systemd unit xray.service") || !strings.Contains(err.Error(), "请先执行 uninstall") {
+		t.Fatalf("error=%v, want remaining unit rejection", err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("cleanup changed data before all uninstall checks passed: %v", err)
 	}
 }
 

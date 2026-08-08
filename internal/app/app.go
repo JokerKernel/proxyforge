@@ -311,6 +311,14 @@ func (a *App) verifyUninstalled(ctx context.Context, p provider.CoreProvider) er
 	if err != nil {
 		return fmt.Errorf("卸载命令已完成，但无法完成卸载后核验；活动配置和 ProxyForge 状态已保留: %w", err)
 	}
+	remaining := describeUninstallArtifacts(p, artifacts)
+	if len(remaining) > 0 {
+		return fmt.Errorf("卸载命令已完成，但卸载后核验失败，仍存在：%s；活动配置和 ProxyForge 状态已保留", strings.Join(remaining, "、"))
+	}
+	return nil
+}
+
+func describeUninstallArtifacts(p provider.CoreProvider, artifacts uninstallArtifacts) []string {
 	var remaining []string
 	if artifacts.binary {
 		remaining = append(remaining, "二进制 "+p.Binary())
@@ -324,10 +332,7 @@ func (a *App) verifyUninstalled(ctx context.Context, p provider.CoreProvider) er
 	if artifacts.serviceEnabled {
 		remaining = append(remaining, fmt.Sprintf("服务 %s 仍启用开机启动（状态=%s）", p.ServiceName(), artifacts.enabledState))
 	}
-	if len(remaining) > 0 {
-		return fmt.Errorf("卸载命令已完成，但卸载后核验失败，仍存在：%s；活动配置和 ProxyForge 状态已保留", strings.Join(remaining, "、"))
-	}
-	return nil
+	return remaining
 }
 
 func (a *App) lookPath(name string) (string, error) {
@@ -356,8 +361,12 @@ func (a *App) Cleanup(ctx context.Context, target string) error {
 	}
 	for _, p := range providers {
 		a.progressf("确认 %s 已卸载", p.Name())
-		if version, err := p.Version(ctx, a.Runner); err == nil {
-			return fmt.Errorf("仍检测到已安装的 %s（%s）；请先执行 uninstall", p.Name(), version)
+		artifacts, err := a.inspectUninstallArtifacts(ctx, p)
+		if err != nil {
+			return fmt.Errorf("无法确认 %s 已完全卸载，拒绝清理: %w", p.Name(), err)
+		}
+		if remaining := describeUninstallArtifacts(p, artifacts); len(remaining) != 0 {
+			return fmt.Errorf("仍检测到 %s 未完成卸载：%s；请先执行 uninstall", p.Name(), strings.Join(remaining, "、"))
 		}
 		a.progressf("未检测到 %s，继续清理", p.Name())
 	}
