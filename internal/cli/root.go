@@ -327,12 +327,16 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 			return err
 		}
 	}
+	o.SNI = strings.TrimSpace(o.SNI)
+	manualSNI := o.SNI != ""
 	if o.SNI == "" {
 		var err error
 		o.SNI, err = c.askDefaultCancelable("REALITY SNI（输入域名；直接回车自动测速候选）", "")
 		if err != nil {
 			return err
 		}
+		o.SNI = strings.TrimSpace(o.SNI)
+		manualSNI = o.SNI != ""
 		if o.SNI == "" {
 			selected, err := c.selectSNICandidate(ctx, o.Server)
 			if err != nil {
@@ -343,6 +347,11 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 				c.clearScreen()
 				fmt.Fprintf(c.out, "生成服务端配置：%s\n\n已选择 REALITY SNI：%s\n", core, o.SNI)
 			}
+		}
+	}
+	if manualSNI {
+		if err := c.confirmManualSNI(ctx, o.SNI, o.Server); err != nil {
+			return err
 		}
 	}
 	if o.Target == "" {
@@ -718,8 +727,12 @@ func (c *commandSet) fillReset(ctx context.Context, core string, opts *domain.Re
 	}
 	c.clearScreen()
 	fmt.Fprintf(c.out, "重置节点：%s\n\n", core)
+	opts.SNI = strings.TrimSpace(opts.SNI)
+	manualSNI := opts.SNI != ""
 	if opts.SNI == "" {
 		opts.SNI = c.askDefault("新的 REALITY SNI（输入域名；直接回车自动测速候选）", "")
+		opts.SNI = strings.TrimSpace(opts.SNI)
+		manualSNI = opts.SNI != ""
 		if opts.SNI == "" {
 			selected, err := c.selectSNICandidate(ctx, current.Server)
 			if err != nil {
@@ -730,6 +743,11 @@ func (c *commandSet) fillReset(ctx context.Context, core string, opts *domain.Re
 				c.clearScreen()
 				fmt.Fprintf(c.out, "重置节点：%s\n\n已选择 REALITY SNI：%s\n", core, opts.SNI)
 			}
+		}
+	}
+	if manualSNI {
+		if err := c.confirmManualSNI(ctx, opts.SNI, current.Server); err != nil {
+			return err
 		}
 	}
 	if opts.Target == "" {

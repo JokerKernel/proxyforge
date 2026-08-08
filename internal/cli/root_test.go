@@ -376,8 +376,14 @@ func TestFillResetDefaultsTargetToNewSNI(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
 		app:    &app.App{Store: store},
-		reader: bufio.NewReader(strings.NewReader("new.example.com\n\n")),
+		reader: bufio.NewReader(strings.NewReader("new.example.com\nyes\n\n")),
 		out:    &out,
+		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
+			if len(candidates) != 1 || candidates[0] != "new.example.com" || limit != 1 {
+				t.Fatalf("candidates=%v server=%q limit=%d", candidates, server, limit)
+			}
+			return []app.SNICandidate{{Domain: "new.example.com", Latency: 3 * time.Millisecond, TLSVersion: "1.3", CertificateSANs: []string{"new.example.com"}}}, nil
+		},
 	}
 	opts := domain.ResetOptions{}
 	if err := c.fillReset(context.Background(), domain.CoreSingBox, &opts); err != nil {
@@ -385,6 +391,9 @@ func TestFillResetDefaultsTargetToNewSNI(t *testing.T) {
 	}
 	if opts.SNI != "new.example.com" || opts.Target != "new.example.com:443" {
 		t.Fatalf("reset options = %#v", opts)
+	}
+	if !strings.Contains(out.String(), "手动 SNI 检测结果") || !strings.Contains(out.String(), "确认采用这个手动 SNI") {
+		t.Fatalf("manual reset SNI was not checked: %q", out.String())
 	}
 }
 
@@ -578,8 +587,11 @@ func TestFillGenerateSelectsRandomDefaultFromFastCandidates(t *testing.T) {
 func TestFillGenerateSelectsSimplifiedSingBoxConfig(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("2\n\n\nyes\n")),
+		reader: bufio.NewReader(strings.NewReader("2\n\n\nyes\nyes\n")),
 		out:    &out,
+		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
+			return []app.SNICandidate{{Domain: candidates[0], Latency: 5 * time.Millisecond, TLSVersion: "1.3", ALPN: "h2", CertificateSANs: []string{candidates[0]}, CDN: "未发现明显特征"}}, nil
+		},
 	}
 	opts := domain.GenerateOptions{
 		Server: "server.example.com", Port: 443,
@@ -593,6 +605,66 @@ func TestFillGenerateSelectsSimplifiedSingBoxConfig(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "DNS 日志较少") || !strings.Contains(out.String(), "可能绕过拦截") {
 		t.Fatalf("simplified warning missing: %q", out.String())
+	}
+}
+
+func TestFillGenerateProbesManualSNIAndConfirmsTwice(t *testing.T) {
+	var out bytes.Buffer
+	probeCalls := 0
+	c := &commandSet{
+		reader: bufio.NewReader(strings.NewReader("\n\n\nmanual.example.com\nyes\nyes\n")),
+		out:    &out,
+		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
+			probeCalls++
+			if len(candidates) != 1 || candidates[0] != "manual.example.com" || server != "server.example.com" || limit != 1 {
+				t.Fatalf("candidates=%v server=%q limit=%d", candidates, server, limit)
+			}
+			return []app.SNICandidate{{
+				Domain: "manual.example.com", Latency: 7 * time.Millisecond, TLSVersion: "1.3", ALPN: "h2",
+				CertificateSANs: []string{"manual.example.com", "*.example.com"}, CDN: "测试 CDN",
+			}}, nil
+		},
+	}
+	opts := domain.GenerateOptions{Server: "server.example.com", Port: 443}
+	if err := c.fillGenerate(context.Background(), domain.CoreSingBox, &opts); err != nil {
+		t.Fatal(err)
+	}
+	if probeCalls != 1 || opts.SNI != "manual.example.com" || opts.Target != "manual.example.com:443" {
+		t.Fatalf("probeCalls=%d options=%#v", probeCalls, opts)
+	}
+	for _, want := range []string{
+		"正在检测手动 SNI", "TLS=1.3", "ALPN=h2", "证书 SAN=manual.example.com, *.example.com", "CDN=测试 CDN",
+		"确认采用这个手动 SNI", "确认 SNI 和 REALITY target",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("manual SNI output missing %q: %q", want, out.String())
+		}
+	}
+}
+
+func TestSelectSNICandidateProbesManualOtherDomain(t *testing.T) {
+	var out bytes.Buffer
+	probeCalls := 0
+	c := &commandSet{
+		reader: bufio.NewReader(strings.NewReader("0\nother.example.com\nyes\n")),
+		out:    &out,
+		probeSNI: func(_ context.Context, candidates []string, _ string, limit int) ([]app.SNICandidate, error) {
+			probeCalls++
+			if probeCalls == 1 {
+				return []app.SNICandidate{{Domain: "auto.example.com", Latency: time.Millisecond}}, nil
+			}
+			if len(candidates) != 1 || candidates[0] != "other.example.com" || limit != 1 {
+				t.Fatalf("manual candidates=%v limit=%d", candidates, limit)
+			}
+			return []app.SNICandidate{{Domain: "other.example.com", Latency: 2 * time.Millisecond, TLSVersion: "1.3"}}, nil
+		},
+	}
+	got, err := c.selectSNICandidate(context.Background(), "server.example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "other.example.com" || probeCalls != 2 {
+		t.Fatalf("SNI=%q probeCalls=%d", got, probeCalls)
 	}
 }
 
