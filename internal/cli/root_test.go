@@ -190,6 +190,29 @@ func TestExistingServerConfigRequiresOverwriteConfirmation(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+	t.Run("menu cancel returns to server config menu", func(t *testing.T) {
+		var out, errOut bytes.Buffer
+		c := &commandSet{
+			app:    a,
+			reader: bufio.NewReader(strings.NewReader("1\nq\n0\n")),
+			out:    &out,
+			errOut: &errOut,
+		}
+		if err := c.serverConfigMenu(context.Background(), domain.CoreSingBox); err != nil {
+			t.Fatal(err)
+		}
+		if count := strings.Count(out.String(), "服务端配置管理：sing-box"); count != 2 {
+			t.Fatalf("server config menu count=%d, want 2; output=%q", count, out.String())
+		}
+		for _, text := range []string{"输入 q 返回当前菜单", "已取消生成服务端配置，返回服务端配置管理菜单"} {
+			if !strings.Contains(out.String(), text) {
+				t.Fatalf("cancel output missing %q: %q", text, out.String())
+			}
+		}
+		if errOut.Len() != 0 {
+			t.Fatalf("cancel was reported as an error: %q", errOut.String())
+		}
+	})
 	t.Run("non-interactive requires yes", func(t *testing.T) {
 		c := &commandSet{app: a, out: io.Discard}
 		if err := c.confirmServerConfigOverwrite(domain.CoreSingBox, false); err == nil || !strings.Contains(err.Error(), "--yes") {
