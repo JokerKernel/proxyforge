@@ -317,8 +317,25 @@ func (c *commandSet) runGenerate(ctx context.Context, core string, o domain.Gene
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(c.out, "%s 节点已启用：%s:%d，SNI=%s，用户=%s，入站标签=%s，内核=%s\n", core, n.Server, n.Port, n.SNI, n.UserName, n.InboundTag, n.CoreVersion)
+	printGenerateSuccess(c.out, n)
 	return nil
+}
+
+func printGenerateSuccess(w io.Writer, n domain.NodeSpec) {
+	const border = "========================================================"
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, border)
+	fmt.Fprintf(w, "  %s 服务端配置生成成功\n", n.Core)
+	fmt.Fprintln(w, border)
+	fmt.Fprintf(w, "服务状态：active（运行中）\n")
+	fmt.Fprintf(w, "连接地址：%s\n", netJoinHostPort(n.Server, strconv.Itoa(n.Port)))
+	fmt.Fprintf(w, "REALITY SNI：%s\n", n.SNI)
+	fmt.Fprintf(w, "REALITY target：%s\n", n.Target)
+	fmt.Fprintf(w, "用户名称：%s\n", n.UserName)
+	fmt.Fprintf(w, "入站标签：%s\n", n.InboundTag)
+	fmt.Fprintf(w, "内核版本：%s\n", n.CoreVersion)
+	fmt.Fprintln(w, border)
+	fmt.Fprintln(w, "提示：请从“查看客户端配置”导出并妥善保管客户端配置。")
 }
 
 func (c *commandSet) menu(ctx context.Context) error {

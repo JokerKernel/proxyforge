@@ -57,6 +57,31 @@ func TestGenerateCommandOffersUserNameAndInboundTag(t *testing.T) {
 	}
 }
 
+func TestPrintGenerateSuccessDisplaysNodeInformation(t *testing.T) {
+	var out bytes.Buffer
+	printGenerateSuccess(&out, domain.NodeSpec{
+		Core: domain.CoreSingBox, Server: "2001:db8::10", Port: 443,
+		SNI: "www.example.com", Target: "www.example.com:443",
+		UserName: "phone", InboundTag: "phone-in", CoreVersion: "sing-box version 1.13.16",
+	})
+
+	for _, want := range []string{
+		"sing-box 服务端配置生成成功",
+		"服务状态：active（运行中）",
+		"连接地址：[2001:db8::10]:443",
+		"REALITY SNI：www.example.com",
+		"REALITY target：www.example.com:443",
+		"用户名称：phone",
+		"入站标签：phone-in",
+		"内核版本：sing-box version 1.13.16",
+		"查看客户端配置",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("success output missing %q: %q", want, out.String())
+		}
+	}
+}
+
 func TestClientMenuOutputsClashYAML(t *testing.T) {
 	layout := system.Layout{Root: t.TempDir()}
 	store := system.StateStore{Layout: layout}
