@@ -37,6 +37,8 @@ const (
 	DNSProfileSystem           = "system"
 	DNSProfilePublicCloudflare = "public-cloudflare"
 	DNSProfilePublicGoogle     = "public-google"
+	DNSProfileDoHCloudflare    = "doh-cloudflare"
+	DNSProfileDoHGoogle        = "doh-google"
 	DNSProfileCloudflare       = "cloudflare"
 	DNSProfileGoogle           = "google"
 )

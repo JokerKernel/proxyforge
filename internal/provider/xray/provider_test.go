@@ -198,6 +198,21 @@ func TestPatchDNSProfilePreservesOtherDNSSettings(t *testing.T) {
 	if current, err := p.CurrentDNSProfile(patched); err != nil || current != "public-google" {
 		t.Fatalf("patched current=%q error=%v", current, err)
 	}
+	doh, err := p.PatchDNSProfile(patched, "doh-cloudflare")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dohRoot map[string]any
+	if err := json.Unmarshal(doh, &dohRoot); err != nil {
+		t.Fatal(err)
+	}
+	dohServers := dohRoot["dns"].(map[string]any)["servers"].([]any)
+	if len(dohServers) != 2 || dohServers[0] != "https+local://1.1.1.1/dns-query" || dohServers[1] != "https+local://8.8.8.8/dns-query" {
+		t.Fatalf("doh servers=%#v", dohServers)
+	}
+	if current, err := p.CurrentDNSProfile(doh); err != nil || current != "doh-cloudflare" {
+		t.Fatalf("doh current=%q error=%v", current, err)
+	}
 	gotDNS["queryStrategy"] = "UseIPv4"
 	misconfigured, err := json.Marshal(got)
 	if err != nil {

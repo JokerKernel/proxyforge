@@ -14,6 +14,8 @@ var supportedDNSProfiles = []string{
 	provider.DNSProfileSystem,
 	provider.DNSProfilePublicCloudflare,
 	provider.DNSProfilePublicGoogle,
+	provider.DNSProfileDoHCloudflare,
+	provider.DNSProfileDoHGoogle,
 }
 
 func (*Provider) DNSProfiles() []string {
@@ -47,6 +49,12 @@ func (*Provider) CurrentDNSProfile(config []byte) (string, error) {
 		}
 		if firstOK && secondOK && first == "8.8.8.8" && second == "1.1.1.1" {
 			return provider.DNSProfilePublicGoogle, nil
+		}
+		if firstOK && secondOK && first == "https+local://1.1.1.1/dns-query" && second == "https+local://8.8.8.8/dns-query" {
+			return provider.DNSProfileDoHCloudflare, nil
+		}
+		if firstOK && secondOK && first == "https+local://8.8.8.8/dns-query" && second == "https+local://1.1.1.1/dns-query" {
+			return provider.DNSProfileDoHGoogle, nil
 		}
 	}
 	if len(servers) == 1 {
@@ -88,6 +96,10 @@ func (*Provider) PatchDNSProfile(config []byte, profile string) ([]byte, error) 
 		servers = []any{"1.1.1.1", "8.8.8.8"}
 	} else if profile == provider.DNSProfilePublicGoogle {
 		servers = []any{"8.8.8.8", "1.1.1.1"}
+	} else if profile == provider.DNSProfileDoHCloudflare {
+		servers = []any{"https+local://1.1.1.1/dns-query", "https+local://8.8.8.8/dns-query"}
+	} else if profile == provider.DNSProfileDoHGoogle {
+		servers = []any{"https+local://8.8.8.8/dns-query", "https+local://1.1.1.1/dns-query"}
 	}
 	dns["servers"] = servers
 	dns["queryStrategy"] = "UseIP"

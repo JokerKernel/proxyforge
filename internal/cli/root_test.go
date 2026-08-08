@@ -225,6 +225,15 @@ func TestServerConfigMenuShowsCurrentConfig(t *testing.T) {
 	}
 }
 
+func TestDNSProfileDisplayIncludesEncryptedOptions(t *testing.T) {
+	for _, profile := range []string{provider.DNSProfileDoHCloudflare, provider.DNSProfileDoHGoogle} {
+		got := dnsProfileDisplay(profile)
+		if !strings.Contains(got, "加密 DNS/DoH") {
+			t.Fatalf("profile %q display=%q", profile, got)
+		}
+	}
+}
+
 func TestServerConfigGenerationQReturnsWithoutApplying(t *testing.T) {
 	a := &app.App{
 		Registry:  provider.NewRegistry(singbox.New(), xray.New()),

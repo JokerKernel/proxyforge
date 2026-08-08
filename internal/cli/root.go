@@ -694,7 +694,21 @@ func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
 		"备份并原子更新当前服务端配置",
 		"服务正在运行时自动重启使设置立即生效",
 	}}}
-	if selected != provider.DNSProfileSystem {
+	if isEncryptedDNSProfile(selected) {
+		items := []string{
+			"普通域名查询将通过 HTTPS/443 加密传输",
+			"该设置只修改代理内核解析器，不修改系统全局 DNS",
+		}
+		if core == domain.CoreSingBox {
+			items = append(items,
+				"sing-box 仅使用系统 DNS 引导解析 DoH 服务地址，普通域名查询不会使用系统 DNS",
+				"sing-box 会写入两个 DoH 服务器并使用所选默认项，但不提供 Xray 式自动顺序回退",
+			)
+		} else {
+			items = append(items, "Xray 使用 IP 形式的 DoH 地址，不依赖系统 DNS 引导，并按配置顺序自动回退")
+		}
+		sections = append(sections, confirmationSection{title: "加密 DNS", items: items})
+	} else if selected != provider.DNSProfileSystem {
 		items := []string{
 			"公共 DNS 使用 UDP/53 明文查询，网络运营方可能观察或拦截",
 			"该设置只修改代理内核解析器，不修改系统全局 DNS",
@@ -746,6 +760,10 @@ func dnsProfileDisplay(profile string) string {
 		return "公共 DNS（Cloudflare 默认；同时写入 1.1.1.1 + 8.8.8.8）"
 	case provider.DNSProfilePublicGoogle:
 		return "公共 DNS（Google 默认；同时写入 8.8.8.8 + 1.1.1.1）"
+	case provider.DNSProfileDoHCloudflare:
+		return "加密 DNS/DoH（Cloudflare 默认；同时配置 Google）"
+	case provider.DNSProfileDoHGoogle:
+		return "加密 DNS/DoH（Google 默认；同时配置 Cloudflare）"
 	case provider.DNSProfileCloudflare:
 		return "Cloudflare DNS（仅 1.1.1.1，旧单地址配置）"
 	case provider.DNSProfileGoogle:
@@ -759,6 +777,10 @@ func dnsProfileDisplay(profile string) string {
 	default:
 		return profile
 	}
+}
+
+func isEncryptedDNSProfile(profile string) bool {
+	return profile == provider.DNSProfileDoHCloudflare || profile == provider.DNSProfileDoHGoogle
 }
 
 func (c *commandSet) clientMenu(ctx context.Context, core string) (bool, error) {

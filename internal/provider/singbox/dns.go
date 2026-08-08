@@ -14,6 +14,8 @@ var supportedDNSProfiles = []string{
 	provider.DNSProfileSystem,
 	provider.DNSProfilePublicCloudflare,
 	provider.DNSProfilePublicGoogle,
+	provider.DNSProfileDoHCloudflare,
+	provider.DNSProfileDoHGoogle,
 }
 
 func (*Provider) DNSProfiles() []string {
@@ -108,6 +110,12 @@ func (*Provider) PatchDNSProfile(config []byte, profile string) ([]byte, error) 
 			map[string]any{"type": "udp", "tag": "google", "server": "8.8.8.8", "server_port": 53},
 			map[string]any{"type": "udp", "tag": "cloudflare", "server": "1.1.1.1", "server_port": 53},
 		}
+	} else if profile == provider.DNSProfileDoHCloudflare {
+		tag = "cloudflare-doh"
+		servers = singDoHServers(false)
+	} else if profile == provider.DNSProfileDoHGoogle {
+		tag = "google-doh"
+		servers = singDoHServers(true)
 	}
 	dns["servers"] = servers
 	dns["final"] = tag
@@ -170,7 +178,64 @@ func singDNSProfile(servers []any) (string, string) {
 	if len(servers) == 2 && singDNSServerMatches(servers[0], "google", "8.8.8.8") && singDNSServerMatches(servers[1], "cloudflare", "1.1.1.1") {
 		return provider.DNSProfilePublicGoogle, "google"
 	}
+	if len(servers) == 3 && singLocalDNSServerMatches(servers[0], "bootstrap") {
+		if singDoHServerMatches(servers[1], "cloudflare-doh", "cloudflare-dns.com") && singDoHServerMatches(servers[2], "google-doh", "dns.google") {
+			return provider.DNSProfileDoHCloudflare, "cloudflare-doh"
+		}
+		if singDoHServerMatches(servers[1], "google-doh", "dns.google") && singDoHServerMatches(servers[2], "cloudflare-doh", "cloudflare-dns.com") {
+			return provider.DNSProfileDoHGoogle, "google-doh"
+		}
+	}
 	return "custom", ""
+}
+
+func singDoHServers(googleFirst bool) []any {
+	bootstrap := map[string]any{"type": "local", "tag": "bootstrap"}
+	cloudflare := singDoHServer("cloudflare-doh", "cloudflare-dns.com")
+	google := singDoHServer("google-doh", "dns.google")
+	if googleFirst {
+		return []any{bootstrap, google, cloudflare}
+	}
+	return []any{bootstrap, cloudflare, google}
+}
+
+func singDoHServer(tag, address string) map[string]any {
+	return map[string]any{
+		"type": "https", "tag": tag, "server": address, "server_port": 443, "path": "/dns-query",
+		"domain_resolver": "bootstrap",
+		"tls":             map[string]any{"enabled": true, "server_name": address},
+	}
+}
+
+func singLocalDNSServerMatches(raw any, tag string) bool {
+	server, ok := raw.(map[string]any)
+	if !ok {
+		return false
+	}
+	serverType, _ := server["type"].(string)
+	serverTag, _ := server["tag"].(string)
+	return serverType == "local" && serverTag == tag
+}
+
+func singDoHServerMatches(raw any, tag, address string) bool {
+	server, ok := raw.(map[string]any)
+	if !ok {
+		return false
+	}
+	serverType, _ := server["type"].(string)
+	serverTag, _ := server["tag"].(string)
+	serverAddress, _ := server["server"].(string)
+	serverPort, _ := server["server_port"].(float64)
+	path, _ := server["path"].(string)
+	resolver, _ := server["domain_resolver"].(string)
+	tls, ok := server["tls"].(map[string]any)
+	if !ok {
+		return false
+	}
+	tlsEnabled, _ := tls["enabled"].(bool)
+	serverName, _ := tls["server_name"].(string)
+	return serverType == "https" && serverTag == tag && serverAddress == address && serverPort == 443 &&
+		path == "/dns-query" && resolver == "bootstrap" && tlsEnabled && serverName == address
 }
 
 func singDNSServerMatches(raw any, tag, address string) bool {

@@ -221,6 +221,46 @@ func TestPatchDNSProfileUpdatesResolverReferences(t *testing.T) {
 	if current, err := p.CurrentDNSProfile(withPublicDNS); err != nil || current != "public-google" {
 		t.Fatalf("google current=%q error=%v", current, err)
 	}
+
+	withDoH, err := p.PatchDNSProfile(simplified, "doh-google")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dohRoot map[string]any
+	if err := json.Unmarshal(withDoH, &dohRoot); err != nil {
+		t.Fatal(err)
+	}
+	dohDNS := dohRoot["dns"].(map[string]any)
+	dohServers := dohDNS["servers"].([]any)
+	dohRoute := dohRoot["route"].(map[string]any)
+	if len(dohServers) != 3 || dohServers[0].(map[string]any)["type"] != "local" ||
+		dohServers[1].(map[string]any)["server"] != "dns.google" || dohServers[1].(map[string]any)["type"] != "https" ||
+		dohServers[2].(map[string]any)["server"] != "cloudflare-dns.com" || dohDNS["final"] != "google-doh" ||
+		dohRoute["default_domain_resolver"] != "google-doh" || dohRoute["rules"].([]any)[0].(map[string]any)["server"] != "google-doh" {
+		t.Fatalf("doh dns=%#v route=%#v", dohDNS, dohRoute)
+	}
+	googleDoH := dohServers[1].(map[string]any)
+	googleTLS := googleDoH["tls"].(map[string]any)
+	if googleDoH["domain_resolver"] != "bootstrap" || googleTLS["enabled"] != true || googleTLS["server_name"] != "dns.google" {
+		t.Fatalf("google doh=%#v", googleDoH)
+	}
+	if current, err := p.CurrentDNSProfile(withDoH); err != nil || current != "doh-google" {
+		t.Fatalf("doh current=%q error=%v", current, err)
+	}
+	backToSystem, err := p.PatchDNSProfile(withDoH, "system")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var systemRoot map[string]any
+	if err := json.Unmarshal(backToSystem, &systemRoot); err != nil {
+		t.Fatal(err)
+	}
+	if servers := systemRoot["dns"].(map[string]any)["servers"].([]any); len(servers) != 1 || servers[0].(map[string]any)["tag"] != "local" {
+		t.Fatalf("system servers=%#v", servers)
+	}
+	if current, err := p.CurrentDNSProfile(backToSystem); err != nil || current != "system" {
+		t.Fatalf("system current=%q error=%v", current, err)
+	}
 }
 
 func TestGenerateKeyPairParsesNativeOutput(t *testing.T) {
