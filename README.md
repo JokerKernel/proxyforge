@@ -98,6 +98,8 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 交互生成服务端配置时可选择公网地址来源：默认从已启用的物理网卡读取公网单播 IP（IPv4 排在 IPv6 前，拒绝内网、NAT 和保留地址），检测到多个时会列出网卡名和地址供用户选择；也可选择通过 `api.ipify.org` HTTPS 探测或手动输入。物理网卡未配置公网 IP 时会要求重新选择，不会自动把私网地址写入节点配置。
 
+生成服务端配置的任意输入步骤均可输入 `q` 取消；菜单模式会直接返回内核主菜单，且不会写入配置或重启服务。
+
 ## 文件与安全边界
 
 | 用途 | sing-box | Xray |

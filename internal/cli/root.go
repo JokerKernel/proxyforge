@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -19,6 +20,8 @@ import (
 	"proxyforge/internal/provider/xray"
 	"proxyforge/internal/system"
 )
+
+var errReturnToMenu = errors.New("返回主菜单")
 
 type commandSet struct {
 	app         *app.App
@@ -179,10 +182,19 @@ func (c *commandSet) generateCommand() *cobra.Command {
 			o.NonInteractive = !interactive
 			if interactive {
 				if err := c.fillGenerate(cmd.Context(), args[0], &o); err != nil {
+					if errors.Is(err, errReturnToMenu) {
+						fmt.Fprintln(c.out, "已取消生成服务端配置。")
+						return nil
+					}
 					return err
 				}
 			}
-			return c.runGenerate(cmd.Context(), args[0], o, interactive)
+			err := c.runGenerate(cmd.Context(), args[0], o, interactive)
+			if errors.Is(err, errReturnToMenu) {
+				fmt.Fprintln(c.out, "已取消生成服务端配置。")
+				return nil
+			}
+			return err
 		},
 	}
 	cmd.Flags().StringVar(&o.Server, "server", "", "客户端连接的公网 IP 或域名")
@@ -243,15 +255,22 @@ func (c *commandSet) serviceCommand() *cobra.Command {
 func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.GenerateOptions) error {
 	c.clearScreen()
 	fmt.Fprintf(c.out, "生成服务端配置：%s\n\n", core)
+	fmt.Fprintln(c.out, "提示：任意输入步骤输入 q 可取消并返回主菜单。")
 	if o.Server == "" {
 		detected, err := c.selectPublicAddress(ctx)
 		if err != nil {
 			return err
 		}
-		o.Server = c.askDefault("公网 IP 或域名", detected)
+		o.Server, err = c.askDefaultCancelable("公网 IP 或域名", detected)
+		if err != nil {
+			return err
+		}
 	}
 	if o.Port == 0 {
-		v := c.askDefault("监听端口", strconv.Itoa(app.DefaultPort(c.app.Store, core)))
+		v, err := c.askDefaultCancelable("监听端口", strconv.Itoa(app.DefaultPort(c.app.Store, core)))
+		if err != nil {
+			return err
+		}
 		port, err := strconv.Atoi(v)
 		if err != nil {
 			return fmt.Errorf("端口无效: %w", err)
@@ -265,7 +284,11 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 				defaultUserName = current.UserName
 			}
 		}
-		o.UserName = c.askDefault("用户名称", defaultUserName)
+		var err error
+		o.UserName, err = c.askDefaultCancelable("用户名称", defaultUserName)
+		if err != nil {
+			return err
+		}
 	}
 	if o.InboundTag == "" {
 		defaultInboundTag := domain.DefaultInboundTag(core)
@@ -274,10 +297,18 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 				defaultInboundTag = current.InboundTag
 			}
 		}
-		o.InboundTag = c.askDefault("入站标签", defaultInboundTag)
+		var err error
+		o.InboundTag, err = c.askDefaultCancelable("入站标签", defaultInboundTag)
+		if err != nil {
+			return err
+		}
 	}
 	if o.SNI == "" {
-		o.SNI = c.askDefault("REALITY SNI（输入域名；直接回车自动测速候选）", "")
+		var err error
+		o.SNI, err = c.askDefaultCancelable("REALITY SNI（输入域名；直接回车自动测速候选）", "")
+		if err != nil {
+			return err
+		}
 		if o.SNI == "" {
 			selected, err := c.selectSNICandidate(ctx, o.Server)
 			if err != nil {
@@ -294,7 +325,7 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		o.Target = netJoinHostPort(o.SNI, "443")
 	}
 	fmt.Fprintf(c.out, "将使用 SNI %s、目标 %s。请确认该目标归属可信且允许作为 REALITY 回落站点。\n", o.SNI, o.Target)
-	ok, err := c.confirm("确认 SNI 和 REALITY target？输入 yes/y 继续")
+	ok, err := c.confirmCancelable("确认 SNI 和 REALITY target？输入 yes/y 继续，输入 q 返回主菜单")
 	if err != nil {
 		return err
 	}
@@ -318,7 +349,7 @@ func (c *commandSet) selectPublicAddress(ctx context.Context) (string, error) {
 		fmt.Fprintln(c.out, "1) 从物理网卡获取（默认）")
 		fmt.Fprintln(c.out, "2) 通过 api.ipify.org HTTPS 探测")
 		fmt.Fprintln(c.out, "3) 手动输入")
-		choice, err := c.chooseNumber("请选择", 1, 3, 1)
+		choice, err := c.chooseNumberCancelable("请选择", 1, 3, 1)
 		if err != nil {
 			return "", err
 		}
@@ -358,7 +389,7 @@ func (c *commandSet) selectPhysicalPublicAddress(addresses []app.PublicInterface
 		}
 		fmt.Fprintf(c.out, "%d) %s  %s（%s）\n", index+1, item.Interface, item.Address, family)
 	}
-	choice, err := c.chooseNumber("请选择公网地址", 1, len(addresses), 1)
+	choice, err := c.chooseNumberCancelable("请选择公网地址", 1, len(addresses), 1)
 	if err != nil {
 		return "", err
 	}
@@ -369,7 +400,7 @@ func (c *commandSet) runGenerate(ctx context.Context, core string, o domain.Gene
 	n, err := c.app.Generate(ctx, core, o)
 	if err != nil && interactive && !o.TakeOver && strings.Contains(err.Error(), "--take-over") {
 		fmt.Fprintln(c.errOut, err)
-		ok, confirmErr := c.confirm("是否备份并接管现有配置？输入 yes/y 继续")
+		ok, confirmErr := c.confirmCancelable("是否备份并接管现有配置？输入 yes/y 继续，输入 q 返回主菜单")
 		if confirmErr != nil {
 			return confirmErr
 		}
@@ -504,6 +535,10 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 			o := domain.GenerateOptions{}
 			if err = c.fillGenerate(ctx, core, &o); err == nil {
 				err = c.runGenerate(ctx, core, o, true)
+			}
+			if errors.Is(err, errReturnToMenu) {
+				fmt.Fprintln(c.out, "已取消生成服务端配置。")
+				return nil
 			}
 		case 2:
 			var b []byte
@@ -737,6 +772,14 @@ func (c *commandSet) serviceMenu(ctx context.Context, core string) error {
 }
 
 func (c *commandSet) chooseNumber(label string, min, max, def int) (int, error) {
+	return c.chooseNumberInput(label, min, max, def, false)
+}
+
+func (c *commandSet) chooseNumberCancelable(label string, min, max, def int) (int, error) {
+	return c.chooseNumberInput(label, min, max, def, true)
+}
+
+func (c *commandSet) chooseNumberInput(label string, min, max, def int, cancelable bool) (int, error) {
 	invalidShown := false
 	for {
 		if def >= min && def <= max {
@@ -749,6 +792,9 @@ func (c *commandSet) chooseNumber(label string, min, max, def int) (int, error) 
 			return 0, err
 		}
 		value := strings.TrimSpace(line)
+		if cancelable && strings.EqualFold(value, "q") {
+			return 0, errReturnToMenu
+		}
 		if value == "" && def >= min && def <= max {
 			return def, nil
 		}
@@ -759,7 +805,11 @@ func (c *commandSet) chooseNumber(label string, min, max, def int) (int, error) 
 		if c.interactiveUI() {
 			eraseChoiceRetry(c.out, invalidShown)
 		}
-		fmt.Fprintf(c.out, "无效选择，请输入 %d 到 %d 之间的数字。\n", min, max)
+		if cancelable {
+			fmt.Fprintf(c.out, "无效选择，请输入 %d 到 %d 之间的数字，或输入 q 返回主菜单。\n", min, max)
+		} else {
+			fmt.Fprintf(c.out, "无效选择，请输入 %d 到 %d 之间的数字。\n", min, max)
+		}
 		invalidShown = true
 	}
 }
@@ -777,6 +827,15 @@ func (c *commandSet) printMenuError(err error) {
 }
 
 func (c *commandSet) askDefault(label, def string) string {
+	value, _ := c.askDefaultInput(label, def, false)
+	return value
+}
+
+func (c *commandSet) askDefaultCancelable(label, def string) (string, error) {
+	return c.askDefaultInput(label, def, true)
+}
+
+func (c *commandSet) askDefaultInput(label, def string, cancelable bool) (string, error) {
 	if def != "" {
 		fmt.Fprintf(c.out, "%s [%s]: ", label, def)
 	} else {
@@ -785,20 +844,34 @@ func (c *commandSet) askDefault(label, def string) string {
 	line, err := c.reader.ReadString('\n')
 	if err == nil || len(line) > 0 {
 		v := strings.TrimSpace(line)
+		if cancelable && strings.EqualFold(v, "q") {
+			return "", errReturnToMenu
+		}
 		if v != "" {
-			return v
+			return v, nil
 		}
 	}
-	return def
+	return def, nil
 }
 
 func (c *commandSet) confirm(message string) (bool, error) {
+	return c.confirmInput(message, false)
+}
+
+func (c *commandSet) confirmCancelable(message string) (bool, error) {
+	return c.confirmInput(message, true)
+}
+
+func (c *commandSet) confirmInput(message string, cancelable bool) (bool, error) {
 	fmt.Fprint(c.out, message+" ")
 	line, err := c.reader.ReadString('\n')
 	if err != nil && len(line) == 0 {
 		return false, err
 	}
 	value := strings.TrimSpace(line)
+	if cancelable && strings.EqualFold(value, "q") {
+		return false, errReturnToMenu
+	}
 	return strings.EqualFold(value, "yes") || strings.EqualFold(value, "y"), nil
 }
 

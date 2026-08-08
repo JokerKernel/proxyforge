@@ -137,6 +137,24 @@ func TestServerConfigMenuShowsCurrentConfig(t *testing.T) {
 	}
 }
 
+func TestServerConfigGenerationQReturnsWithoutApplying(t *testing.T) {
+	var out, errOut bytes.Buffer
+	c := &commandSet{
+		reader: bufio.NewReader(strings.NewReader("1\nq\n")),
+		out:    &out,
+		errOut: &errOut,
+	}
+	if err := c.serverConfigMenu(context.Background(), domain.CoreSingBox); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "已取消生成服务端配置") || !strings.Contains(out.String(), "输入 q") {
+		t.Fatalf("cancel output=%q", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("cancel was reported as an error: %q", errOut.String())
+	}
+}
+
 func TestCleanupCommandRequiresYesWhenNonInteractive(t *testing.T) {
 	input := strings.NewReader("")
 	c := &commandSet{in: input, reader: bufio.NewReader(input), out: io.Discard}
@@ -219,6 +237,27 @@ func TestConfirmAcceptsGlobalAffirmativeForms(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCancelableGenerateInputsRecognizeQ(t *testing.T) {
+	t.Run("text", func(t *testing.T) {
+		c := &commandSet{reader: bufio.NewReader(strings.NewReader("Q\n")), out: io.Discard}
+		if _, err := c.askDefaultCancelable("value", "default"); !errors.Is(err, errReturnToMenu) {
+			t.Fatalf("error=%v", err)
+		}
+	})
+	t.Run("number", func(t *testing.T) {
+		c := &commandSet{reader: bufio.NewReader(strings.NewReader("q\n")), out: io.Discard}
+		if _, err := c.chooseNumberCancelable("choice", 1, 3, 1); !errors.Is(err, errReturnToMenu) {
+			t.Fatalf("error=%v", err)
+		}
+	})
+	t.Run("confirmation", func(t *testing.T) {
+		c := &commandSet{reader: bufio.NewReader(strings.NewReader("q\n")), out: io.Discard}
+		if _, err := c.confirmCancelable("confirm"); !errors.Is(err, errReturnToMenu) {
+			t.Fatalf("error=%v", err)
+		}
+	})
 }
 
 func TestCleanupConfirmationWarnsNoBackup(t *testing.T) {

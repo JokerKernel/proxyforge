@@ -134,7 +134,7 @@ func (c *commandSet) selectSNICandidate(ctx context.Context, server string) (str
 		randomIndex = secureRandomIndex
 	}
 	defaultChoice := randomIndex(len(candidates)) + 1
-	choice, err := c.chooseNumber("请选择 SNI（默认从最快 10 个中随机）", 0, len(candidates), defaultChoice)
+	choice, err := c.chooseNumberCancelable("请选择 SNI（默认从最快 10 个中随机）", 0, len(candidates), defaultChoice)
 	if err != nil {
 		return "", err
 	}
@@ -142,7 +142,11 @@ func (c *commandSet) selectSNICandidate(ctx context.Context, server string) (str
 		return candidates[choice-1].Domain, nil
 	}
 	for {
-		domain := strings.TrimSpace(c.askDefault("请输入 REALITY SNI", ""))
+		domain, err := c.askDefaultCancelable("请输入 REALITY SNI", "")
+		if err != nil {
+			return "", err
+		}
+		domain = strings.TrimSpace(domain)
 		if domain != "" {
 			return domain, nil
 		}
