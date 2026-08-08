@@ -21,7 +21,7 @@ func (*Provider) ServiceName() string       { return "sing-box.service" }
 func (*Provider) ConfigPath() string        { return "/etc/sing-box/config.json" }
 func (*Provider) OfficialScriptURL() string { return "https://sing-box.app/install.sh" }
 func (*Provider) ScriptHosts() []string {
-	return []string{"sing-box.app", "raw.githubusercontent.com", "github.com"}
+	return []string{"sing-box.app", "sing-box.sagernet.org", "raw.githubusercontent.com", "github.com"}
 }
 func (*Provider) InstallArgs(version string, _ bool) []string {
 	if version == "" {

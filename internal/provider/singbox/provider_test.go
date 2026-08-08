@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"reflect"
+	"slices"
 	"testing"
 
 	"proxyforge/internal/domain"
@@ -45,6 +46,13 @@ func TestGenerateKeyPairParsesNativeOutput(t *testing.T) {
 	}
 	if pair.Private != "private" || pair.Public != "public" {
 		t.Fatalf("pair=%#v", pair)
+	}
+}
+
+func TestScriptHostsIncludeOfficialRedirect(t *testing.T) {
+	hosts := New().ScriptHosts()
+	if !slices.Contains(hosts, "sing-box.sagernet.org") {
+		t.Fatalf("official redirect host missing from whitelist: %v", hosts)
 	}
 }
 
