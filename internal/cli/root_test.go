@@ -17,7 +17,7 @@ import (
 
 func TestStableCommandTree(t *testing.T) {
 	root := New("test")
-	for _, args := range [][]string{{"install"}, {"upgrade"}, {"uninstall"}, {"cleanup"}, {"config", "generate"}, {"config", "client"}, {"config", "reset"}, {"service"}} {
+	for _, args := range [][]string{{"install"}, {"uninstall"}, {"cleanup"}, {"config", "generate"}, {"config", "client"}, {"config", "reset"}, {"service"}} {
 		cmd, remaining, err := root.Find(args)
 		if err != nil {
 			t.Fatalf("find %v: %v", args, err)
@@ -28,6 +28,10 @@ func TestStableCommandTree(t *testing.T) {
 		if cmd.Name() != args[len(args)-1] {
 			t.Fatalf("find %v got %s", args, cmd.Name())
 		}
+	}
+	cmd, _, err := root.Find([]string{"upgrade"})
+	if err != nil || cmd.Name() != "install" {
+		t.Fatalf("upgrade alias resolved to %v, error=%v", cmd, err)
 	}
 }
 
@@ -260,7 +264,7 @@ func TestSelectCoreUsesNumericChoiceAndDefault(t *testing.T) {
 func TestMenuCanReturnFromCoreSelection(t *testing.T) {
 	var out, errOut bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("4\n0\n0\n")),
+		reader: bufio.NewReader(strings.NewReader("1\n0\n0\n")),
 		out:    &out,
 		errOut: &errOut,
 	}
@@ -268,7 +272,10 @@ func TestMenuCanReturnFromCoreSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Count(out.String(), "ProxyForge 双内核代理管理器") != 2 {
-		t.Fatalf("main menu was not shown twice: %q", out.String())
+		t.Fatalf("core selector was not shown twice: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "sing-box 管理菜单") || !strings.Contains(out.String(), "安装/升级内核") {
+		t.Fatalf("core menu missing: %q", out.String())
 	}
 	if !strings.Contains(out.String(), "已退出 ProxyForge") {
 		t.Fatalf("missing exit message: %q", out.String())

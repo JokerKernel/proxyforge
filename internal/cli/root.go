@@ -60,7 +60,7 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 	root.SetErr(os.Stderr)
 	root.SetIn(os.Stdin)
 	root.PersistentFlags().BoolVarP(&c.yes, "yes", "y", false, "非交互模式（执行下载的管理脚本仍必须提供 SHA-256）")
-	root.AddCommand(c.installCommand(false), c.installCommand(true), c.uninstallCommand(), c.cleanupCommand(), c.configCommand(), c.serviceCommand())
+	root.AddCommand(c.installCommand(), c.uninstallCommand(), c.cleanupCommand(), c.configCommand(), c.serviceCommand())
 	return root
 }
 
@@ -113,22 +113,17 @@ func (c *commandSet) cleanupCommand() *cobra.Command {
 	}
 }
 
-func (c *commandSet) installCommand(upgrade bool) *cobra.Command {
-	name := "install"
-	desc := "安装内核"
-	if upgrade {
-		name, desc = "upgrade", "升级内核"
-	}
+func (c *commandSet) installCommand() *cobra.Command {
 	var version, trust, scriptURL string
 	cmd := &cobra.Command{
-		Use: name + " <sing-box|xray>", Short: desc, Args: cobra.ExactArgs(1),
+		Use: "install <sing-box|xray>", Aliases: []string{"upgrade"}, Short: "安装或升级内核", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			nonInteractive := c.yes || !readerInteractive(c.in)
 			if !nonInteractive {
 				c.clearScreen()
-				fmt.Fprintf(c.out, "%s内核：%s\n\n", desc, args[0])
+				fmt.Fprintf(c.out, "安装/升级内核：%s\n\n", args[0])
 			}
-			opts := install.Options{URL: scriptURL, Version: version, Upgrade: upgrade, NonInteractive: nonInteractive, TrustScriptSHA256: trust, Confirm: c.confirm}
+			opts := install.Options{URL: scriptURL, Version: version, NonInteractive: nonInteractive, TrustScriptSHA256: trust, Confirm: c.confirm}
 			return c.app.Install(cmd.Context(), args[0], opts)
 		},
 	}
@@ -306,30 +301,6 @@ func (c *commandSet) runGenerate(ctx context.Context, core string, o domain.Gene
 
 func (c *commandSet) menu(ctx context.Context) error {
 	for {
-		c.clearScreen()
-		c.printMainMenu()
-		choice, err := c.chooseNumber("请选择", 0, 8, 0)
-		if err != nil {
-			if err == io.EOF {
-				return nil
-			}
-			return err
-		}
-		if choice == 0 {
-			fmt.Fprintln(c.out, "已退出 ProxyForge。")
-			return nil
-		}
-
-		if choice == 6 {
-			if err := c.serviceMenu(ctx); err != nil {
-				if err == io.EOF {
-					return nil
-				}
-				c.printMenuError(err)
-			}
-			continue
-		}
-
 		core, selected, err := c.selectCore()
 		if err != nil {
 			if err == io.EOF {
@@ -338,28 +309,52 @@ func (c *commandSet) menu(ctx context.Context) error {
 			return err
 		}
 		if !selected {
-			continue
+			fmt.Fprintln(c.out, "已退出 ProxyForge。")
+			return nil
+		}
+		if err := c.coreMenu(ctx, core); err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+func (c *commandSet) coreMenu(ctx context.Context, core string) error {
+	for {
+		c.clearScreen()
+		c.printCoreMenu(core)
+		choice, err := c.chooseNumber("请选择", 0, 7, 0)
+		if err != nil {
+			return err
+		}
+		if choice == 0 {
+			return nil
 		}
 
 		c.clearScreen()
 		shouldPause := true
 		switch choice {
-		case 1, 2:
-			err = c.app.Install(ctx, core, install.Options{Upgrade: choice == 2, Confirm: c.confirm})
-		case 3:
+		case 1:
+			err = c.app.Install(ctx, core, install.Options{Confirm: c.confirm})
+		case 2:
 			o := domain.GenerateOptions{}
 			if err = c.fillGenerate(ctx, core, &o); err == nil {
 				err = c.runGenerate(ctx, core, o, true)
 			}
-		case 4:
+		case 3:
 			var b []byte
 			b, err = c.app.Client(ctx, core, "", false)
 			if err == nil {
 				_, err = c.out.Write(b)
 			}
-		case 5:
+		case 4:
 			shouldPause, err = c.resetMenu(ctx, core)
-		case 7:
+		case 5:
+			shouldPause = false
+			err = c.serviceMenu(ctx, core)
+		case 6:
 			var confirmed bool
 			confirmed, err = c.confirmUninstall(core)
 			if err == nil && confirmed {
@@ -367,7 +362,7 @@ func (c *commandSet) menu(ctx context.Context) error {
 			} else if err == nil {
 				fmt.Fprintln(c.out, "已取消卸载。")
 			}
-		case 8:
+		case 7:
 			var confirmed bool
 			confirmed, err = c.confirmCleanup(core)
 			if err == nil && confirmed {
@@ -385,20 +380,19 @@ func (c *commandSet) menu(ctx context.Context) error {
 	}
 }
 
-func (c *commandSet) printMainMenu() {
+func (c *commandSet) printCoreMenu(core string) {
 	fmt.Fprintln(c.out)
 	fmt.Fprintln(c.out, "========================================")
-	fmt.Fprintln(c.out, "       ProxyForge 双内核代理管理器")
+	fmt.Fprintf(c.out, "       %s 管理菜单\n", core)
 	fmt.Fprintln(c.out, "========================================")
-	fmt.Fprintln(c.out, "1) 安装内核")
-	fmt.Fprintln(c.out, "2) 升级内核")
-	fmt.Fprintln(c.out, "3) 生成服务端配置")
-	fmt.Fprintln(c.out, "4) 查看客户端配置")
-	fmt.Fprintln(c.out, "5) 重置节点/凭证")
-	fmt.Fprintln(c.out, "6) 管理服务")
-	fmt.Fprintln(c.out, "7) 卸载内核")
-	fmt.Fprintln(c.out, "8) 清理卸载残留")
-	fmt.Fprintln(c.out, "0) 退出")
+	fmt.Fprintln(c.out, "1) 安装/升级内核")
+	fmt.Fprintln(c.out, "2) 生成服务端配置")
+	fmt.Fprintln(c.out, "3) 查看客户端配置")
+	fmt.Fprintln(c.out, "4) 重置节点/凭证")
+	fmt.Fprintln(c.out, "5) 管理服务")
+	fmt.Fprintln(c.out, "6) 卸载内核")
+	fmt.Fprintln(c.out, "7) 清理卸载残留")
+	fmt.Fprintln(c.out, "0) 返回内核选择")
 	fmt.Fprintln(c.out, "----------------------------------------")
 }
 
@@ -419,7 +413,7 @@ func (c *commandSet) resetMenu(ctx context.Context, core string) (bool, error) {
 	fmt.Fprintf(c.out, "重置 %s\n", core)
 	fmt.Fprintln(c.out, "1) 重置节点（重选 SNI/target，并重置凭证）")
 	fmt.Fprintln(c.out, "2) 重置凭证（保留 SNI/target，仅重置 UUID、REALITY 密钥和 short ID）")
-	fmt.Fprintln(c.out, "0) 返回主菜单")
+	fmt.Fprintln(c.out, "0) 返回内核菜单")
 	choice, err := c.chooseNumber("请选择", 0, 2, 1)
 	if err != nil {
 		return false, err
@@ -511,10 +505,14 @@ func (c *commandSet) runCredentialReset(ctx context.Context, core string, opts d
 
 func (c *commandSet) selectCore() (string, bool, error) {
 	c.clearScreen()
-	fmt.Fprintln(c.out, "请选择内核")
+	fmt.Fprintln(c.out, "========================================")
+	fmt.Fprintln(c.out, "       ProxyForge 双内核代理管理器")
+	fmt.Fprintln(c.out, "========================================")
+	fmt.Fprintln(c.out, "请选择要管理的内核")
 	fmt.Fprintln(c.out, "1) sing-box")
 	fmt.Fprintln(c.out, "2) Xray-core")
-	fmt.Fprintln(c.out, "0) 返回主菜单")
+	fmt.Fprintln(c.out, "0) 退出")
+	fmt.Fprintln(c.out, "----------------------------------------")
 	choice, err := c.chooseNumber("请选择", 0, 2, 1)
 	if err != nil {
 		return "", false, err
@@ -529,11 +527,7 @@ func (c *commandSet) selectCore() (string, bool, error) {
 	}
 }
 
-func (c *commandSet) serviceMenu(ctx context.Context) error {
-	core, selected, err := c.selectCore()
-	if err != nil || !selected {
-		return err
-	}
+func (c *commandSet) serviceMenu(ctx context.Context, core string) error {
 	actions := []string{"", "start", "stop", "restart", "status", "logs"}
 	for {
 		c.clearScreen()
@@ -543,7 +537,7 @@ func (c *commandSet) serviceMenu(ctx context.Context) error {
 		fmt.Fprintln(c.out, "3) 重启服务")
 		fmt.Fprintln(c.out, "4) 查看状态")
 		fmt.Fprintln(c.out, "5) 查看最近日志")
-		fmt.Fprintln(c.out, "0) 返回主菜单")
+		fmt.Fprintln(c.out, "0) 返回内核菜单")
 		choice, chooseErr := c.chooseNumber("请选择", 0, 5, 4)
 		if chooseErr != nil {
 			return chooseErr

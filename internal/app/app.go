@@ -60,11 +60,7 @@ func RequireRoot() error {
 }
 
 func (a *App) Install(ctx context.Context, core string, opts install.Options) error {
-	operation := "安装"
-	if opts.Upgrade {
-		operation = "升级"
-	}
-	a.progressf("开始%s %s", operation, core)
+	a.progressf("开始安装/升级 %s", core)
 	if err := a.RootCheck(); err != nil {
 		return err
 	}

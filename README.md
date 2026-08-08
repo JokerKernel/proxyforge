@@ -42,7 +42,6 @@ sudo ./proxyforge
 
 ```text
 proxyforge install <sing-box|xray> [--version VERSION]
-proxyforge upgrade <sing-box|xray> [--version VERSION]
 proxyforge uninstall <sing-box|xray> [--yes]
 proxyforge cleanup <sing-box|xray|all> [--yes]
 proxyforge config generate <sing-box|xray> --server HOST --port PORT --sni DOMAIN [--target HOST:PORT]
@@ -50,6 +49,8 @@ proxyforge config client <sing-box|xray> [--output FILE] [--force]
 proxyforge config reset <sing-box|xray> [--sni DOMAIN] [--target HOST:PORT] [--yes]
 proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
 ```
+
+`install` 同时用于首次安装和后续升级；旧的 `upgrade` 名称保留为兼容别名。无参数运行时会先选择 sing-box 或 Xray-core，再进入该内核独立的安装/升级、配置、客户端、重置、服务、卸载和清理菜单。
 
 非交互安装必须显式固定本次下载内容，`--yes` 不能跳过：
 

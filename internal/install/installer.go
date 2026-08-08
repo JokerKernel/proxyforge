@@ -27,7 +27,6 @@ type ConfirmFunc func(summary string) (bool, error)
 type Options struct {
 	URL               string
 	Version           string
-	Upgrade           bool
 	NonInteractive    bool
 	TrustScriptSHA256 string
 	Confirm           ConfirmFunc
@@ -41,7 +40,7 @@ type Installer struct {
 }
 
 func (i Installer) Run(ctx context.Context, p provider.CoreProvider, opts Options) (string, error) {
-	return i.runScript(ctx, p, opts, p.InstallArgs(opts.Version, opts.Upgrade), "安装")
+	return i.runScript(ctx, p, opts, p.InstallArgs(opts.Version), "安装/升级")
 }
 
 func (i Installer) Uninstall(ctx context.Context, p provider.CoreProvider, opts Options) error {

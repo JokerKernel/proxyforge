@@ -24,7 +24,7 @@ func (*Provider) OfficialScriptURL() string {
 func (*Provider) ScriptHosts() []string {
 	return []string{"github.com", "raw.githubusercontent.com", "objects.githubusercontent.com"}
 }
-func (*Provider) InstallArgs(version string, _ bool) []string {
+func (*Provider) InstallArgs(version string) []string {
 	args := []string{"install"}
 	if version != "" {
 		args = append(args, "--version", version)
