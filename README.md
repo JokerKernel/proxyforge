@@ -170,13 +170,13 @@ git push origin v1.0.0
 Release 工作流会构建该标签并发布以下资产到当前 GitHub 仓库的 Releases；测试与 `go vet` 由独立的 CI 工作流负责：
 
 ```text
-proxyforge_v1.0.0_linux_amd64
-proxyforge_v1.0.0_linux_arm64
+proxyforge_linux_amd64_v1.0.0
+proxyforge_linux_arm64_v1.0.0
 version
 SHA256SUMS
 ```
 
-`version` 只包含当前发布标签和换行，例如 `v1.0.0`，并与二进制一起纳入 `SHA256SUMS`。可通过固定地址 `https://github.com/JokerKernel/proxyforge/releases/latest/download/version` 查询最新正式版本。下载对应架构的二进制后需要赋予执行权限，例如 `chmod +x proxyforge_v1.0.0_linux_amd64`，随后即可直接运行，不需要解压。
+`version` 只包含当前发布标签和换行，例如 `v1.0.0`，并与二进制一起纳入 `SHA256SUMS`。可通过固定地址 `https://github.com/JokerKernel/proxyforge/releases/latest/download/version` 查询最新正式版本。下载对应架构的二进制后需要赋予执行权限，例如 `chmod +x proxyforge_linux_amd64_v1.0.0`，随后即可直接运行，不需要解压。安装脚本优先识别版本号位于末尾的新格式，并兼容已经发布的 `proxyforge_v1.0.0_linux_amd64` 旧格式。
 
 也可以在 GitHub Actions 的 `Release` 工作流中手动输入一个已经存在的标签重新发布。发布任务只在最后阶段取得 `contents: write` 权限；普通 CI 和构建任务保持只读权限。
 

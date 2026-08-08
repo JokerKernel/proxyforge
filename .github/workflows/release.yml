@@ -85,17 +85,17 @@ jobs:
           GOARCH: ${{ matrix.arch }}
         run: |
           mkdir -p dist
-          OUTPUT="dist/proxyforge_${VERSION}_linux_${{ matrix.arch }}" ./scripts/build.sh
+          OUTPUT="dist/proxyforge_linux_${{ matrix.arch }}_${VERSION}" ./scripts/build.sh
 
       - name: Verify embedded version
         if: matrix.arch == 'amd64'
-        run: dist/proxyforge_${VERSION}_linux_${{ matrix.arch }} --version
+        run: dist/proxyforge_linux_${{ matrix.arch }}_${VERSION} --version
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v7
         with:
           name: release-linux-${{ matrix.arch }}
-          path: dist/proxyforge_*_linux_${{ matrix.arch }}
+          path: dist/proxyforge_linux_${{ matrix.arch }}_*
           if-no-files-found: error
           retention-days: 7
 
@@ -123,7 +123,7 @@ jobs:
         working-directory: dist
         run: |
           printf '%s\n' "${RELEASE_TAG}" > version
-          sha256sum proxyforge_*_linux_* version > SHA256SUMS
+          sha256sum proxyforge_linux_*_"${RELEASE_TAG}" version > SHA256SUMS
 
       - name: Create or update GitHub Release
         env:
@@ -131,10 +131,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-            gh release upload "${RELEASE_TAG}" dist/proxyforge_*_linux_* dist/version dist/SHA256SUMS --clobber
+            gh release upload "${RELEASE_TAG}" dist/proxyforge_linux_*_"${RELEASE_TAG}" dist/version dist/SHA256SUMS --clobber
           else
             gh release create "${RELEASE_TAG}" \
-              dist/proxyforge_*_linux_* dist/version dist/SHA256SUMS \
+              dist/proxyforge_linux_*_"${RELEASE_TAG}" dist/version dist/SHA256SUMS \
               --verify-tag \
               --generate-notes \
               --title "ProxyForge ${RELEASE_TAG}"

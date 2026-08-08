@@ -65,19 +65,38 @@ select_asset() {
   local manifest=$1
   local architecture=$2
   local checksum asset extra
-  local matches=0
-  local pattern="^proxyforge_v[0-9]+\\.[0-9]+\\.[0-9]+([+-][0-9A-Za-z.-]+)?_linux_${architecture}$"
+  local preferred_matches=0
+  local legacy_matches=0
+  local preferred_asset="" preferred_checksum=""
+  local legacy_asset="" legacy_checksum=""
+  local preferred_pattern="^proxyforge_linux_${architecture}_v[0-9]+\\.[0-9]+\\.[0-9]+([+-][0-9A-Za-z.-]+)?$"
+  local legacy_pattern="^proxyforge_v[0-9]+\\.[0-9]+\\.[0-9]+([+-][0-9A-Za-z.-]+)?_linux_${architecture}$"
 
   while read -r checksum asset extra; do
     [[ -z "${extra:-}" ]] || continue
     [[ "${checksum}" =~ ^[0-9A-Fa-f]{64}$ ]] || continue
-    [[ "${asset}" =~ ${pattern} ]] || continue
-    selected_checksum=${checksum,,}
-    selected_asset=${asset}
-    matches=$((matches + 1))
+    if [[ "${asset}" =~ ${preferred_pattern} ]]; then
+      preferred_checksum=${checksum,,}
+      preferred_asset=${asset}
+      preferred_matches=$((preferred_matches + 1))
+    elif [[ "${asset}" =~ ${legacy_pattern} ]]; then
+      legacy_checksum=${checksum,,}
+      legacy_asset=${asset}
+      legacy_matches=$((legacy_matches + 1))
+    fi
   done < "${manifest}"
 
-  [[ ${matches} -eq 1 ]] || die "校验清单中匹配 ${architecture} 的发布文件数量异常：${matches}"
+  if [[ ${preferred_matches} -eq 1 ]]; then
+    selected_checksum=${preferred_checksum}
+    selected_asset=${preferred_asset}
+    return
+  fi
+  if [[ ${preferred_matches} -eq 0 && ${legacy_matches} -eq 1 ]]; then
+    selected_checksum=${legacy_checksum}
+    selected_asset=${legacy_asset}
+    return
+  fi
+  die "校验清单中匹配 ${architecture} 的发布文件数量异常：新格式 ${preferred_matches}，旧格式 ${legacy_matches}"
 }
 
 main() {
@@ -134,7 +153,9 @@ main() {
   download "${release_base}/SHA256SUMS" "${temporary_dir}/SHA256SUMS"
   select_asset "${temporary_dir}/SHA256SUMS" "${architecture}"
   if [[ -n "${resolved_version}" ]]; then
-    [[ "${selected_asset}" == "proxyforge_${resolved_version}_linux_${architecture}" ]] || \
+    local preferred_asset="proxyforge_linux_${architecture}_${resolved_version}"
+    local legacy_asset="proxyforge_${resolved_version}_linux_${architecture}"
+    [[ "${selected_asset}" == "${preferred_asset}" || "${selected_asset}" == "${legacy_asset}" ]] || \
       die "version 与校验清单中的二进制文件名不一致"
   fi
 
