@@ -366,7 +366,11 @@ func TestInstallConfirmationDescribesSystemChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"安装或升级 sing-box", "内核二进制", "systemd unit", "现有配置会先备份"} {
+	for _, want := range []string{
+		"操作确认：安装/升级内核", "目标内核：sing-box", "将执行：", "配置保护：", "安全确认：",
+		"安装或升级 sing-box", "内核二进制", "systemd unit", "现有配置会先备份",
+		"请输入 yes/y 确认；其他输入取消",
+	} {
 		if !ok || !strings.Contains(out.String(), want) {
 			t.Fatalf("confirmed=%v output missing %q: %q", ok, want, out.String())
 		}

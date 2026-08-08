@@ -155,7 +155,7 @@ func (c *commandSet) confirmManualSNI(ctx context.Context, domain, server string
 	fmt.Fprintln(c.out, "手动 SNI 检测结果：")
 	c.printSNICandidate("域名：", candidates[0])
 	fmt.Fprintln(c.out, "提示：检测结果只反映当前网络状态，不代表目标归属、长期可用性或使用授权。")
-	ok, err := c.confirmCancelable("确认采用这个手动 SNI？输入 yes/y 继续，输入 q 返回主菜单")
+	ok, err := c.confirmCancelable("确认采用这个手动 SNI？")
 	if err != nil {
 		return err
 	}

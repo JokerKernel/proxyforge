@@ -24,6 +24,11 @@ import (
 
 var errReturnToMenu = errors.New("返回主菜单")
 
+type confirmationSection struct {
+	title string
+	items []string
+}
+
 type commandSet struct {
 	app              *app.App
 	in               io.Reader
@@ -359,8 +364,15 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 	if o.Target == "" {
 		o.Target = netJoinHostPort(o.SNI, "443")
 	}
-	fmt.Fprintf(c.out, "将使用 SNI %s、目标 %s。请确认该目标归属可信且允许作为 REALITY 回落站点。\n", o.SNI, o.Target)
-	ok, err := c.confirmCancelable("确认 SNI 和 REALITY target？输入 yes/y 继续，输入 q 返回主菜单")
+	c.printConfirmationPanel(
+		"配置确认：REALITY 回落目标",
+		[]string{"SNI：" + o.SNI, "Target：" + o.Target},
+		confirmationSection{title: "请确认", items: []string{
+			"目标站点归属可信",
+			"允许将其用作 REALITY 回落站点",
+		}},
+	)
+	ok, err := c.confirmCancelable("确认 SNI 和 REALITY target？")
 	if err != nil {
 		return err
 	}
@@ -384,9 +396,19 @@ func (c *commandSet) confirmServerConfigOverwrite(core string, interactive bool)
 		}
 		return fmt.Errorf("检测到已存在的 %s 服务端配置；非交互覆盖必须显式提供 --yes", core)
 	}
-	fmt.Fprintf(c.out, "检测到已存在的 %s 服务端配置。\n", core)
-	fmt.Fprintln(c.out, "继续操作会先备份当前文件，再使用 ProxyForge 标准模板完整覆盖；原有自定义内容不会合并。")
-	ok, err := c.confirmCancelable("确认覆盖？输入 yes/y 继续，输入 q 返回当前菜单")
+	c.printConfirmationPanel(
+		"操作确认：覆盖服务端配置",
+		[]string{"目标内核：" + core},
+		confirmationSection{title: "检测结果", items: []string{
+			"检测到已存在的服务端配置",
+		}},
+		confirmationSection{title: "继续后", items: []string{
+			"先备份当前配置文件",
+			"使用 ProxyForge 标准模板完整覆盖",
+			"原有自定义内容不会合并",
+		}},
+	)
+	ok, err := c.confirmCancelable("覆盖现有服务端配置？")
 	if err != nil {
 		return err
 	}
@@ -663,22 +685,59 @@ func (c *commandSet) printCoreMenu(core string) {
 }
 
 func (c *commandSet) confirmUninstall(core string) (bool, error) {
-	fmt.Fprintf(c.out, "即将停止并禁用 %s 的 systemd 服务，卸载内核并完成核验。\n", core)
-	fmt.Fprintln(c.out, "卸载成功后会自动清理配置目录、运行数据、文件日志、ProxyForge 状态、信任记录和历史备份。")
-	fmt.Fprintln(c.out, "上述数据将永久删除，客户端将立即失效；卸载或核验失败时不会执行自动清理。")
-	return c.confirm("确认卸载并清理？输入 yes/y 继续")
+	c.printConfirmationPanel(
+		"危险操作确认：卸载内核并清理数据",
+		[]string{"目标内核：" + core},
+		confirmationSection{title: "将执行", items: []string{
+			"停止并禁用 systemd 服务",
+			"卸载内核并核验卸载结果",
+			"卸载成功后自动清理全部残留",
+		}},
+		confirmationSection{title: "永久删除", items: []string{
+			"服务端配置、运行数据和文件日志",
+			"ProxyForge 状态、信任记录和历史备份",
+		}},
+		confirmationSection{title: "重要影响", items: []string{
+			"现有客户端将立即失效",
+			"卸载或核验失败时不会执行自动清理",
+		}},
+	)
+	return c.confirm("卸载并清理 " + core + "？")
 }
 
 func (c *commandSet) confirmInstall(core string) (bool, error) {
-	fmt.Fprintf(c.out, "即将安装或升级 %s。\n", core)
-	fmt.Fprintln(c.out, "此操作会下载并执行官方安装方式，可能修改内核二进制、软件包文件和 systemd unit；现有配置会先备份。")
-	return c.confirm("确认安装/升级？输入 yes/y 继续")
+	c.printConfirmationPanel(
+		"操作确认：安装/升级内核",
+		[]string{"目标内核：" + core},
+		confirmationSection{title: "将执行", items: []string{
+			"下载并执行官方管理脚本",
+			"安装或升级 " + core + " 内核二进制",
+			"可能更新软件包文件和 systemd unit",
+		}},
+		confirmationSection{title: "配置保护", items: []string{
+			"检测到现有配置时，现有配置会先备份",
+		}},
+		confirmationSection{title: "安全确认", items: []string{
+			"执行前还会展示脚本来源、大小和 SHA-256",
+			"首次或脚本变更时需要再次确认信任",
+		}},
+	)
+	return c.confirm("安装或升级 " + core + "？")
 }
 
 func (c *commandSet) confirmCleanup(target string) (bool, error) {
-	fmt.Fprintf(c.out, "即将直接清理 %s 的卸载残留，不会创建新备份。\n", target)
-	fmt.Fprintln(c.out, "配置目录、运行数据、文件日志、ProxyForge 状态、信任记录和历史备份都会永久删除。")
-	return c.confirm("确认清理？输入 yes/y 继续")
+	c.printConfirmationPanel(
+		"危险操作确认：清理卸载残留",
+		[]string{"清理目标：" + target},
+		confirmationSection{title: "永久删除", items: []string{
+			"配置目录、运行数据和文件日志",
+			"ProxyForge 状态、信任记录和历史备份",
+		}},
+		confirmationSection{title: "数据保护", items: []string{
+			"此操作不会创建新备份",
+		}},
+	)
+	return c.confirm("永久清理 " + target + " 的卸载残留？")
 }
 
 func (c *commandSet) resetMenu(ctx context.Context, core string) (bool, error) {
@@ -761,10 +820,22 @@ func (c *commandSet) fillReset(ctx context.Context, core string, opts *domain.Re
 }
 
 func (c *commandSet) confirmCredentialReset(core string, opts domain.ResetOptions) (bool, error) {
-	fmt.Fprintf(c.out, "即将重置 %s 的 UUID、REALITY 密钥和 short ID；所有旧客户端配置会立即失效。\n", core)
-	fmt.Fprintf(c.out, "新 SNI：%s\n新 target：%s\n", opts.SNI, opts.Target)
-	fmt.Fprintln(c.out, "只会定点更新受管入站的上述字段；DNS、路由、出站、日志、其他用户等手动配置会保留，并在修改前备份。")
-	return c.confirm("确认重置？输入 yes/y 继续")
+	c.printConfirmationPanel(
+		"危险操作确认：重置节点",
+		[]string{"目标内核：" + core, "新 SNI：" + opts.SNI, "新 Target：" + opts.Target},
+		confirmationSection{title: "将更新", items: []string{
+			"UUID、REALITY 密钥和 short ID",
+			"受管入站的 SNI 和 target",
+		}},
+		confirmationSection{title: "将保留", items: []string{
+			"DNS、路由、出站、日志、其他用户等手动配置会保留",
+			"修改前会备份当前配置",
+		}},
+		confirmationSection{title: "重要影响", items: []string{
+			"所有旧客户端配置会立即失效",
+		}},
+	)
+	return c.confirm("重置 " + core + " 节点？")
 }
 
 func (c *commandSet) confirmCredentialOnlyReset(core string) (bool, error) {
@@ -772,10 +843,21 @@ func (c *commandSet) confirmCredentialOnlyReset(core string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	fmt.Fprintf(c.out, "即将仅重置 %s 的 UUID、REALITY 密钥和 short ID；所有旧客户端配置会立即失效。\n", core)
-	fmt.Fprintf(c.out, "SNI 和 target 保持不变：%s，%s\n", current.SNI, current.Target)
-	fmt.Fprintln(c.out, "只会定点更新受管入站的凭证字段；DNS、路由、出站、日志、其他用户等手动配置会保留，并在修改前备份。")
-	return c.confirm("确认重置凭证？输入 yes/y 继续")
+	c.printConfirmationPanel(
+		"危险操作确认：重置凭证",
+		[]string{"目标内核：" + core, "SNI 和 target 保持不变：" + current.SNI + "，" + current.Target},
+		confirmationSection{title: "将更新", items: []string{
+			"UUID、REALITY 密钥和 short ID",
+		}},
+		confirmationSection{title: "将保留", items: []string{
+			"DNS、路由、出站、日志、其他用户等手动配置会保留",
+			"修改前会备份当前配置",
+		}},
+		confirmationSection{title: "重要影响", items: []string{
+			"所有旧客户端配置会立即失效",
+		}},
+	)
+	return c.confirm("重置 " + core + " 凭证？")
 }
 
 func (c *commandSet) runCredentialReset(ctx context.Context, core string, opts domain.ResetOptions) error {
@@ -966,8 +1048,32 @@ func (c *commandSet) confirmCancelable(message string) (bool, error) {
 	return c.confirmInput(message, true)
 }
 
+func (c *commandSet) printConfirmationPanel(title string, details []string, sections ...confirmationSection) {
+	fmt.Fprintln(c.out, "========================================")
+	fmt.Fprintln(c.out, title)
+	fmt.Fprintln(c.out, "========================================")
+	for _, detail := range details {
+		fmt.Fprintln(c.out, detail)
+	}
+	for _, section := range sections {
+		if section.title == "" || len(section.items) == 0 {
+			continue
+		}
+		fmt.Fprintf(c.out, "\n%s：\n", section.title)
+		for _, item := range section.items {
+			fmt.Fprintf(c.out, "  - %s\n", item)
+		}
+	}
+	fmt.Fprintln(c.out, "----------------------------------------")
+}
+
 func (c *commandSet) confirmInput(message string, cancelable bool) (bool, error) {
-	fmt.Fprint(c.out, message+" ")
+	fmt.Fprintln(c.out, strings.TrimSpace(message))
+	if cancelable {
+		fmt.Fprint(c.out, "请输入 yes/y 确认，输入 q 返回当前菜单；其他输入取消： ")
+	} else {
+		fmt.Fprint(c.out, "请输入 yes/y 确认；其他输入取消： ")
+	}
 	line, err := c.reader.ReadString('\n')
 	if err != nil && len(line) == 0 {
 		return false, err

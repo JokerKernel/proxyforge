@@ -244,7 +244,7 @@ func (i Installer) trust(core, hash string, opts Options) error {
 	if old != "" {
 		message = fmt.Sprintf("脚本哈希已由 %s 变为 %s，重新信任", old, hash)
 	}
-	ok, err := opts.Confirm(message + "？输入 yes/y 才会执行")
+	ok, err := opts.Confirm(message + "？")
 	if err != nil {
 		return err
 	}
