@@ -667,8 +667,9 @@ func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
 	defaultChoice := 1
 	for index, profile := range settings.Profiles {
 		fmt.Fprintf(c.out, "%d) %s\n", index+1, dnsProfileDisplay(profile))
-		if profile == settings.Current || profile == provider.DNSProfilePublic &&
-			(settings.Current == provider.DNSProfileCloudflare || settings.Current == provider.DNSProfileGoogle) {
+		if profile == settings.Current ||
+			(profile == provider.DNSProfilePublicCloudflare && settings.Current == provider.DNSProfileCloudflare) ||
+			(profile == provider.DNSProfilePublicGoogle && settings.Current == provider.DNSProfileGoogle) {
 			defaultChoice = index + 1
 		}
 	}
@@ -699,7 +700,7 @@ func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
 			"该设置只修改代理内核解析器，不修改系统全局 DNS",
 		}
 		if core == domain.CoreSingBox {
-			items = append(items, "sing-box 会写入两个服务器，但默认解析固定使用 1.1.1.1，不提供 Xray 式顺序回退")
+			items = append(items, "sing-box 会写入两个服务器并使用所选默认项，但不提供 Xray 式自动顺序回退")
 		}
 		sections = append(sections, confirmationSection{title: "注意", items: items})
 	}
@@ -741,8 +742,10 @@ func dnsProfileDisplay(profile string) string {
 	switch profile {
 	case provider.DNSProfileSystem:
 		return "系统 DNS（推荐）"
-	case provider.DNSProfilePublic:
-		return "公共 DNS（1.1.1.1 + 8.8.8.8）"
+	case provider.DNSProfilePublicCloudflare:
+		return "公共 DNS（Cloudflare 默认；同时写入 1.1.1.1 + 8.8.8.8）"
+	case provider.DNSProfilePublicGoogle:
+		return "公共 DNS（Google 默认；同时写入 8.8.8.8 + 1.1.1.1）"
 	case provider.DNSProfileCloudflare:
 		return "Cloudflare DNS（仅 1.1.1.1，旧单地址配置）"
 	case provider.DNSProfileGoogle:

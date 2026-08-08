@@ -10,7 +10,11 @@ import (
 	"proxyforge/internal/provider/jsonutil"
 )
 
-var supportedDNSProfiles = []string{provider.DNSProfileSystem, provider.DNSProfilePublic}
+var supportedDNSProfiles = []string{
+	provider.DNSProfileSystem,
+	provider.DNSProfilePublicCloudflare,
+	provider.DNSProfilePublicGoogle,
+}
 
 func (*Provider) DNSProfiles() []string {
 	return append([]string(nil), supportedDNSProfiles...)
@@ -39,7 +43,10 @@ func (*Provider) CurrentDNSProfile(config []byte) (string, error) {
 		first, firstOK := dnsServerAddress(servers[0])
 		second, secondOK := dnsServerAddress(servers[1])
 		if firstOK && secondOK && first == "1.1.1.1" && second == "8.8.8.8" {
-			return provider.DNSProfilePublic, nil
+			return provider.DNSProfilePublicCloudflare, nil
+		}
+		if firstOK && secondOK && first == "8.8.8.8" && second == "1.1.1.1" {
+			return provider.DNSProfilePublicGoogle, nil
 		}
 	}
 	if len(servers) == 1 {
@@ -77,8 +84,10 @@ func (*Provider) PatchDNSProfile(config []byte, profile string) ([]byte, error) 
 		root["dns"] = dns
 	}
 	servers := []any{"localhost"}
-	if profile == provider.DNSProfilePublic {
+	if profile == provider.DNSProfilePublicCloudflare {
 		servers = []any{"1.1.1.1", "8.8.8.8"}
+	} else if profile == provider.DNSProfilePublicGoogle {
+		servers = []any{"8.8.8.8", "1.1.1.1"}
 	}
 	dns["servers"] = servers
 	dns["queryStrategy"] = "UseIP"

@@ -10,7 +10,11 @@ import (
 	"proxyforge/internal/provider/jsonutil"
 )
 
-var supportedDNSProfiles = []string{provider.DNSProfileSystem, provider.DNSProfilePublic}
+var supportedDNSProfiles = []string{
+	provider.DNSProfileSystem,
+	provider.DNSProfilePublicCloudflare,
+	provider.DNSProfilePublicGoogle,
+}
 
 func (*Provider) DNSProfiles() []string {
 	return append([]string(nil), supportedDNSProfiles...)
@@ -92,11 +96,17 @@ func (*Provider) PatchDNSProfile(config []byte, profile string) ([]byte, error) 
 
 	tag := "local"
 	servers := []any{map[string]any{"type": "local", "tag": tag}}
-	if profile == provider.DNSProfilePublic {
+	if profile == provider.DNSProfilePublicCloudflare {
 		tag = "cloudflare"
 		servers = []any{
 			map[string]any{"type": "udp", "tag": "cloudflare", "server": "1.1.1.1", "server_port": 53},
 			map[string]any{"type": "udp", "tag": "google", "server": "8.8.8.8", "server_port": 53},
+		}
+	} else if profile == provider.DNSProfilePublicGoogle {
+		tag = "google"
+		servers = []any{
+			map[string]any{"type": "udp", "tag": "google", "server": "8.8.8.8", "server_port": 53},
+			map[string]any{"type": "udp", "tag": "cloudflare", "server": "1.1.1.1", "server_port": 53},
 		}
 	}
 	dns["servers"] = servers
@@ -155,7 +165,10 @@ func singDNSProfile(servers []any) (string, string) {
 		}
 	}
 	if len(servers) == 2 && singDNSServerMatches(servers[0], "cloudflare", "1.1.1.1") && singDNSServerMatches(servers[1], "google", "8.8.8.8") {
-		return provider.DNSProfilePublic, "cloudflare"
+		return provider.DNSProfilePublicCloudflare, "cloudflare"
+	}
+	if len(servers) == 2 && singDNSServerMatches(servers[0], "google", "8.8.8.8") && singDNSServerMatches(servers[1], "cloudflare", "1.1.1.1") {
+		return provider.DNSProfilePublicGoogle, "google"
 	}
 	return "custom", ""
 }

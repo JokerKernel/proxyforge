@@ -34,10 +34,11 @@ type LogLevelProvider interface {
 }
 
 const (
-	DNSProfileSystem     = "system"
-	DNSProfilePublic     = "public"
-	DNSProfileCloudflare = "cloudflare"
-	DNSProfileGoogle     = "google"
+	DNSProfileSystem           = "system"
+	DNSProfilePublicCloudflare = "public-cloudflare"
+	DNSProfilePublicGoogle     = "public-google"
+	DNSProfileCloudflare       = "cloudflare"
+	DNSProfileGoogle           = "google"
 )
 
 type DNSProfileProvider interface {

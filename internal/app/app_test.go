@@ -181,18 +181,18 @@ func TestSetDNSProfileValidatesRestartsAndTracksManagedConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	change, err := a.SetDNSProfile(context.Background(), domain.CoreXray, provider.DNSProfilePublic)
+	change, err := a.SetDNSProfile(context.Background(), domain.CoreXray, provider.DNSProfilePublicCloudflare)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !change.Changed || !change.Restarted || change.Previous != provider.DNSProfileSystem || change.Current != provider.DNSProfilePublic {
+	if !change.Changed || !change.Restarted || change.Previous != provider.DNSProfileSystem || change.Current != provider.DNSProfilePublicCloudflare {
 		t.Fatalf("change=%#v", change)
 	}
 	updated, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if current, err := p.CurrentDNSProfile(updated); err != nil || current != provider.DNSProfilePublic {
+	if current, err := p.CurrentDNSProfile(updated); err != nil || current != provider.DNSProfilePublicCloudflare {
 		t.Fatalf("current=%q error=%v", current, err)
 	}
 	state, err := a.Store.Load(domain.CoreXray)

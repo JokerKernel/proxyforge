@@ -162,7 +162,7 @@ func TestPatchDNSProfileUpdatesResolverReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	patched, err := p.PatchDNSProfile(config, "public")
+	patched, err := p.PatchDNSProfile(config, "public-cloudflare")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestPatchDNSProfileUpdatesResolverReferences(t *testing.T) {
 		dns["final"] != "cloudflare" || route["default_domain_resolver"] != "cloudflare" || resolve["server"] != "cloudflare" {
 		t.Fatalf("dns=%#v route=%#v", dns, route)
 	}
-	if current, err := p.CurrentDNSProfile(patched); err != nil || current != "public" {
+	if current, err := p.CurrentDNSProfile(patched); err != nil || current != "public-cloudflare" {
 		t.Fatalf("patched current=%q error=%v", current, err)
 	}
 	for _, rawRule := range route["rules"].([]any) {
@@ -201,7 +201,7 @@ func TestPatchDNSProfileUpdatesResolverReferences(t *testing.T) {
 	if current, err := p.CurrentDNSProfile(simplified); err != nil || current != "none" {
 		t.Fatalf("simplified current=%q error=%v", current, err)
 	}
-	withPublicDNS, err := p.PatchDNSProfile(simplified, "public")
+	withPublicDNS, err := p.PatchDNSProfile(simplified, "public-google")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,9 +209,17 @@ func TestPatchDNSProfileUpdatesResolverReferences(t *testing.T) {
 	if err := json.Unmarshal(withPublicDNS, &googleRoot); err != nil {
 		t.Fatal(err)
 	}
+	googleDNS := googleRoot["dns"].(map[string]any)
+	googleServers := googleDNS["servers"].([]any)
 	googleRoute := googleRoot["route"].(map[string]any)
-	if action := googleRoute["rules"].([]any)[0].(map[string]any)["action"]; action != "resolve" {
-		t.Fatalf("first route action=%v", action)
+	googleResolve := googleRoute["rules"].([]any)[0].(map[string]any)
+	if len(googleServers) != 2 || googleServers[0].(map[string]any)["server"] != "8.8.8.8" ||
+		googleServers[1].(map[string]any)["server"] != "1.1.1.1" || googleDNS["final"] != "google" ||
+		googleRoute["default_domain_resolver"] != "google" || googleResolve["action"] != "resolve" || googleResolve["server"] != "google" {
+		t.Fatalf("google dns=%#v route=%#v", googleDNS, googleRoute)
+	}
+	if current, err := p.CurrentDNSProfile(withPublicDNS); err != nil || current != "public-google" {
+		t.Fatalf("google current=%q error=%v", current, err)
 	}
 }
 

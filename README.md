@@ -83,7 +83,7 @@ sudo proxyforge cleanup all --yes
 
 Xray 服务端和原生客户端模板会显式配置系统 DNS：`servers: ["localhost"]`、`queryStrategy: "UseIP"`。路由仍使用 `IPOnDemand` 在私网 IP 规则前解析域名，Freedom 出站仍使用 `UseIP` 连接解析结果；该配置只是将原先隐式使用的系统 DNS 明确写入 JSON，不改用第三方 DNS。
 
-“服务端配置管理 → DNS 设置”可在系统 DNS（推荐）和公共 DNS 之间切换。公共 DNS 会一次同时写入 Cloudflare `1.1.1.1` 与 Google `8.8.8.8`：Xray 按该顺序查询并在失败时尝试下一个服务器；sing-box 同时声明两个服务器，并以 Cloudflare 为 `final` 和路由解析器（sing-box 没有与 Xray 相同的顺序回退语义）。sing-box 会同步 `dns.final`、`route.default_domain_resolver` 和所有 `resolve` 规则；Xray 同时写入 `queryStrategy: "UseIP"`。修改会先使用对应内核的原生命令校验，再备份并原子写入；服务正在运行时自动重启，失败则恢复旧配置。公共 DNS 使用明文 UDP/53，仅影响代理内核，不修改系统全局 DNS。
+“服务端配置管理 → DNS 设置”可在系统 DNS（推荐）、Cloudflare 默认和 Google 默认之间切换。两个公共 DNS 选项都会一次同时写入 Cloudflare `1.1.1.1` 与 Google `8.8.8.8`，并按照所选默认项调整顺序：Xray 会依次查询并在失败时尝试下一个服务器；sing-box 同时声明两个服务器，但只将所选默认项用于 `dns.final`、`route.default_domain_resolver` 和所有 `resolve` 规则，因为 sing-box 没有与 Xray 相同的自动顺序回退语义。Xray 同时写入 `queryStrategy: "UseIP"`。修改会先使用对应内核的原生命令校验，再备份并原子写入；服务正在运行时自动重启，失败则恢复旧配置。公共 DNS 使用明文 UDP/53，仅影响代理内核，不修改系统全局 DNS。
 
 示例：
 
