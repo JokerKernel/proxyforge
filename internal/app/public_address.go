@@ -15,13 +15,28 @@ type interfaceAddressCandidate struct {
 	addresses []net.IP
 }
 
+type PublicInterfaceAddress struct {
+	Interface string
+	Address   string
+}
+
 // PhysicalPublicAddress returns a public unicast address assigned directly to
 // an active physical network interface. Private/NAT, loopback, virtual and
 // reserved addresses are deliberately ignored.
 func PhysicalPublicAddress() (string, error) {
+	addresses, err := PhysicalPublicAddresses()
+	if err != nil {
+		return "", err
+	}
+	return addresses[0].Address, nil
+}
+
+// PhysicalPublicAddresses returns every usable address, ordered with IPv4
+// before IPv6 while preserving the operating system's interface order.
+func PhysicalPublicAddresses() ([]PublicInterfaceAddress, error) {
 	interfaces, err := net.Interfaces()
 	if err != nil {
-		return "", fmt.Errorf("枚举物理网卡: %w", err)
+		return nil, fmt.Errorf("枚举物理网卡: %w", err)
 	}
 	candidates := make([]interfaceAddressCandidate, 0, len(interfaces))
 	for _, item := range interfaces {
@@ -41,10 +56,11 @@ func PhysicalPublicAddress() (string, error) {
 		}
 		candidates = append(candidates, candidate)
 	}
-	if address := preferredPhysicalPublicAddress(candidates); address != "" {
-		return address, nil
+	addresses := physicalPublicAddresses(candidates)
+	if len(addresses) != 0 {
+		return addresses, nil
 	}
-	return "", fmt.Errorf("已启用的物理网卡没有公网 IP（内网/NAT 地址不会使用）")
+	return nil, fmt.Errorf("已启用的物理网卡没有公网 IP（内网/NAT 地址不会使用）")
 }
 
 func physicalNetworkInterface(name string) bool {
@@ -67,8 +83,9 @@ func interfaceIP(address net.Addr) net.IP {
 	}
 }
 
-func preferredPhysicalPublicAddress(candidates []interfaceAddressCandidate) string {
-	var ipv6 string
+func physicalPublicAddresses(candidates []interfaceAddressCandidate) []PublicInterfaceAddress {
+	var ipv4, ipv6 []PublicInterfaceAddress
+	seen := make(map[string]struct{})
 	for _, candidate := range candidates {
 		if !candidate.up || candidate.loopback || !candidate.physical {
 			continue
@@ -77,13 +94,18 @@ func preferredPhysicalPublicAddress(candidates []interfaceAddressCandidate) stri
 			if forbiddenTargetIP(ip) {
 				continue
 			}
-			if ip.To4() != nil {
-				return ip.String()
+			address := ip.String()
+			if _, exists := seen[address]; exists {
+				continue
 			}
-			if ipv6 == "" {
-				ipv6 = ip.String()
+			seen[address] = struct{}{}
+			item := PublicInterfaceAddress{Interface: candidate.name, Address: address}
+			if ip.To4() != nil {
+				ipv4 = append(ipv4, item)
+			} else {
+				ipv6 = append(ipv6, item)
 			}
 		}
 	}
-	return ipv6
+	return append(ipv4, ipv6...)
 }

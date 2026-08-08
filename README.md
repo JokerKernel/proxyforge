@@ -96,7 +96,7 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 服务端用户名称默认为 `proxyforge-user`，可通过交互提示或 `--user-name` 修改；它在 sing-box 中写入 `users[].name`，在 Xray 中写入 `clients[].email`。入站标签也可在交互配置时自定义，直接回车会按内核自动使用 `proxyforge-sing-box-in` 或 `proxyforge-xray-in`，非交互模式可通过 `--inbound-tag` 指定；两种内核都写入入站的 `tag` 字段。客户端文件以 `0600` 创建。`--format native` 是默认值，输出前会调用对应内核的原生配置校验：sing-box 客户端提供 `127.0.0.1:2080` mixed 入站，Xray 客户端提供 `127.0.0.1:10808` SOCKS 与 `127.0.0.1:10809` HTTP 入站。`--format clash` 输出带 `mixed-port: 7890`、`PROXY` 策略组和 `MATCH` 规则的完整 Mihomo/Clash Meta YAML；由于传统 Clash 不支持 VLESS REALITY，不能使用该文件，且 ProxyForge 不会用 sing-box/Xray 二进制校验这种非原生格式。
 
-交互生成服务端配置时可选择公网地址来源：默认从已启用的物理网卡读取公网单播 IP（优先 IPv4，拒绝内网、NAT 和保留地址），也可选择通过 `api.ipify.org` HTTPS 探测或手动输入。物理网卡未配置公网 IP 时会要求重新选择，不会自动把私网地址写入节点配置。
+交互生成服务端配置时可选择公网地址来源：默认从已启用的物理网卡读取公网单播 IP（IPv4 排在 IPv6 前，拒绝内网、NAT 和保留地址），检测到多个时会列出网卡名和地址供用户选择；也可选择通过 `api.ipify.org` HTTPS 探测或手动输入。物理网卡未配置公网 IP 时会要求重新选择，不会自动把私网地址写入节点配置。
 
 ## 文件与安全边界
 

@@ -29,7 +29,7 @@ type commandSet struct {
 	yes         bool
 	probeSNI    sniCandidateProbeFunc
 	randomIndex func(int) int
-	physicalIP  func() (string, error)
+	physicalIPs func() ([]app.PublicInterfaceAddress, error)
 	externalIP  func(context.Context) (string, error)
 }
 
@@ -48,7 +48,7 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 	c := &commandSet{
 		app: a, in: os.Stdin, reader: bufio.NewReader(os.Stdin), out: os.Stdout, errOut: os.Stderr,
 		probeSNI: app.ProbeSNICandidates, randomIndex: secureRandomIndex,
-		physicalIP: app.PhysicalPublicAddress, externalIP: app.PublicAddress,
+		physicalIPs: app.PhysicalPublicAddresses, externalIP: app.PublicAddress,
 	}
 	root := &cobra.Command{
 		Use: "proxyforge", Short: "Linux 双内核 VLESS + REALITY + Vision 管理器", Version: version,
@@ -305,9 +305,9 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 }
 
 func (c *commandSet) selectPublicAddress(ctx context.Context) (string, error) {
-	physicalIP := c.physicalIP
-	if physicalIP == nil {
-		physicalIP = app.PhysicalPublicAddress
+	physicalIPs := c.physicalIPs
+	if physicalIPs == nil {
+		physicalIPs = app.PhysicalPublicAddresses
 	}
 	externalIP := c.externalIP
 	if externalIP == nil {
@@ -327,7 +327,11 @@ func (c *commandSet) selectPublicAddress(ctx context.Context) (string, error) {
 		}
 		var address string
 		if choice == 1 {
-			address, err = physicalIP()
+			var addresses []app.PublicInterfaceAddress
+			addresses, err = physicalIPs()
+			if err == nil {
+				address, err = c.selectPhysicalPublicAddress(addresses)
+			}
 		} else {
 			address, err = externalIP(ctx)
 		}
@@ -337,6 +341,28 @@ func (c *commandSet) selectPublicAddress(ctx context.Context) (string, error) {
 		}
 		fmt.Fprintf(c.out, "获取公网地址失败：%v，请重新选择。\n\n", err)
 	}
+}
+
+func (c *commandSet) selectPhysicalPublicAddress(addresses []app.PublicInterfaceAddress) (string, error) {
+	if len(addresses) == 0 {
+		return "", fmt.Errorf("物理网卡没有可用公网地址")
+	}
+	if len(addresses) == 1 {
+		return addresses[0].Address, nil
+	}
+	fmt.Fprintln(c.out, "检测到多个物理网卡公网地址：")
+	for index, item := range addresses {
+		family := "IPv4"
+		if strings.Contains(item.Address, ":") {
+			family = "IPv6"
+		}
+		fmt.Fprintf(c.out, "%d) %s  %s（%s）\n", index+1, item.Interface, item.Address, family)
+	}
+	choice, err := c.chooseNumber("请选择公网地址", 1, len(addresses), 1)
+	if err != nil {
+		return "", err
+	}
+	return addresses[choice-1].Address, nil
 }
 
 func (c *commandSet) runGenerate(ctx context.Context, core string, o domain.GenerateOptions, interactive bool) error {

@@ -494,7 +494,9 @@ func TestSelectPublicAddressDefaultsToPhysicalInterface(t *testing.T) {
 	externalCalled := false
 	c := &commandSet{
 		reader: bufio.NewReader(strings.NewReader("\n")), out: &out,
-		physicalIP: func() (string, error) { return "198.51.100.10", nil },
+		physicalIPs: func() ([]app.PublicInterfaceAddress, error) {
+			return []app.PublicInterfaceAddress{{Interface: "eth0", Address: "198.51.100.10"}}, nil
+		},
 		externalIP: func(context.Context) (string, error) {
 			externalCalled = true
 			return "203.0.113.10", nil
@@ -516,7 +518,9 @@ func TestSelectPublicAddressCanUseExternalService(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
 		reader: bufio.NewReader(strings.NewReader("2\n")), out: &out,
-		physicalIP: func() (string, error) { return "198.51.100.10", nil },
+		physicalIPs: func() ([]app.PublicInterfaceAddress, error) {
+			return []app.PublicInterfaceAddress{{Interface: "eth0", Address: "198.51.100.10"}}, nil
+		},
 		externalIP: func(context.Context) (string, error) { return "203.0.113.10", nil },
 	}
 	got, err := c.selectPublicAddress(context.Background())
@@ -530,9 +534,9 @@ func TestSelectPublicAddressCanUseManualInput(t *testing.T) {
 	detectorCalled := false
 	c := &commandSet{
 		reader: bufio.NewReader(strings.NewReader("3\n")), out: &out,
-		physicalIP: func() (string, error) {
+		physicalIPs: func() ([]app.PublicInterfaceAddress, error) {
 			detectorCalled = true
-			return "", nil
+			return nil, nil
 		},
 		externalIP: func(context.Context) (string, error) {
 			detectorCalled = true
@@ -542,6 +546,28 @@ func TestSelectPublicAddressCanUseManualInput(t *testing.T) {
 	got, err := c.selectPublicAddress(context.Background())
 	if err != nil || got != "" || detectorCalled {
 		t.Fatalf("address=%q detectorCalled=%v error=%v", got, detectorCalled, err)
+	}
+}
+
+func TestSelectPublicAddressLetsUserChooseFromMultiplePhysicalAddresses(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{
+		reader: bufio.NewReader(strings.NewReader("\n2\n")), out: &out,
+		physicalIPs: func() ([]app.PublicInterfaceAddress, error) {
+			return []app.PublicInterfaceAddress{
+				{Interface: "eth0", Address: "8.8.8.8"},
+				{Interface: "eth1", Address: "2606:4700:4700::1111"},
+			}, nil
+		},
+	}
+	got, err := c.selectPublicAddress(context.Background())
+	if err != nil || got != "2606:4700:4700::1111" {
+		t.Fatalf("address=%q error=%v", got, err)
+	}
+	for _, want := range []string{"检测到多个", "eth0  8.8.8.8（IPv4）", "eth1  2606:4700:4700::1111（IPv6）"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("address menu missing %q: %q", want, out.String())
+		}
 	}
 }
 
