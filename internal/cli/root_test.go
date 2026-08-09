@@ -745,15 +745,19 @@ func TestSelectCoreUsesNumericChoiceAndDefault(t *testing.T) {
 func TestMenuCanReturnFromCoreSelection(t *testing.T) {
 	var out, errOut bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("1\n0\n0\n")),
-		out:    &out,
-		errOut: &errOut,
+		reader:         bufio.NewReader(strings.NewReader("1\n0\n0\n")),
+		out:            &out,
+		errOut:         &errOut,
+		currentVersion: "v1.2.3",
 	}
 	if err := c.menu(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Count(out.String(), "ProxyForge 双内核代理管理器") != 2 {
 		t.Fatalf("core selector was not shown twice: %q", out.String())
+	}
+	if strings.Count(out.String(), "当前版本：v1.2.3") != 2 {
+		t.Fatalf("current version was not shown twice: %q", out.String())
 	}
 	if !strings.Contains(out.String(), "sing-box 管理菜单") || !strings.Contains(out.String(), "安装/升级内核") || !strings.Contains(out.String(), "服务端配置管理") {
 		t.Fatalf("core menu missing: %q", out.String())

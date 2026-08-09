@@ -1049,6 +1049,7 @@ func (c *commandSet) selectCore() (string, bool, error) {
 	c.clearScreen()
 	fmt.Fprintln(c.out, "========================================")
 	fmt.Fprintln(c.out, centerDisplayText("ProxyForge 双内核代理管理器", menuDisplayWidth))
+	fmt.Fprintln(c.out, centerDisplayText("当前版本："+displayCurrentVersion(c.currentVersion), menuDisplayWidth))
 	fmt.Fprintln(c.out, "========================================")
 	fmt.Fprintln(c.out, "请选择要管理的内核")
 	fmt.Fprintln(c.out, "1) sing-box")
@@ -1067,6 +1068,14 @@ func (c *commandSet) selectCore() (string, bool, error) {
 	default:
 		return "", false, nil
 	}
+}
+
+func displayCurrentVersion(version string) string {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return "unknown"
+	}
+	return version
 }
 
 func (c *commandSet) serviceMenu(ctx context.Context, core string) error {
