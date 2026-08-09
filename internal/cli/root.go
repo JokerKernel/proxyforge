@@ -20,6 +20,7 @@ import (
 	"proxyforge/internal/provider"
 	"proxyforge/internal/provider/singbox"
 	"proxyforge/internal/provider/xray"
+	"proxyforge/internal/selfupdate"
 	"proxyforge/internal/system"
 )
 
@@ -44,6 +45,8 @@ type commandSet struct {
 	physicalIPs      func() ([]app.PublicInterfaceAddress, error)
 	externalIP       func(context.Context) (string, error)
 	interruptContext func(context.Context) (context.Context, context.CancelFunc)
+	currentVersion   string
+	selfUpdate       func(context.Context, selfupdate.Options) error
 }
 
 func New(version string) *cobra.Command {
@@ -60,10 +63,12 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 	a.RootCheck = rootCheck
 	a.Progress = stderr
 	a.Installer.Output = stderr
+	updater := selfupdate.Updater{Installer: a.Installer, Output: stdout}
 	c := &commandSet{
 		app: a, in: os.Stdin, reader: bufio.NewReader(os.Stdin), out: stdout, errOut: stderr,
 		probeSNI: app.ProbeSNICandidates, randomIndex: secureRandomIndex,
 		physicalIPs: app.PhysicalPublicAddresses, externalIP: app.PublicAddress,
+		currentVersion: strings.SplitN(version, "\n", 2)[0], selfUpdate: updater.Run,
 	}
 	root := &cobra.Command{
 		Use: "proxyforge", Short: "Linux 双内核 VLESS + REALITY + Vision 管理器", Version: version,
@@ -78,9 +83,29 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 	root.SetErr(stderr)
 	root.SetIn(os.Stdin)
 	root.SetVersionTemplate("{{.Name}} {{.Version}}\n")
-	root.PersistentFlags().BoolVarP(&c.yes, "yes", "y", false, "非交互模式（执行下载的管理脚本仍必须提供 SHA-256）")
-	root.AddCommand(c.installCommand(), c.uninstallCommand(), c.cleanupCommand(), c.configCommand(), c.serviceCommand())
+	root.PersistentFlags().BoolVarP(&c.yes, "yes", "y", false, "非交互确认（内核管理脚本仍必须提供 SHA-256）")
+	root.AddCommand(c.installCommand(), c.updateCommand(), c.uninstallCommand(), c.cleanupCommand(), c.configCommand(), c.serviceCommand())
 	return root
+}
+
+func (c *commandSet) updateCommand() *cobra.Command {
+	return &cobra.Command{
+		Use: "update", Short: "升级 ProxyForge 自身到最新正式版本", Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if c.selfUpdate == nil {
+				return fmt.Errorf("自升级功能未初始化")
+			}
+			var confirm selfupdate.ConfirmFunc
+			if !c.yes && readerInteractive(c.in) {
+				confirm = c.confirm
+			}
+			return c.selfUpdate(cmd.Context(), selfupdate.Options{
+				CurrentVersion: c.currentVersion,
+				AssumeYes:      c.yes,
+				Confirm:        confirm,
+			})
+		},
+	}
 }
 
 func (c *commandSet) uninstallCommand() *cobra.Command {

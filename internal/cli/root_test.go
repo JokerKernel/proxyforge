@@ -16,6 +16,7 @@ import (
 	"proxyforge/internal/provider"
 	"proxyforge/internal/provider/singbox"
 	"proxyforge/internal/provider/xray"
+	"proxyforge/internal/selfupdate"
 	"proxyforge/internal/system"
 )
 
@@ -52,7 +53,7 @@ func (r *liveLogRunner) RunStreaming(ctx context.Context, stdout, _ io.Writer, n
 
 func TestStableCommandTree(t *testing.T) {
 	root := New("test")
-	for _, args := range [][]string{{"install"}, {"uninstall"}, {"cleanup"}, {"config", "generate"}, {"config", "client"}, {"config", "reset"}, {"service"}} {
+	for _, args := range [][]string{{"install"}, {"update"}, {"uninstall"}, {"cleanup"}, {"config", "generate"}, {"config", "client"}, {"config", "reset"}, {"service"}} {
 		cmd, remaining, err := root.Find(args)
 		if err != nil {
 			t.Fatalf("find %v: %v", args, err)
@@ -67,6 +68,36 @@ func TestStableCommandTree(t *testing.T) {
 	cmd, _, err := root.Find([]string{"upgrade"})
 	if err != nil || cmd.Name() != "install" {
 		t.Fatalf("upgrade alias resolved to %v, error=%v", cmd, err)
+	}
+}
+
+func TestUpdateCommandPassesCurrentVersionAndYes(t *testing.T) {
+	called := false
+	c := &commandSet{
+		yes: true, currentVersion: "v1.2.3",
+		selfUpdate: func(_ context.Context, opts selfupdate.Options) error {
+			called = true
+			if opts.CurrentVersion != "v1.2.3" || !opts.AssumeYes || opts.Confirm != nil {
+				t.Fatalf("options=%+v", opts)
+			}
+			return nil
+		},
+	}
+	cmd := c.updateCommand()
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Fatal("self updater was not called")
+	}
+}
+
+func TestUpdateCommandRejectsArguments(t *testing.T) {
+	c := &commandSet{selfUpdate: func(context.Context, selfupdate.Options) error { return nil }}
+	cmd := c.updateCommand()
+	cmd.SetArgs([]string{"v1.2.3"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected argument validation error")
 	}
 }
 

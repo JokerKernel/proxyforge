@@ -40,6 +40,15 @@ type Installer struct {
 	ProxyForRequest func(*http.Request) (*url.URL, error)
 }
 
+// DownloadedScript is a management script that has passed source, size,
+// format, and bash syntax validation.
+type DownloadedScript struct {
+	Content   []byte
+	SourceURL string
+	FinalURL  string
+	SHA256    string
+}
+
 func (i Installer) Run(ctx context.Context, p provider.CoreProvider, opts Options) (string, error) {
 	args := p.InstallArgs(opts.Version)
 	if proxyProvider, ok := p.(provider.ScriptProxyProvider); ok {
@@ -72,51 +81,77 @@ func (i Installer) runScript(ctx context.Context, p provider.CoreProvider, opts 
 	if scriptURL == "" {
 		scriptURL = p.OfficialScriptURL()
 	}
-	client := i.secureClient(p.ScriptHosts())
-	body, finalURL, err := download(ctx, client, scriptURL, p.ScriptHosts())
+	script, err := i.PrepareScript(ctx, scriptURL, p.ScriptHosts())
 	if err != nil {
 		return "", err
 	}
-	if err := validateScript(body); err != nil {
-		return "", err
-	}
-	if err := bashSyntaxLogged(ctx, body, i.Output); err != nil {
-		return "", err
-	}
-	hash := system.SHA256(body)
 	if i.Output != nil {
 		fmt.Fprintf(i.Output, "[官方脚本/信息] 来源：%s\n", scriptURL)
-		fmt.Fprintf(i.Output, "[官方脚本/信息] 最终地址：%s\n", finalURL)
-		fmt.Fprintf(i.Output, "[官方脚本/信息] 大小：%d bytes\n", len(body))
-		fmt.Fprintf(i.Output, "[官方脚本/信息] SHA-256：%s\n", hash)
+		fmt.Fprintf(i.Output, "[官方脚本/信息] 最终地址：%s\n", script.FinalURL)
+		fmt.Fprintf(i.Output, "[官方脚本/信息] 大小：%d bytes\n", len(script.Content))
+		fmt.Fprintf(i.Output, "[官方脚本/信息] SHA-256：%s\n", script.SHA256)
 		fmt.Fprintf(i.Output, "[官方脚本/风险] 将以 root 执行%s操作，可能修改二进制、systemd unit 和软件包文件。\n", operation)
 	}
-	if err := i.trust(p.Name(), hash, opts); err != nil {
-		return hash, err
+	if err := i.trust(p.Name(), script.SHA256, opts); err != nil {
+		return script.SHA256, err
 	}
+	if err := i.ExecutePreparedScript(ctx, script, nil, scriptArgs...); err != nil {
+		return script.SHA256, err
+	}
+	return script.SHA256, nil
+}
+
+// PrepareScript securely downloads and validates a shell script without
+// executing it.
+func (i Installer) PrepareScript(ctx context.Context, scriptURL string, hosts []string) (DownloadedScript, error) {
+	client := i.secureClient(hosts)
+	body, finalURL, err := download(ctx, client, scriptURL, hosts)
+	if err != nil {
+		return DownloadedScript{}, err
+	}
+	if err := validateScript(body); err != nil {
+		return DownloadedScript{}, err
+	}
+	if err := bashSyntaxLogged(ctx, body, i.Output); err != nil {
+		return DownloadedScript{}, err
+	}
+	return DownloadedScript{
+		Content: body, SourceURL: scriptURL, FinalURL: finalURL, SHA256: system.SHA256(body),
+	}, nil
+}
+
+// ExecutePreparedScript writes a validated script to a private temporary file
+// and executes it. Environment entries are applied only to the child process.
+func (i Installer) ExecutePreparedScript(ctx context.Context, script DownloadedScript, environment []string, scriptArgs ...string) error {
 	f, err := os.CreateTemp("", "proxyforge-install-*.sh")
 	if err != nil {
-		return hash, err
+		return err
 	}
 	path := f.Name()
 	defer os.Remove(path)
 	if err := f.Chmod(0700); err == nil {
-		_, err = f.Write(body)
+		_, err = f.Write(script.Content)
 	}
 	if closeErr := f.Close(); err == nil {
 		err = closeErr
 	}
 	if err != nil {
-		return hash, err
+		return err
 	}
 	args := append([]string{path}, scriptArgs...)
-	if err := i.executeScript(ctx, args); err != nil {
-		return hash, err
+	if len(environment) == 0 {
+		return i.executeScript(ctx, args)
 	}
-	return hash, nil
+	envArgs := append(append([]string(nil), environment...), "bash")
+	envArgs = append(envArgs, args...)
+	return i.executeScriptCommand(ctx, "env", envArgs)
 }
 
 func (i Installer) executeScript(ctx context.Context, args []string) error {
+	return i.executeScriptCommand(ctx, "bash", args)
+}
+
+func (i Installer) executeScriptCommand(ctx context.Context, command string, args []string) error {
 	output := i.Output
 	if output == nil {
 		output = io.Discard
@@ -127,7 +162,7 @@ func (i Installer) executeScript(ctx context.Context, args []string) error {
 		limit:  maxCapturedScriptOutput,
 	}
 	if streaming, ok := i.Runner.(provider.StreamingRunner); ok {
-		runErr := streaming.RunStreaming(ctx, capture, capture, "bash", args...)
+		runErr := streaming.RunStreaming(ctx, capture, capture, command, args...)
 		capture.FinishLine()
 		if runErr != nil {
 			if tail := strings.TrimSpace(capture.String()); tail != "" {
@@ -140,7 +175,7 @@ func (i Installer) executeScript(ctx context.Context, args []string) error {
 		return nil
 	}
 
-	b, err := i.Runner.Run(ctx, "bash", args...)
+	b, err := i.Runner.Run(ctx, command, args...)
 	if len(b) > 0 {
 		_, _ = capture.Write(b)
 		if b[len(b)-1] != '\n' {

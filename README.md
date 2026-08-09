@@ -64,6 +64,7 @@ sudo ./proxyforge
 
 ```text
 proxyforge install <sing-box|xray> [--version VERSION]
+proxyforge update [--yes]
 proxyforge uninstall <sing-box|xray> [--yes]
 proxyforge cleanup <sing-box|xray|all> [--yes]
 proxyforge config generate <sing-box|xray> --server HOST --port PORT --sni DOMAIN [--target HOST:PORT] [--user-name NAME] [--inbound-tag TAG]
@@ -73,7 +74,19 @@ proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
 ```
 
 `install` 同时用于首次安装和后续升级；旧的 `upgrade` 名称保留为兼容别名。无参数运行时会先选择 sing-box 或 Xray-core，再进入该内核独立的安装/升级、配置、客户端、重置、服务和卸载菜单。
+
+`update` 用于升级 ProxyForge 自身。它会先读取最新正式 Release 的版本，当前已是最新版时直接退出；需要升级时，从仓库 `main` 分支下载当前 `scripts/install.sh`，限制 HTTPS 来源并检查大小、文本格式、shebang 和 `bash -n`，展示脚本 SHA-256 后要求确认，再由该脚本核对 Release 的 `SHA256SUMS` 并原子替换 `/usr/local/sbin/proxyforge`。非交互升级必须显式提供 `--yes`：
+
+```bash
+sudo proxyforge update
+sudo proxyforge update --yes
+```
+
+`update` 只更新官方安装位置，不修改 sing-box、Xray、节点配置或 systemd 服务。`upgrade <sing-box|xray>` 仍仅表示内核升级，不是 ProxyForge 自升级。
+
 安装 Xray 时会按 `HTTPS_PROXY`/`HTTP_PROXY` 和 `NO_PROXY` 检查当前进程的运行时代理；检测到代理后会自动传递给 Xray 官方管理脚本。通过 `sudo` 运行时需确保这些环境变量被保留，例如使用经过本机 sudo 策略允许的 `sudo -E`。日志只会提示已检测到代理，不会输出代理地址或认证信息。
+
+ProxyForge 自升级的版本检查、脚本下载以及脚本内的 Release 下载也会继承当前进程的标准代理环境；若代理变量默认被 `sudo` 清除，同样需要按本机 sudo 策略显式保留。
 
 非交互安装必须显式固定本次下载内容，`--yes` 不能跳过：
 
