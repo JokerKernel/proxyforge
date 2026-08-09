@@ -36,7 +36,17 @@ jobs:
         run: go vet ./...
 
       - name: Validate installer syntax
-        run: bash -n scripts/install.sh
+        run: |
+          bash -n scripts/install.sh
+
+          bash_path=$(command -v bash)
+          set +e
+          installer_output=$(PATH=/nonexistent "${bash_path}" < scripts/install.sh 2>&1)
+          installer_status=$?
+          set -e
+
+          [[ ${installer_status} -ne 0 ]]
+          grep -Fq "该安装脚本仅支持 Linux" <<< "${installer_output}"
 
   build:
     name: Build linux/${{ matrix.arch }}

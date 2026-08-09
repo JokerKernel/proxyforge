@@ -178,6 +178,6 @@ main() {
   printf '运行命令：sudo %s\n' "${install_path}"
 }
 
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
   main "$@"
 fi
