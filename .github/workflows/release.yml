@@ -47,7 +47,7 @@ jobs:
             echo "release tag does not exist: ${RELEASE_TAG}" >&2
             exit 1
           fi
-          printf 'commit=%s\n' "$(git rev-parse --short HEAD)" >> "${GITHUB_OUTPUT}"
+          printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
           printf 'build_date=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
 
   build:

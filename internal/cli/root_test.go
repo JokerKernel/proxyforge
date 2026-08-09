@@ -70,6 +70,30 @@ func TestStableCommandTree(t *testing.T) {
 	}
 }
 
+func TestVersionOutputIsDetailedAndSkipsRootCheck(t *testing.T) {
+	rootChecked := false
+	root := newCommand(
+		"v1.2.3\ncommit: 0123456789abcdef0123456789abcdef01234567\nbuild date: 2026-08-08T12:00:00Z\ngo: go1.25.0\nplatform: linux/amd64",
+		func() error {
+			rootChecked = true
+			return errors.New("root check should not run")
+		},
+	)
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"-v"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if rootChecked {
+		t.Fatal("root check ran for -v")
+	}
+	want := "proxyforge v1.2.3\ncommit: 0123456789abcdef0123456789abcdef01234567\nbuild date: 2026-08-08T12:00:00Z\ngo: go1.25.0\nplatform: linux/amd64\n"
+	if got := out.String(); got != want {
+		t.Fatalf("version output = %q, want %q", got, want)
+	}
+}
+
 func TestClientCommandOffersClashFormat(t *testing.T) {
 	c := &commandSet{}
 	flag := c.clientCommand().Flags().Lookup("format")

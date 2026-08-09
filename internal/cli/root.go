@@ -77,6 +77,7 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 	root.SetIn(os.Stdin)
+	root.SetVersionTemplate("{{.Name}} {{.Version}}\n")
 	root.PersistentFlags().BoolVarP(&c.yes, "yes", "y", false, "非交互模式（执行下载的管理脚本仍必须提供 SHA-256）")
 	root.AddCommand(c.installCommand(), c.uninstallCommand(), c.cleanupCommand(), c.configCommand(), c.serviceCommand())
 	return root
