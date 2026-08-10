@@ -116,7 +116,7 @@ print_probe_header() {
   local number=$1
   local title=$2
   local sni=$3
-  printf '\n%s[%s/3]%s %s%s%s\n' "${color_blue}" "${number}" "${color_reset}" "${color_bold}" "${title}" "${color_reset}"
+  printf '\n%s[%s/%s]%s %s%s%s\n' "${color_blue}" "${number}" "${total_probes}" "${color_reset}" "${color_bold}" "${title}" "${color_reset}"
   printf '    SNI: %s%s%s\n' "${color_cyan}" "${sni}" "${color_reset}"
 }
 
@@ -137,6 +137,7 @@ done
 if ((${#filtered_rejected_snis[@]} == 0)); then
   filtered_rejected_snis=('proxyforge-invalid.invalid')
 fi
+total_probes=$((2 + ${#filtered_rejected_snis[@]}))
 
 case ${node_host} in
   \[*\]) endpoint="${node_host}:${node_port}" ;;
@@ -150,6 +151,7 @@ trap 'rm -rf -- "${probe_tmp}"' EXIT
 probe_number=0
 probe_has_certificate=false
 probe_received_tls=false
+probe_certificate_matches_sni=false
 probe_certificate_info=''
 probe_exit=0
 probe_output=''
@@ -179,6 +181,7 @@ run_probe() {
   probe_output=${output_file}
   probe_has_certificate=false
   probe_received_tls=false
+  probe_certificate_matches_sni=false
   probe_certificate_info=''
   if grep -Fq -- '-----BEGIN CERTIFICATE-----' "${output_file}"; then
     probe_has_certificate=true
@@ -188,6 +191,9 @@ run_probe() {
     awk '/-----BEGIN CERTIFICATE-----/{capture=1} capture{print} /-----END CERTIFICATE-----/{exit}' \
       "${output_file}" >"${certificate_file}"
     probe_certificate_info=$(openssl x509 -in "${certificate_file}" -noout -subject -issuer -ext subjectAltName 2>/dev/null || true)
+    if [[ -n ${server_name} ]] && openssl x509 -in "${certificate_file}" -noout -checkhost "${server_name}" >/dev/null 2>&1; then
+      probe_certificate_matches_sni=true
+    fi
   fi
   if ${probe_has_certificate} || grep -Eq '^[[:space:]]*<<< ' "${output_file}"; then
     probe_received_tls=true
@@ -195,6 +201,13 @@ run_probe() {
 
   if ${probe_has_certificate}; then
     printf '    %s● 收到证书%s  openssl退出码=%d\n' "${color_green}" "${color_reset}" "${probe_exit}"
+    if [[ -n ${server_name} ]]; then
+      if ${probe_certificate_matches_sni}; then
+        printf '    %s● 证书 SAN 包含当前 SNI%s\n' "${color_green}" "${color_reset}"
+      else
+        printf '    %s● 证书 SAN 不包含当前 SNI%s\n' "${color_yellow}" "${color_reset}"
+      fi
+    fi
     if [[ -n ${probe_certificate_info} ]]; then
       while IFS= read -r certificate_line; do
         printf '  证书信息：%s\n' "${certificate_line}"
@@ -222,6 +235,7 @@ printf '%s检测模式%s  未认证 TLS 回落探测\n' "${color_dim}" "${color_
 
 run_probe '允许项' "${allowed_sni}"
 allowed_has_certificate=${probe_has_certificate}
+allowed_certificate_matches_sni=${probe_certificate_matches_sni}
 allowed_output=${probe_output}
 
 leak_count=0
@@ -254,6 +268,14 @@ if ! ${allowed_has_certificate}; then
   printf '允许的 SNI 也没有收到 TLS 证书，无法证明回落链路正常。\n'
   printf '请检查节点地址、端口、REALITY target、防火墙和目标站 TLS 状态。允许项输出：\n'
   sed -n '1,40p' "${allowed_output}"
+  exit 2
+fi
+
+if ! ${allowed_certificate_matches_sni}; then
+  printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_yellow}" "${color_reset}"
+  printf '%s│  ? 无法确认 SNI 过滤状态%s                 %s│%s\n' "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
+  printf '%s╰────────────────────────────────────────────╯%s\n' "${color_yellow}" "${color_reset}"
+  printf '允许 SNI 收到了证书，但证书 SAN 不包含该 SNI。请确认 target 是否允许 SNI 与证书域名不同。\n'
   exit 2
 fi
 
