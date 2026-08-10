@@ -105,15 +105,10 @@ func (c *commandSet) selectSNICandidate(ctx context.Context, server string) (str
 	if len(candidates) == 0 {
 		return "", fmt.Errorf("SNI 测速没有返回可用候选")
 	}
-	randomIndex := c.randomIndex
-	if randomIndex == nil {
-		randomIndex = secureRandomIndex
-	}
-	defaultChoice := randomIndex(len(candidates)) + 1
 	fmt.Fprintln(c.out, "当前网络下最快的候选域名（按延迟排序）：")
 	fmt.Fprintln(c.out)
 	for index, candidate := range candidates {
-		c.printSNICandidateSummary(index+1, candidate, index+1 == defaultChoice)
+		c.printSNICandidateSummary(index+1, candidate, false)
 	}
 	fmt.Fprintln(c.out, " 0) 手动输入其他域名")
 	fmt.Fprintln(c.out)
@@ -128,7 +123,7 @@ func (c *commandSet) selectSNICandidate(ctx context.Context, server string) (str
 		}
 		_, _ = c.reader.ReadByte()
 	}
-	choice, err := c.chooseNumberCancelable("请选择 SNI（默认从最快 10 个中随机）", 0, len(candidates), defaultChoice)
+	choice, err := c.chooseNumberCancelable("请选择 SNI（必须输入编号，0 表示手动输入）", 0, len(candidates), -1)
 	if err != nil {
 		return "", err
 	}
