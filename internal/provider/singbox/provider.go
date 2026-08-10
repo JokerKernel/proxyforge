@@ -10,7 +10,6 @@ import (
 
 	"proxyforge/internal/domain"
 	"proxyforge/internal/provider"
-	"proxyforge/internal/provider/jsonutil"
 )
 
 type Provider struct{}
@@ -95,7 +94,7 @@ func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 		v["dns"] = map[string]any{"servers": []any{map[string]any{"type": "local", "tag": "local"}}}
 		v["route"] = privateNetworkRoute(true, "direct")
 	}
-	return jsonutil.Marshal(v)
+	return marshalSingBox(v)
 }
 
 const fallbackGuardInboundTag = "singbox-fallback-in"
@@ -136,7 +135,7 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 		"outbounds": []any{map[string]any{"type": "direct", "tag": "direct"}},
 		"route":     route,
 	}
-	return jsonutil.Marshal(v)
+	return marshalSingBox(v)
 }
 
 func (*Provider) RenderClient(n domain.NodeSpec) ([]byte, error) {
@@ -150,7 +149,7 @@ func (*Provider) RenderClient(n domain.NodeSpec) ([]byte, error) {
 		}},
 		"route": privateNetworkRoute(false, "proxy"),
 	}
-	return jsonutil.Marshal(v)
+	return marshalSingBox(v)
 }
 
 func privateNetworkRoute(resolveDomains bool, final string) map[string]any {

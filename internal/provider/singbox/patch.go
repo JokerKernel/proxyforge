@@ -7,7 +7,6 @@ import (
 	"strconv"
 
 	"proxyforge/internal/domain"
-	"proxyforge/internal/provider/jsonutil"
 )
 
 // PatchServer rotates the managed node fields while preserving unrelated and
@@ -70,7 +69,7 @@ func (*Provider) PatchServer(config []byte, old, next domain.NodeSpec, updateEnd
 			handshake["server_port"] = port
 		}
 	}
-	return jsonutil.Marshal(root)
+	return marshalSingBox(root)
 }
 
 func patchFallbackTarget(root map[string]any, host string, port int) error {

@@ -1,6 +1,7 @@
 package singbox
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -46,6 +47,126 @@ func TestGoldenConfigs(t *testing.T) {
 	}
 }
 
+func TestRenderedConfigsFollowOfficialFieldOrder(t *testing.T) {
+	p := New()
+	base := domain.NodeSpec{
+		InboundTag: "singbox-one", Server: "203.0.113.10", Port: 443, SNI: "example.com", Target: "example.com:443",
+		UserName: "one", UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private-key",
+		PublicKey: "public-key", ShortID: "0123456789abcdef",
+	}
+
+	t.Run("standard server", func(t *testing.T) {
+		config, err := p.RenderServer(base)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertSingBoxFieldsInOrder(t, config, `"log"`, `"dns"`, `"inbounds"`, `"outbounds"`, `"route"`)
+		assertSingBoxFieldsInOrder(t, singBoxConfigSection(t, config, `"log"`, `"dns"`), `"level"`, `"timestamp"`)
+		assertSingBoxVLESSInboundOrder(t, singBoxConfigSection(t, config, `"type": "vless"`, `"outbounds"`))
+		assertSingBoxFieldsInOrder(t, singBoxConfigSection(t, config, `"outbounds"`, `"route"`), `"type": "direct"`, `"tag": "direct"`)
+		route := singBoxConfigSection(t, config, `"route"`, "")
+		assertSingBoxFieldsInOrder(t, route,
+			`"rules"`, `"action": "resolve"`, `"server": "local"`, `"ip_is_private"`, `"ip_cidr"`, `"action": "reject"`,
+			`"final": "direct"`, `"default_domain_resolver": "local"`,
+		)
+	})
+
+	t.Run("simplified server", func(t *testing.T) {
+		node := base
+		node.SimplifiedConfig = true
+		config, err := p.RenderServer(node)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertSingBoxFieldsInOrder(t, config, `"log"`, `"inbounds"`, `"outbounds"`, `"route"`)
+		if bytes.Contains(config, []byte(`"dns"`)) {
+			t.Fatalf("simplified config unexpectedly contains dns: %s", config)
+		}
+		assertSingBoxVLESSInboundOrder(t, singBoxConfigSection(t, config, `"type": "vless"`, `"outbounds"`))
+		assertSingBoxFieldsInOrder(t, singBoxConfigSection(t, config, `"route"`, ""),
+			`"rules"`, `"ip_is_private"`, `"action": "reject"`, `"final": "direct"`,
+		)
+	})
+
+	t.Run("fallback guard server", func(t *testing.T) {
+		node := base
+		node.SingBoxFallbackGuard = true
+		node.SingBoxFallbackPort = domain.DefaultSingBoxFallbackPort
+		config, err := p.RenderServer(node)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertSingBoxFieldsInOrder(t, config, `"log"`, `"dns"`, `"inbounds"`, `"outbounds"`, `"route"`)
+		fallback := singBoxConfigSection(t, config, `"type": "direct"`, `"type": "vless"`)
+		assertSingBoxFieldsInOrder(t, fallback,
+			`"type"`, `"tag": "singbox-fallback-in"`, `"listen": "127.0.0.1"`, `"listen_port": 61432`,
+			`"network": "tcp"`, `"override_address": "example.com"`, `"override_port": 443`,
+		)
+		assertSingBoxVLESSInboundOrder(t, singBoxConfigSection(t, config, `"type": "vless"`, `"outbounds"`))
+		route := singBoxConfigSection(t, config, `"route"`, "")
+		assertSingBoxFieldsInOrder(t, route,
+			`"inbound"`, `"action": "sniff"`,
+			`"inbound"`, `"protocol"`, `"domain"`, `"action": "route"`, `"outbound": "direct"`,
+			`"inbound"`, `"action": "reject"`,
+		)
+	})
+
+	t.Run("client", func(t *testing.T) {
+		config, err := p.RenderClient(base)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertSingBoxFieldsInOrder(t, config, `"log"`, `"inbounds"`, `"outbounds"`, `"route"`)
+		mixed := singBoxConfigSection(t, config, `"type": "mixed"`, `"outbounds"`)
+		assertSingBoxFieldsInOrder(t, mixed, `"type"`, `"tag"`, `"listen"`, `"listen_port"`)
+		proxy := singBoxConfigSection(t, config, `"type": "vless"`, `"route"`)
+		assertSingBoxFieldsInOrder(t, proxy,
+			`"type"`, `"tag": "proxy"`, `"server"`, `"server_port"`, `"uuid"`, `"flow"`, `"tls"`,
+		)
+		assertSingBoxFieldsInOrder(t, proxy, `"enabled": true`, `"server_name"`, `"utls"`, `"reality"`)
+		assertSingBoxFieldsInOrder(t, proxy, `"utls"`, `"enabled": true`, `"fingerprint"`)
+		assertSingBoxFieldsInOrder(t, proxy, `"reality"`, `"enabled": true`, `"public_key"`, `"short_id"`)
+	})
+}
+
+func assertSingBoxVLESSInboundOrder(t *testing.T, inbound []byte) {
+	t.Helper()
+	assertSingBoxFieldsInOrder(t, inbound, `"type"`, `"tag"`, `"listen"`, `"listen_port"`, `"users"`, `"tls"`)
+	assertSingBoxFieldsInOrder(t, inbound, `"users"`, `"name"`, `"uuid"`, `"flow"`)
+	assertSingBoxFieldsInOrder(t, inbound, `"tls"`, `"enabled"`, `"server_name"`, `"reality"`)
+	assertSingBoxFieldsInOrder(t, inbound,
+		`"reality"`, `"enabled"`, `"handshake"`, `"server"`, `"server_port"`, `"private_key"`, `"short_id"`,
+	)
+}
+
+func singBoxConfigSection(t *testing.T, config []byte, start, end string) []byte {
+	t.Helper()
+	startAt := bytes.Index(config, []byte(start))
+	if startAt < 0 {
+		t.Fatalf("section start %s is missing: %s", start, config)
+	}
+	if end == "" {
+		return config[startAt:]
+	}
+	endAt := bytes.Index(config[startAt+len(start):], []byte(end))
+	if endAt < 0 {
+		t.Fatalf("section end %s is missing: %s", end, config)
+	}
+	return config[startAt : startAt+len(start)+endAt]
+}
+
+func assertSingBoxFieldsInOrder(t *testing.T, config []byte, fields ...string) {
+	t.Helper()
+	remaining := config
+	for _, field := range fields {
+		at := bytes.Index(remaining, []byte(field))
+		if at < 0 {
+			t.Fatalf("field %s is missing or out of order: %s", field, config)
+		}
+		remaining = remaining[at+len(field):]
+	}
+}
+
 func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 	p := New()
 	old := domain.NodeSpec{
@@ -68,6 +189,11 @@ func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertFallbackGuardConfig(t, patched, "origin.example.com", 8443, "www.example.com", "new-uuid", "new-private", "new-short")
+	assertSingBoxFieldsInOrder(t, patched, `"log"`, `"dns"`, `"inbounds"`, `"outbounds"`, `"route"`)
+	fallback := singBoxConfigSection(t, patched, `"type": "direct"`, `"type": "vless"`)
+	assertSingBoxFieldsInOrder(t, fallback,
+		`"type"`, `"tag": "singbox-fallback-in"`, `"listen"`, `"listen_port"`, `"network"`, `"override_address"`, `"override_port"`,
+	)
 }
 
 func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, targetPort int, allowedDomain, uuid, privateKey, shortID string) {
@@ -189,6 +315,10 @@ func TestPatchLogLevelPreservesOtherSettings(t *testing.T) {
 	if root["manual"].(map[string]any)["keep"] != true {
 		t.Fatalf("manual settings changed: %s", patched)
 	}
+	assertSingBoxFieldsInOrder(t, patched, `"log"`, `"inbounds"`)
+	assertSingBoxFieldsInOrder(t, singBoxConfigSection(t, patched, `"log"`, `"inbounds"`),
+		`"disabled"`, `"level"`, `"output"`, `"timestamp"`,
+	)
 	if current, err := p.CurrentLogLevel(patched); err != nil || current != "debug" {
 		t.Fatalf("current=%q error=%v", current, err)
 	}
@@ -247,6 +377,10 @@ func TestPatchDNSProfileUpdatesResolverReferences(t *testing.T) {
 	if current, err := p.CurrentDNSProfile(patched); err != nil || current != "public-cloudflare" {
 		t.Fatalf("patched current=%q error=%v", current, err)
 	}
+	assertSingBoxFieldsInOrder(t, patched, `"log"`, `"dns"`, `"inbounds"`, `"outbounds"`, `"route"`)
+	assertSingBoxFieldsInOrder(t, singBoxConfigSection(t, patched, `"dns"`, `"inbounds"`),
+		`"servers"`, `"type": "udp"`, `"tag": "cloudflare"`, `"server": "1.1.1.1"`, `"server_port": 53`, `"final": "cloudflare"`,
+	)
 	for _, rawRule := range route["rules"].([]any) {
 		rule := rawRule.(map[string]any)
 		if rule["action"] == "resolve" && rule["server"] != "cloudflare" {
@@ -306,6 +440,12 @@ func TestPatchDNSProfileUpdatesResolverReferences(t *testing.T) {
 	if current, err := p.CurrentDNSProfile(withDoH); err != nil || current != "doh-google" {
 		t.Fatalf("doh current=%q error=%v", current, err)
 	}
+	assertSingBoxFieldsInOrder(t, withDoH, `"log"`, `"dns"`, `"inbounds"`, `"outbounds"`, `"route"`)
+	dohServer := singBoxConfigSection(t, withDoH, `"type": "https"`, `"inbounds"`)
+	assertSingBoxFieldsInOrder(t, dohServer,
+		`"type"`, `"tag": "google-doh"`, `"server": "dns.google"`, `"server_port": 443`, `"path": "/dns-query"`,
+		`"tls"`, `"enabled": true`, `"server_name": "dns.google"`, `"domain_resolver": "bootstrap"`,
+	)
 	backToSystem, err := p.PatchDNSProfile(withDoH, "system")
 	if err != nil {
 		t.Fatal(err)

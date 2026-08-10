@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"proxyforge/internal/provider"
-	"proxyforge/internal/provider/jsonutil"
 )
 
 var supportedDNSProfiles = []string{
@@ -145,7 +144,7 @@ func (*Provider) PatchDNSProfile(config []byte, profile string) ([]byte, error) 
 		rules = append([]any{map[string]any{"action": "resolve", "server": tag}}, rules...)
 	}
 	route["rules"] = rules
-	return jsonutil.Marshal(root)
+	return marshalSingBox(root)
 }
 
 func singDNSProfile(servers []any) (string, string) {

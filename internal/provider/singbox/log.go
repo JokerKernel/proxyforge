@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-
-	"proxyforge/internal/provider/jsonutil"
 )
 
 var supportedLogLevels = []string{"trace", "debug", "info", "warn", "error", "fatal", "panic", "off"}
@@ -56,7 +54,7 @@ func (*Provider) PatchLogLevel(config []byte, level string) ([]byte, error) {
 		log["disabled"] = false
 		log["level"] = level
 	}
-	return jsonutil.Marshal(root)
+	return marshalSingBox(root)
 }
 
 func parseLogObject(config []byte, operation string) (map[string]any, map[string]any, error) {
