@@ -139,6 +139,71 @@ func TestFallbackGuardServerFollowsOfficialExampleFieldOrder(t *testing.T) {
 	)
 }
 
+func TestStandardServerFollowsOfficialFieldOrder(t *testing.T) {
+	p := New()
+	config, err := p.RenderServer(domain.NodeSpec{
+		InboundTag: "xray-one", Server: "203.0.113.10", Port: 443, SNI: "example.com", Target: "example.com:443",
+		UserName: "one", UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private", ShortID: "0123456789abcdef",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFieldsInOrder(t, config, `"log"`, `"dns"`, `"inbounds"`, `"outbounds"`, `"routing"`)
+
+	inbound := xrayConfigSection(t, config, `"listen": "0.0.0.0"`, `"outbounds"`)
+	assertFieldsInOrder(t, inbound,
+		`"listen"`, `"port": 443`, `"protocol": "vless"`, `"settings"`, `"streamSettings"`, `"tag": "xray-one"`,
+	)
+	assertFieldsInOrder(t, inbound, `"clients"`, `"id"`, `"email"`, `"flow"`, `"decryption"`)
+	assertFieldsInOrder(t, inbound, `"network": "raw"`, `"security": "reality"`, `"realitySettings"`)
+	assertFieldsInOrder(t, inbound,
+		`"show": false`, `"target": "example.com:443"`, `"xver": 0`, `"serverNames"`, `"privateKey"`, `"shortIds"`,
+	)
+
+	direct := xrayConfigSection(t, config, `"protocol": "freedom"`, `"protocol": "blackhole"`)
+	assertFieldsInOrder(t, direct, `"protocol"`, `"settings"`, `"tag": "direct"`)
+	routing := xrayConfigSection(t, config, `"routing"`, "")
+	assertFieldsInOrder(t, routing, `"domainStrategy"`, `"rules"`, `"type"`, `"ip"`, `"outboundTag"`)
+}
+
+func TestClientFollowsOfficialFieldOrder(t *testing.T) {
+	p := New()
+	config, err := p.RenderClient(domain.NodeSpec{
+		Server: "203.0.113.10", Port: 443, SNI: "example.com", UUID: "123e4567-e89b-42d3-a456-426614174000",
+		PublicKey: "public", ShortID: "0123456789abcdef",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFieldsInOrder(t, config, `"log"`, `"dns"`, `"inbounds"`, `"outbounds"`, `"routing"`)
+	assertFieldsInOrder(t, config,
+		`"listen": "127.0.0.1"`, `"port": 10808`, `"protocol": "socks"`, `"settings"`,
+		`"port": 10809`, `"protocol": "http"`, `"settings"`,
+	)
+
+	proxy := xrayConfigSection(t, config, `"protocol": "vless"`, `"protocol": "blackhole"`)
+	assertFieldsInOrder(t, proxy, `"protocol"`, `"settings"`, `"tag": "proxy"`, `"streamSettings"`)
+	assertFieldsInOrder(t, proxy, `"vnext"`, `"address"`, `"port": 443`, `"users"`, `"id"`, `"encryption"`, `"flow"`)
+	assertFieldsInOrder(t, proxy, `"network": "raw"`, `"security": "reality"`, `"realitySettings"`)
+	assertFieldsInOrder(t, proxy, `"serverName"`, `"fingerprint"`, `"password"`, `"shortId"`, `"spiderX"`)
+}
+
+func xrayConfigSection(t *testing.T, config []byte, start, end string) []byte {
+	t.Helper()
+	startAt := bytes.Index(config, []byte(start))
+	if startAt < 0 {
+		t.Fatalf("section start %s is missing: %s", start, config)
+	}
+	if end == "" {
+		return config[startAt:]
+	}
+	endAt := bytes.Index(config[startAt+len(start):], []byte(end))
+	if endAt < 0 {
+		t.Fatalf("section end %s is missing: %s", end, config)
+	}
+	return config[startAt : startAt+len(start)+endAt]
+}
+
 func assertFieldsInOrder(t *testing.T, config []byte, fields ...string) {
 	t.Helper()
 	remaining := config
