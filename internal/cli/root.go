@@ -659,7 +659,7 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 	for {
 		c.clearScreen()
 		c.printCoreMenu(core)
-		choice, err := c.chooseNumber("请选择", 0, 6, 0)
+		choice, err := c.chooseNumber("请选择", 0, 5, 0)
 		if err != nil {
 			return err
 		}
@@ -684,11 +684,9 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 		case 3:
 			shouldPause, err = c.clientMenu(ctx, core)
 		case 4:
-			shouldPause, err = c.resetMenu(ctx, core)
-		case 5:
 			shouldPause = false
 			err = c.serviceMenu(ctx, core)
-		case 6:
+		case 5:
 			var confirmed bool
 			confirmed, err = c.confirmUninstall(core)
 			if err == nil && confirmed {
@@ -701,7 +699,7 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 			err = nil
 			if choice == 1 {
 				fmt.Fprintln(c.out, "已取消安装/升级。")
-			} else if choice == 6 {
+			} else if choice == 5 {
 				fmt.Fprintln(c.out, "已取消卸载。")
 			}
 		}
@@ -721,8 +719,9 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		fmt.Fprintln(c.out, "1) 生成/更新服务端配置（完整覆盖现有配置，不合并原配置）")
 		fmt.Fprintln(c.out, "2) 查看当前配置")
 		fmt.Fprintln(c.out, "3) DNS 设置")
+		fmt.Fprintln(c.out, "4) 重置节点/凭证")
 		fmt.Fprintln(c.out, "0) 返回内核菜单")
-		choice, err := c.chooseNumber("请选择", 0, 3, 0)
+		choice, err := c.chooseNumber("请选择", 0, 4, 0)
 		if err != nil {
 			return err
 		}
@@ -771,6 +770,8 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 			if errors.Is(err, errReturnToMenu) {
 				continue
 			}
+		case 4:
+			_, err = c.resetMenu(ctx, core)
 		}
 		if err != nil {
 			c.printMenuError(err)
@@ -949,10 +950,9 @@ func (c *commandSet) printCoreMenu(core string) {
 	fmt.Fprintln(c.out, "========================================")
 	fmt.Fprintln(c.out, "1) 安装/升级内核")
 	fmt.Fprintln(c.out, "2) 服务端配置管理")
-	fmt.Fprintln(c.out, "3) 查看客户端配置")
-	fmt.Fprintln(c.out, "4) 重置节点/凭证")
-	fmt.Fprintln(c.out, "5) 管理服务")
-	fmt.Fprintln(c.out, "6) 卸载内核并清理数据")
+	fmt.Fprintln(c.out, "3) 查看订阅配置")
+	fmt.Fprintln(c.out, "4) 管理服务")
+	fmt.Fprintln(c.out, "5) 卸载内核并清理数据")
 	fmt.Fprintln(c.out, "0) 返回内核选择")
 	fmt.Fprintln(c.out, "----------------------------------------")
 }
