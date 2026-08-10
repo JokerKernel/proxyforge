@@ -719,9 +719,10 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		fmt.Fprintln(c.out, "1) 生成/更新服务端配置（完整覆盖现有配置，不合并原配置）")
 		fmt.Fprintln(c.out, "2) 查看当前配置")
 		fmt.Fprintln(c.out, "3) DNS 设置")
-		fmt.Fprintln(c.out, "4) 重置节点/凭证")
+		fmt.Fprintln(c.out, "4) 仅重置 SNI/target")
+		fmt.Fprintln(c.out, "5) 仅重置 UUID、REALITY 密钥和 short ID")
 		fmt.Fprintln(c.out, "0) 返回内核菜单")
-		choice, err := c.chooseNumber("请选择", 0, 4, 0)
+		choice, err := c.chooseNumber("请选择", 0, 5, 0)
 		if err != nil {
 			return err
 		}
@@ -771,7 +772,9 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 				continue
 			}
 		case 4:
-			_, err = c.resetMenu(ctx, core)
+			err = c.resetChoice(ctx, core, 1)
+		case 5:
+			err = c.resetChoice(ctx, core, 2)
 		}
 		if err != nil {
 			c.printMenuError(err)
@@ -1026,19 +1029,22 @@ func (c *commandSet) resetMenu(ctx context.Context, core string) (bool, error) {
 	if choice == 0 {
 		return false, nil
 	}
+	return true, c.resetChoice(ctx, core, choice)
+}
 
+func (c *commandSet) resetChoice(ctx context.Context, core string, choice int) error {
 	opts := domain.ResetOptions{}
 	if choice == 1 {
 		if err := c.fillReset(ctx, core, &opts); err != nil {
-			return true, err
+			return err
 		}
 		confirmed, err := c.confirmCredentialReset(core, opts)
 		if err != nil {
-			return true, err
+			return err
 		}
 		if !confirmed {
 			fmt.Fprintln(c.out, "已取消节点重置。")
-			return true, nil
+			return nil
 		}
 		opts.Credentials = false
 	} else {
@@ -1046,15 +1052,15 @@ func (c *commandSet) resetMenu(ctx context.Context, core string) (bool, error) {
 		fmt.Fprintf(c.out, "重置凭证：%s\n\n", core)
 		confirmed, err := c.confirmCredentialOnlyReset(core)
 		if err != nil {
-			return true, err
+			return err
 		}
 		if !confirmed {
 			fmt.Fprintln(c.out, "已取消凭证重置。")
-			return true, nil
+			return nil
 		}
 		opts.Credentials = true
 	}
-	return true, c.runCredentialReset(ctx, core, opts)
+	return c.runCredentialReset(ctx, core, opts)
 }
 
 func (c *commandSet) fillReset(ctx context.Context, core string, opts *domain.ResetOptions) error {
