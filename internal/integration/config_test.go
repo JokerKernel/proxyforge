@@ -53,6 +53,14 @@ func TestRealStableBinariesValidateAllConfigs(t *testing.T) {
 					n.SimplifiedConfig = true
 					return p.RenderServer(n)
 				}})
+				configs = append(configs, struct {
+					name   string
+					render func(domain.NodeSpec) ([]byte, error)
+				}{"fallback-guard-server", func(n domain.NodeSpec) ([]byte, error) {
+					n.SingBoxFallbackGuard = true
+					n.SingBoxFallbackPort = 4432
+					return p.RenderServer(n)
+				}})
 			} else if p.Name() == domain.CoreXray {
 				configs = append(configs, struct {
 					name   string

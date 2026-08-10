@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"proxyforge/internal/domain"
@@ -70,6 +71,9 @@ func (*Provider) GenerateKeyPair(ctx context.Context, r provider.Runner) (domain
 }
 
 func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
+	if n.SingBoxFallbackGuard {
+		return renderFallbackGuardServer(n)
+	}
 	v := map[string]any{
 		"log": map[string]any{"level": "info", "timestamp": true},
 		"inbounds": []any{map[string]any{
@@ -90,6 +94,47 @@ func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 	} else {
 		v["dns"] = map[string]any{"servers": []any{map[string]any{"type": "local", "tag": "local"}}}
 		v["route"] = privateNetworkRoute(true, "direct")
+	}
+	return jsonutil.Marshal(v)
+}
+
+const fallbackGuardInboundTag = "singbox-fallback-in"
+
+func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
+	host, rawPort, err := net.SplitHostPort(n.Target)
+	if err != nil {
+		return nil, fmt.Errorf("解析 REALITY target %s: %w", n.Target, err)
+	}
+	targetPort, err := strconv.Atoi(rawPort)
+	if err != nil {
+		return nil, fmt.Errorf("解析 REALITY target 端口 %s: %w", rawPort, err)
+	}
+	fallback := map[string]any{
+		"type": "direct", "tag": fallbackGuardInboundTag, "listen": "127.0.0.1", "listen_port": n.SingBoxFallbackPort,
+		"network": "tcp", "override_address": host, "override_port": targetPort,
+	}
+	vless := map[string]any{
+		"type": "vless", "tag": n.InboundTag, "listen": "::", "listen_port": n.Port,
+		"users": []any{map[string]any{"name": n.UserName, "uuid": n.UUID, "flow": domain.VisionFlow}},
+		"tls": map[string]any{"enabled": true, "server_name": n.SNI, "reality": map[string]any{
+			"enabled": true, "handshake": map[string]any{"server": "127.0.0.1", "server_port": n.SingBoxFallbackPort},
+			"private_key": n.PrivateKey, "short_id": []string{n.ShortID},
+		}},
+	}
+	route := privateNetworkRoute(true, "direct")
+	rules := route["rules"].([]any)
+	route["rules"] = append([]any{
+		map[string]any{"inbound": []string{fallbackGuardInboundTag}, "action": "sniff"},
+		map[string]any{"inbound": []string{fallbackGuardInboundTag}, "protocol": []string{"tls"}, "domain": []string{n.SNI}, "action": "route", "outbound": "direct"},
+		map[string]any{"inbound": []string{fallbackGuardInboundTag}, "action": "reject"},
+		map[string]any{"inbound": []string{n.InboundTag}, "action": "sniff"},
+	}, rules...)
+	v := map[string]any{
+		"log":       map[string]any{"level": "info", "timestamp": true},
+		"dns":       map[string]any{"servers": []any{map[string]any{"type": "local", "tag": "local"}}},
+		"inbounds":  []any{fallback, vless},
+		"outbounds": []any{map[string]any{"type": "direct", "tag": "direct"}},
+		"route":     route,
 	}
 	return jsonutil.Marshal(v)
 }

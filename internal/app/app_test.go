@@ -654,6 +654,88 @@ func TestGenerateXrayFallbackGuardAndResetPreservesMode(t *testing.T) {
 	}
 }
 
+func TestGenerateSingBoxFallbackGuardAndResetPreservesMode(t *testing.T) {
+	r := &fakeRunner{port: freePort(t)}
+	a, _ := testApp(t, r)
+	checkedPorts := map[int]int{}
+	a.PortFree = func(port int) error {
+		checkedPorts[port]++
+		return nil
+	}
+	o := domain.GenerateOptions{
+		Server: "server.example.com", Port: r.port, SNI: "speed.cloudflare.com", Target: "speed.cloudflare.com:443",
+		SingBoxFallbackGuard: true, SingBoxFallbackPort: 15445, NonInteractive: true,
+	}
+	n, err := a.Generate(context.Background(), domain.CoreSingBox, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !n.SingBoxFallbackGuard || n.SingBoxFallbackPort != 15445 || checkedPorts[r.port] != 1 || checkedPorts[15445] != 1 {
+		t.Fatalf("node=%#v checkedPorts=%v", n, checkedPorts)
+	}
+	config, err := os.ReadFile(a.Layout.Resolve(singbox.New().ConfigPath()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"type": "direct"`, `"override_address": "speed.cloudflare.com"`, `"server": "127.0.0.1"`, `"server_port": 15445`} {
+		if !strings.Contains(string(config), want) {
+			t.Fatalf("fallback guard config missing %s: %s", want, config)
+		}
+	}
+
+	reset, err := a.ResetCredentials(context.Background(), domain.CoreSingBox, domain.ResetOptions{SNI: "www.example.com", Target: "origin.example.com:8443"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reset.SingBoxFallbackGuard || reset.SingBoxFallbackPort != 15445 {
+		t.Fatalf("reset node=%#v", reset)
+	}
+	config, err = os.ReadFile(a.Layout.Resolve(singbox.New().ConfigPath()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"override_address": "origin.example.com"`, `"override_port": 8443`, `"server_name": "www.example.com"`, `"domain": [`} {
+		if !strings.Contains(string(config), want) {
+			t.Fatalf("reset config missing %s: %s", want, config)
+		}
+	}
+}
+
+func TestGenerateRejectsInvalidSingBoxFallbackGuardOptions(t *testing.T) {
+	r := &fakeRunner{port: freePort(t)}
+	a, _ := testApp(t, r)
+	base := domain.GenerateOptions{Server: "server.example.com", Port: r.port, SNI: "www.example.com", NonInteractive: true}
+	tests := []struct {
+		name string
+		core string
+		opts domain.GenerateOptions
+		want string
+	}{
+		{"port without mode", domain.CoreSingBox, func() domain.GenerateOptions { o := base; o.SingBoxFallbackPort = 4432; return o }(), "必须同时启用"},
+		{"same public and fallback port", domain.CoreSingBox, func() domain.GenerateOptions {
+			o := base
+			o.SingBoxFallbackGuard = true
+			o.SingBoxFallbackPort = o.Port
+			return o
+		}(), "不能与公网监听端口相同"},
+		{"simplified conflict", domain.CoreSingBox, func() domain.GenerateOptions {
+			o := base
+			o.SingBoxFallbackGuard = true
+			o.SimplifiedConfig = true
+			return o
+		}(), "不能与回落防偷跑配置同时启用"},
+		{"unsupported core", domain.CoreXray, func() domain.GenerateOptions { o := base; o.SingBoxFallbackGuard = true; return o }(), "仅支持 sing-box"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := a.Generate(context.Background(), tt.core, tt.opts)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error=%v", err)
+			}
+		})
+	}
+}
+
 func TestGenerateRejectsInvalidXrayFallbackGuardOptions(t *testing.T) {
 	r := &fakeRunner{port: freePort(t)}
 	a, _ := testApp(t, r)
@@ -742,6 +824,49 @@ func TestGenerateRejectsManagedPortConflict(t *testing.T) {
 	}
 	if strings.Contains(r.callLog(), "systemctl restart") {
 		t.Fatalf("service changed on conflict: %s", r.callLog())
+	}
+}
+
+func TestGenerateRejectsManagedFallbackPortConflicts(t *testing.T) {
+	tests := []struct {
+		name  string
+		core  string
+		other domain.NodeSpec
+		opts  domain.GenerateOptions
+	}{
+		{
+			name: "public port conflicts with xray fallback", core: domain.CoreSingBox,
+			other: domain.NodeSpec{ManagedBy: "proxyforge", Core: domain.CoreXray, Port: 8443, XrayFallbackGuard: true, XrayFallbackPort: 15443},
+			opts:  domain.GenerateOptions{Server: "server.example.com", Port: 15443, SNI: "www.example.com", NonInteractive: true},
+		},
+		{
+			name: "sing-box fallback conflicts with xray public", core: domain.CoreSingBox,
+			other: domain.NodeSpec{ManagedBy: "proxyforge", Core: domain.CoreXray, Port: 15445},
+			opts: domain.GenerateOptions{Server: "server.example.com", Port: 15443, SNI: "www.example.com", NonInteractive: true,
+				SingBoxFallbackGuard: true, SingBoxFallbackPort: 15445},
+		},
+		{
+			name: "fallback ports conflict", core: domain.CoreXray,
+			other: domain.NodeSpec{ManagedBy: "proxyforge", Core: domain.CoreSingBox, Port: 15443, SingBoxFallbackGuard: true, SingBoxFallbackPort: 15445},
+			opts: domain.GenerateOptions{Server: "server.example.com", Port: 8443, SNI: "www.example.com", NonInteractive: true,
+				XrayFallbackGuard: true, XrayFallbackPort: 15445},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &fakeRunner{port: tt.opts.Port}
+			a, _ := testApp(t, r)
+			if err := a.Store.Save(tt.other); err != nil {
+				t.Fatal(err)
+			}
+			_, err := a.Generate(context.Background(), tt.core, tt.opts)
+			if err == nil || !strings.Contains(err.Error(), "端口") || !strings.Contains(err.Error(), tt.other.Core) {
+				t.Fatalf("error=%v", err)
+			}
+			if strings.Contains(r.callLog(), "systemctl restart") {
+				t.Fatalf("service changed on conflict: %s", r.callLog())
+			}
+		})
 	}
 }
 

@@ -46,6 +46,68 @@ func TestGoldenConfigs(t *testing.T) {
 	}
 }
 
+func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
+	p := New()
+	old := domain.NodeSpec{
+		InboundTag: "singbox-one", Server: "203.0.113.10", Port: 443, SNI: "speed.cloudflare.com",
+		Target: "speed.cloudflare.com:443", UserName: "one", UUID: "old-uuid", PrivateKey: "old-private",
+		PublicKey: "old-public", ShortID: "old-short", SingBoxFallbackGuard: true, SingBoxFallbackPort: 4432,
+	}
+	config, err := p.RenderServer(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFallbackGuardConfig(t, config, "speed.cloudflare.com", 443, "speed.cloudflare.com", "old-uuid", "old-private", "old-short")
+
+	next := old
+	next.SNI = "www.example.com"
+	next.Target = "origin.example.com:8443"
+	next.UUID, next.PrivateKey, next.PublicKey, next.ShortID = "new-uuid", "new-private", "new-public", "new-short"
+	patched, err := p.PatchServer(config, old, next, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFallbackGuardConfig(t, patched, "origin.example.com", 8443, "www.example.com", "new-uuid", "new-private", "new-short")
+}
+
+func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, targetPort int, allowedDomain, uuid, privateKey, shortID string) {
+	t.Helper()
+	var root map[string]any
+	if err := json.Unmarshal(config, &root); err != nil {
+		t.Fatal(err)
+	}
+	inbounds := root["inbounds"].([]any)
+	if len(inbounds) != 2 {
+		t.Fatalf("inbounds=%#v", inbounds)
+	}
+	fallback := inbounds[0].(map[string]any)
+	if fallback["type"] != "direct" || fallback["tag"] != fallbackGuardInboundTag || fallback["listen"] != "127.0.0.1" ||
+		fallback["listen_port"] != float64(4432) || fallback["network"] != "tcp" || fallback["override_address"] != targetHost || fallback["override_port"] != float64(targetPort) {
+		t.Fatalf("fallback inbound=%#v", fallback)
+	}
+	vless := inbounds[1].(map[string]any)
+	user := vless["users"].([]any)[0].(map[string]any)
+	tls := vless["tls"].(map[string]any)
+	reality := tls["reality"].(map[string]any)
+	handshake := reality["handshake"].(map[string]any)
+	shortIDs := reality["short_id"].([]any)
+	if user["uuid"] != uuid || user["flow"] != domain.VisionFlow || tls["server_name"] != allowedDomain ||
+		handshake["server"] != "127.0.0.1" || handshake["server_port"] != float64(4432) || reality["private_key"] != privateKey ||
+		len(shortIDs) != 1 || shortIDs[0] != shortID {
+		t.Fatalf("vless inbound=%#v", vless)
+	}
+	rules := root["route"].(map[string]any)["rules"].([]any)
+	if len(rules) != 6 || rules[0].(map[string]any)["action"] != "sniff" || rules[2].(map[string]any)["action"] != "reject" {
+		t.Fatalf("route rules=%#v", rules)
+	}
+	allow := rules[1].(map[string]any)
+	domains := allow["domain"].([]any)
+	protocols := allow["protocol"].([]any)
+	if allow["action"] != "route" || allow["outbound"] != "direct" || len(protocols) != 1 || protocols[0] != "tls" || len(domains) != 1 || domains[0] != allowedDomain {
+		t.Fatalf("fallback allow rule=%#v", allow)
+	}
+}
+
 func TestPatchServerPreservesManualConfiguration(t *testing.T) {
 	p := New()
 	old := domain.NodeSpec{

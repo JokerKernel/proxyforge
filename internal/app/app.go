@@ -482,6 +482,18 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if opts.SimplifiedConfig && core != domain.CoreSingBox {
 		return domain.NodeSpec{}, fmt.Errorf("简化服务端配置目前仅支持 sing-box")
 	}
+	if opts.SingBoxFallbackGuard && opts.SimplifiedConfig {
+		return domain.NodeSpec{}, fmt.Errorf("sing-box 简化配置不能与回落防偷跑配置同时启用")
+	}
+	if opts.SingBoxFallbackGuard && opts.SingBoxFallbackPort == 0 {
+		opts.SingBoxFallbackPort = 4432
+	}
+	if (opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != 0) && core != domain.CoreSingBox {
+		return domain.NodeSpec{}, fmt.Errorf("sing-box 回落防偷跑配置仅支持 sing-box")
+	}
+	if !opts.SingBoxFallbackGuard && opts.SingBoxFallbackPort != 0 {
+		return domain.NodeSpec{}, fmt.Errorf("设置 sing-box 回落端口时必须同时启用 --sing-box-fallback-guard")
+	}
 	if opts.XrayFallbackGuard && opts.XrayFallbackPort == 0 {
 		opts.XrayFallbackPort = 4431
 	}
@@ -533,16 +545,21 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if opts.XrayFallbackGuard && inboundTag == "dokodemo-in" {
 		return domain.NodeSpec{}, fmt.Errorf("入站标签 %q 已由 Xray 回落防偷跑入站使用，请选择其他标签", inboundTag)
 	}
+	if opts.SingBoxFallbackGuard && inboundTag == "singbox-fallback-in" {
+		return domain.NodeSpec{}, fmt.Errorf("入站标签 %q 已由 sing-box 回落防偷跑入站使用，请选择其他标签", inboundTag)
+	}
 	other := domain.CoreSingBox
 	if core == other {
 		other = domain.CoreXray
 	}
 	if otherState, e := a.Store.Load(other); e == nil {
-		if otherState.Port == opts.Port || (otherState.XrayFallbackGuard && otherState.XrayFallbackPort == opts.Port) {
+		otherFallbackPort := nodeFallbackPort(otherState)
+		if otherState.Port == opts.Port || otherFallbackPort == opts.Port {
 			return domain.NodeSpec{}, fmt.Errorf("端口 %d 已由受管的 %s 节点使用", opts.Port, other)
 		}
-		if opts.XrayFallbackGuard && otherState.Port == opts.XrayFallbackPort {
-			return domain.NodeSpec{}, fmt.Errorf("Xray 回落端口 %d 已由受管的 %s 节点使用", opts.XrayFallbackPort, other)
+		fallbackPort := optionsFallbackPort(opts)
+		if fallbackPort != 0 && (otherState.Port == fallbackPort || otherFallbackPort == fallbackPort) {
+			return domain.NodeSpec{}, fmt.Errorf("回落端口 %d 已由受管的 %s 节点使用", fallbackPort, other)
 		}
 	}
 	a.progressf("检测 %s 版本和配置能力", core)
@@ -553,6 +570,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	n := domain.NodeSpec{
 		ManagedBy: "proxyforge", Core: core, InboundTag: inboundTag, Server: opts.Server, Port: opts.Port,
 		SNI: opts.SNI, Target: opts.Target, UserName: userName, SimplifiedConfig: opts.SimplifiedConfig,
+		SingBoxFallbackGuard: opts.SingBoxFallbackGuard, SingBoxFallbackPort: opts.SingBoxFallbackPort,
 		XrayFallbackGuard: opts.XrayFallbackGuard, XrayFallbackPort: opts.XrayFallbackPort,
 		CoreVersion: version, UpdatedAt: a.Now().UTC(),
 	}
@@ -656,7 +674,8 @@ func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, co
 		return cause
 	}
 	checkPublicPort := !hasOld || old.Port != n.Port
-	checkFallbackPort := n.XrayFallbackGuard && (!hasOld || !old.XrayFallbackGuard || old.XrayFallbackPort != n.XrayFallbackPort)
+	nFallbackPort, oldFallbackPort := nodeFallbackPort(n), nodeFallbackPort(old)
+	checkFallbackPort := nFallbackPort != 0 && (!hasOld || oldFallbackPort != nFallbackPort)
 	if checkPublicPort || checkFallbackPort {
 		status, _ := a.Services.IsActive(ctx, p.ServiceName())
 		if status.Active && checkPublicPort {
@@ -671,7 +690,7 @@ func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, co
 			ports = append(ports, n.Port)
 		}
 		if checkFallbackPort {
-			ports = append(ports, n.XrayFallbackPort)
+			ports = append(ports, nFallbackPort)
 		}
 		for _, port := range ports {
 			a.progressf("检查监听端口 %d 是否可用", port)
@@ -1210,6 +1229,26 @@ func (a *App) applyServerSetting(ctx context.Context, p provider.CoreProvider, c
 	return running, nil
 }
 
+func optionsFallbackPort(o domain.GenerateOptions) int {
+	if o.SingBoxFallbackGuard {
+		return o.SingBoxFallbackPort
+	}
+	if o.XrayFallbackGuard {
+		return o.XrayFallbackPort
+	}
+	return 0
+}
+
+func nodeFallbackPort(n domain.NodeSpec) int {
+	if n.SingBoxFallbackGuard {
+		return n.SingBoxFallbackPort
+	}
+	if n.XrayFallbackGuard {
+		return n.XrayFallbackPort
+	}
+	return 0
+}
+
 func validateGenerate(o domain.GenerateOptions) error {
 	if o.NonInteractive && (o.Server == "" || o.Port == 0 || o.SNI == "") {
 		return fmt.Errorf("非交互模式必须显式提供 --server、--port 和 --sni")
@@ -1226,6 +1265,14 @@ func validateGenerate(o domain.GenerateOptions) error {
 		}
 		if o.XrayFallbackPort == o.Port {
 			return fmt.Errorf("Xray 回落端口不能与公网监听端口相同")
+		}
+	}
+	if o.SingBoxFallbackGuard {
+		if err := system.ValidatePort(o.SingBoxFallbackPort); err != nil {
+			return fmt.Errorf("sing-box 回落端口无效: %w", err)
+		}
+		if o.SingBoxFallbackPort == o.Port {
+			return fmt.Errorf("sing-box 回落端口不能与公网监听端口相同")
 		}
 	}
 	if err := system.ValidateSNI(o.SNI); err != nil {

@@ -54,14 +54,67 @@ func (*Provider) PatchServer(config []byte, old, next domain.NodeSpec, updateEnd
 		if err != nil {
 			return nil, fmt.Errorf("解析 REALITY target 端口 %s: %w", rawPort, err)
 		}
-		handshake, err := childObject(reality, "handshake", "sing-box reality.handshake")
-		if err != nil {
-			return nil, err
+		if old.SingBoxFallbackGuard {
+			if err := patchFallbackTarget(root, host, port); err != nil {
+				return nil, err
+			}
+			if err := patchFallbackDomain(root, old.SNI, next.SNI); err != nil {
+				return nil, err
+			}
+		} else {
+			handshake, err := childObject(reality, "handshake", "sing-box reality.handshake")
+			if err != nil {
+				return nil, err
+			}
+			handshake["server"] = host
+			handshake["server_port"] = port
 		}
-		handshake["server"] = host
-		handshake["server_port"] = port
 	}
 	return jsonutil.Marshal(root)
+}
+
+func patchFallbackTarget(root map[string]any, host string, port int) error {
+	inbound, err := singBoxInbound(root, fallbackGuardInboundTag)
+	if err != nil {
+		return err
+	}
+	inbound["override_address"] = host
+	inbound["override_port"] = port
+	return nil
+}
+
+func patchFallbackDomain(root map[string]any, oldSNI, nextSNI string) error {
+	route, err := childObject(root, "route", "sing-box route")
+	if err != nil {
+		return err
+	}
+	rules, err := objectList(route, "rules", "sing-box route rules")
+	if err != nil {
+		return err
+	}
+	var matches []map[string]any
+	for _, rule := range rules {
+		if rule["action"] == "route" && rule["outbound"] == "direct" && stringListContains(rule["inbound"], fallbackGuardInboundTag) {
+			matches = append(matches, rule)
+		}
+	}
+	if len(matches) != 1 {
+		return fmt.Errorf("现有 sing-box 配置中回落放行规则数量为 %d，无法安全定点重置", len(matches))
+	}
+	return replaceManagedString(matches[0], "domain", oldSNI, nextSNI, "sing-box 回落放行域名")
+}
+
+func stringListContains(value any, want string) bool {
+	values, ok := value.([]any)
+	if !ok {
+		return false
+	}
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func singBoxInbound(root map[string]any, tag string) (map[string]any, error) {

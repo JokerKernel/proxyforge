@@ -196,7 +196,7 @@ func TestGenerateCommandOffersUserNameAndInboundTag(t *testing.T) {
 	if flag == nil || flag.DefValue != "false" {
 		t.Fatalf("simplified-config flag=%v", flag)
 	}
-	for _, name := range []string{"xray-fallback-guard", "xray-fallback-port"} {
+	for _, name := range []string{"sing-box-fallback-guard", "sing-box-fallback-port", "xray-fallback-guard", "xray-fallback-port"} {
 		if flag := cmd.Flags().Lookup(name); flag == nil {
 			t.Fatalf("missing %s flag", name)
 		}
@@ -877,6 +877,31 @@ func TestFillGenerateSelectsXrayFallbackGuardConfig(t *testing.T) {
 		t.Fatalf("generate options=%#v", opts)
 	}
 	for _, want := range []string{"回落防偷跑配置", "dokodemo-door", "本机 dokodemo-door 回落端口"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("output missing %q: %q", want, out.String())
+		}
+	}
+}
+
+func TestFillGenerateSelectsSingBoxFallbackGuardConfig(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{
+		reader: bufio.NewReader(strings.NewReader("3\n\n\n\nyes\nyes\n")),
+		out:    &out,
+		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
+			return []app.SNICandidate{{Domain: candidates[0], Latency: 5 * time.Millisecond, TLSVersion: "1.3", CertificateSANs: []string{candidates[0]}}}, nil
+		},
+	}
+	opts := domain.GenerateOptions{
+		Server: "server.example.com", Port: 443, SNI: "speed.cloudflare.com", Target: "speed.cloudflare.com:443",
+	}
+	if err := c.fillGenerate(context.Background(), domain.CoreSingBox, &opts); err != nil {
+		t.Fatal(err)
+	}
+	if !opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != 4432 || opts.SimplifiedConfig {
+		t.Fatalf("generate options=%#v", opts)
+	}
+	for _, want := range []string{"回落防偷跑配置", "direct 入站", "本机 direct 回落端口"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("output missing %q: %q", want, out.String())
 		}
