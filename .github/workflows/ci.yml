@@ -35,9 +35,9 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
-      - name: Validate installer syntax
+      - name: Validate shell scripts and installer behavior
         run: |
-          bash -n scripts/install.sh
+          bash -n scripts/install.sh scripts/test-reality-sni.sh
 
           bash_path=$(command -v bash)
           set +e

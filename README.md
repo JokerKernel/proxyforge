@@ -167,6 +167,15 @@ SING_BOX_BIN=/path/to/sing-box XRAY_BIN=/path/to/xray \
   go test -v ./internal/integration
 ```
 
+可从节点之外的机器使用黑盒探测脚本检查回落防偷跑规则。脚本会验证允许 SNI 能获得目标站证书，同时确认错误 SNI 和无 SNI 无法获得 TLS 响应；测试不需要 UUID、REALITY 公钥或 short ID，也不会修改服务端配置：
+
+```bash
+./scripts/test-reality-sni.sh \
+  --host 203.0.113.10 --port 443 --sni speed.cloudflare.com
+```
+
+可重复传入 `--bad-sni DOMAIN` 指定错误 SNI，并用 `--verbose` 查看原始 TLS 输出。黑盒失败能直接证明存在异常放行；黑盒通过时仍建议同步查看 Xray 或 sing-box debug 日志，排除目标站自身拒绝错误 SNI 造成的假通过。
+
 在一次性 Debian/Ubuntu 或 Rocky/AlmaLinux systemd VM 中，可设置脚本要求的公网地址、SNI 和两个已人工核对的安装脚本哈希，再以 root 运行 `scripts/smoke-systemd.sh`。它会真实安装两个内核、生成 443/8443 节点、验证两个客户端并确认两项服务同时 active，因此不应在生产主机上直接运行。
 
 ## CI/CD 与发布
