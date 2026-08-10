@@ -84,7 +84,7 @@ sudo proxyforge update --yes
 
 `update` 只更新官方安装位置，不修改 sing-box、Xray、节点配置或 systemd 服务。`upgrade <sing-box|xray>` 仍仅表示内核升级，不是 ProxyForge 自升级。
 
-安装 Xray 时会按 `HTTPS_PROXY`/`HTTP_PROXY` 和 `NO_PROXY` 检查当前进程的运行时代理；检测到代理后会自动传递给 Xray 官方管理脚本。通过 `sudo` 运行时需确保这些环境变量被保留，例如使用经过本机 sudo 策略允许的 `sudo -E`。日志只会提示已检测到代理，不会输出代理地址或认证信息。
+安装 Xray 时会按 `HTTPS_PROXY`/`HTTP_PROXY` 和 `NO_PROXY` 检查当前进程的运行时代理；检测到代理后会自动传递给 Xray 官方管理脚本。通过 `sudo` 运行时需确保这些环境变量被保留，例如使用经过本机 sudo 策略允许的 `sudo -E`。命令日志会显示代理协议、主机和端口，便于排查所用节点；用户名、密码、路径和查询参数仍会隐藏。
 
 ProxyForge 自升级的版本检查、脚本下载以及脚本内的 Release 下载也会继承当前进程的标准代理环境；若代理变量默认被 `sudo` 清除，同样需要按本机 sudo 策略显式保留。
 

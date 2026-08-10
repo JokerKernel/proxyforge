@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -74,15 +75,23 @@ func redactCommandArgs(args []string) []string {
 	for index, arg := range redacted {
 		if arg == "--proxy" || arg == "-p" {
 			if index+1 < len(redacted) {
-				redacted[index+1] = "[REDACTED]"
+				redacted[index+1] = proxyAddressForLog(redacted[index+1])
 			}
 			continue
 		}
 		if strings.HasPrefix(arg, "--proxy=") {
-			redacted[index] = "--proxy=[REDACTED]"
+			redacted[index] = "--proxy=" + proxyAddressForLog(strings.TrimPrefix(arg, "--proxy="))
 		}
 	}
 	return redacted
+}
+
+func proxyAddressForLog(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "[REDACTED]"
+	}
+	return (&url.URL{Scheme: parsed.Scheme, Host: parsed.Host}).String()
 }
 
 func (r *LoggingRunner) logResult(label, name string) {

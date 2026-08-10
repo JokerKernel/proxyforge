@@ -283,7 +283,7 @@ func TestLoggingRunnerReportsCanceledStreamingCommandAsStopped(t *testing.T) {
 	}
 }
 
-func TestLoggingRunnerRedactsProxyArgument(t *testing.T) {
+func TestLoggingRunnerDisplaysProxyAddressWithoutCredentials(t *testing.T) {
 	var log bytes.Buffer
 	runner := &LoggingRunner{Runner: outputRunner{}, Out: &log}
 	proxyURL := "http://user:secret@127.0.0.1:7890"
@@ -293,8 +293,24 @@ func TestLoggingRunnerRedactsProxyArgument(t *testing.T) {
 	if strings.Contains(log.String(), proxyURL) || strings.Contains(log.String(), "secret") {
 		t.Fatalf("proxy URL leaked into log: %s", log.String())
 	}
+	if !strings.Contains(log.String(), "--proxy http://127.0.0.1:7890") {
+		t.Fatalf("proxy address missing: %s", log.String())
+	}
+
+	log.Reset()
+	if _, err := runner.Run(context.Background(), "bash", "/tmp/install.sh", "install", "--proxy=https://proxy.example.com:8443/path?token=hidden"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(log.String(), "--proxy=https://proxy.example.com:8443") || strings.Contains(log.String(), "token") || strings.Contains(log.String(), "hidden") {
+		t.Fatalf("proxy equals argument was not sanitized: %s", log.String())
+	}
+
+	log.Reset()
+	if _, err := runner.Run(context.Background(), "bash", "--proxy", "not a proxy URL"); err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(log.String(), "--proxy [REDACTED]") {
-		t.Fatalf("redacted proxy argument missing: %s", log.String())
+		t.Fatalf("invalid proxy URL was not redacted: %s", log.String())
 	}
 }
 
