@@ -64,6 +64,71 @@ func TestRenderedConfigsExplicitlyUseSystemDNS(t *testing.T) {
 	}
 }
 
+func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
+	p := New()
+	old := domain.NodeSpec{
+		InboundTag: "xray-one", Server: "203.0.113.10", Port: 443, SNI: "speed.cloudflare.com",
+		Target: "speed.cloudflare.com:443", UserName: "one", UUID: "old-uuid", PrivateKey: "old-private",
+		PublicKey: "old-public", ShortID: "old-short", XrayFallbackGuard: true, XrayFallbackPort: 4431,
+	}
+	config, err := p.RenderServer(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFallbackGuardConfig(t, config, "speed.cloudflare.com", 443, "127.0.0.1:4431", "old-uuid", "old-private", "old-short")
+
+	next := old
+	next.SNI = "www.example.com"
+	next.Target = "origin.example.com:8443"
+	next.UUID, next.PrivateKey, next.PublicKey, next.ShortID = "new-uuid", "new-private", "new-public", "new-short"
+	patched, err := p.PatchServer(config, old, next, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFallbackGuardConfig(t, patched, "origin.example.com", 8443, "127.0.0.1:4431", "new-uuid", "new-private", "new-short")
+	var root map[string]any
+	if err := json.Unmarshal(patched, &root); err != nil {
+		t.Fatal(err)
+	}
+	rules := root["routing"].(map[string]any)["rules"].([]any)
+	domains := rules[0].(map[string]any)["domain"].([]any)
+	if len(domains) != 1 || domains[0] != "www.example.com" {
+		t.Fatalf("fallback allow domains=%#v", domains)
+	}
+}
+
+func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, targetPort int, realityTarget, uuid, privateKey, shortID string) {
+	t.Helper()
+	var root map[string]any
+	if err := json.Unmarshal(config, &root); err != nil {
+		t.Fatal(err)
+	}
+	inbounds := root["inbounds"].([]any)
+	if len(inbounds) != 2 {
+		t.Fatalf("inbounds=%#v", inbounds)
+	}
+	dokodemo := inbounds[0].(map[string]any)
+	settings := dokodemo["settings"].(map[string]any)
+	sniffing := dokodemo["sniffing"].(map[string]any)
+	if dokodemo["tag"] != fallbackGuardInboundTag || dokodemo["listen"] != "127.0.0.1" || dokodemo["protocol"] != "dokodemo-door" ||
+		settings["address"] != targetHost || settings["port"] != float64(targetPort) || settings["network"] != "tcp" ||
+		sniffing["routeOnly"] != true {
+		t.Fatalf("dokodemo inbound=%#v", dokodemo)
+	}
+	vless := inbounds[1].(map[string]any)
+	client := vless["settings"].(map[string]any)["clients"].([]any)[0].(map[string]any)
+	reality := vless["streamSettings"].(map[string]any)["realitySettings"].(map[string]any)
+	shortIDs := reality["shortIds"].([]any)
+	if client["id"] != uuid || client["flow"] != domain.VisionFlow || reality["target"] != realityTarget ||
+		reality["privateKey"] != privateKey || len(shortIDs) != 1 || shortIDs[0] != shortID || vless["sniffing"].(map[string]any)["routeOnly"] != true {
+		t.Fatalf("vless inbound=%#v", vless)
+	}
+	rules := root["routing"].(map[string]any)["rules"].([]any)
+	if len(rules) != 3 || rules[0].(map[string]any)["outboundTag"] != "direct" || rules[1].(map[string]any)["outboundTag"] != "blocked-private" {
+		t.Fatalf("routing rules=%#v", rules)
+	}
+}
+
 func TestPatchServerPreservesManualConfiguration(t *testing.T) {
 	p := New()
 	old := domain.NodeSpec{

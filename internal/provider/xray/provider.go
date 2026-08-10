@@ -3,6 +3,8 @@ package xray
 import (
 	"context"
 	"fmt"
+	"net"
+	"strconv"
 	"strings"
 
 	"proxyforge/internal/domain"
@@ -85,6 +87,9 @@ func (*Provider) GenerateKeyPair(ctx context.Context, r provider.Runner) (domain
 }
 
 func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
+	if n.XrayFallbackGuard {
+		return renderFallbackGuardServer(n)
+	}
 	v := map[string]any{
 		"log": map[string]any{"loglevel": "warning"},
 		"dns": systemDNS(),
@@ -97,6 +102,47 @@ func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 		}},
 		"outbounds": []any{directOutbound(), blockedOutbound()},
 		"routing":   privateNetworkRouting(),
+	}
+	return jsonutil.Marshal(v)
+}
+
+const fallbackGuardInboundTag = "dokodemo-in"
+
+func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
+	host, rawPort, err := net.SplitHostPort(n.Target)
+	if err != nil {
+		return nil, fmt.Errorf("解析 REALITY target %s: %w", n.Target, err)
+	}
+	targetPort, err := strconv.Atoi(rawPort)
+	if err != nil {
+		return nil, fmt.Errorf("解析 REALITY target 端口 %s: %w", rawPort, err)
+	}
+	dokodemo := map[string]any{
+		"listen": "127.0.0.1", "tag": fallbackGuardInboundTag, "port": n.XrayFallbackPort, "protocol": "dokodemo-door",
+		"settings": map[string]any{"address": host, "port": targetPort, "network": "tcp"},
+		"sniffing": map[string]any{"enabled": true, "destOverride": []string{"tls"}, "routeOnly": true},
+	}
+	vless := map[string]any{
+		"listen": "0.0.0.0", "port": n.Port, "protocol": "vless", "tag": n.InboundTag,
+		"settings": map[string]any{"clients": []any{map[string]any{"email": n.UserName, "id": n.UUID, "flow": domain.VisionFlow}}, "decryption": "none"},
+		"streamSettings": map[string]any{"network": "raw", "security": "reality", "realitySettings": map[string]any{
+			"show": false, "target": net.JoinHostPort("127.0.0.1", strconv.Itoa(n.XrayFallbackPort)), "xver": 0,
+			"serverNames": []string{n.SNI}, "privateKey": n.PrivateKey, "shortIds": []string{n.ShortID},
+		}},
+		"sniffing": map[string]any{"enabled": true, "destOverride": []string{"http", "tls", "quic"}, "routeOnly": true},
+	}
+	routing := privateNetworkRouting()
+	rules := routing["rules"].([]any)
+	routing["rules"] = append([]any{
+		map[string]any{"type": "field", "inboundTag": []string{fallbackGuardInboundTag}, "domain": []string{n.SNI}, "outboundTag": "direct"},
+		map[string]any{"type": "field", "inboundTag": []string{fallbackGuardInboundTag}, "outboundTag": "blocked-private"},
+	}, rules...)
+	v := map[string]any{
+		"log":       map[string]any{"loglevel": "warning"},
+		"dns":       systemDNS(),
+		"inbounds":  []any{dokodemo, vless},
+		"outbounds": []any{directOutbound(), blockedOutbound()},
+		"routing":   routing,
 	}
 	return jsonutil.Marshal(v)
 }

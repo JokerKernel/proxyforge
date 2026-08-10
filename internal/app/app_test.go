@@ -247,6 +247,10 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte
 		}
 		return []byte("Xray 25.1.1\n"), nil
 	}
+	if name == "xray" && len(args) > 0 && args[0] == "x25519" {
+		f.keyGeneration++
+		return []byte(fmt.Sprintf("PrivateKey: private-key-%d\nPassword: public-key-%d\n", f.keyGeneration, f.keyGeneration)), nil
+	}
 	if name == "systemctl" && len(args) > 0 && args[0] == "show" && strings.Contains(strings.Join(args, " "), "LoadState") {
 		if f.unitRemoved {
 			return []byte("not-found\n"), nil
@@ -602,6 +606,80 @@ func TestGenerateRejectsSimplifiedConfigForXray(t *testing.T) {
 	_, err := a.Generate(context.Background(), domain.CoreXray, domain.GenerateOptions{SimplifiedConfig: true})
 	if err == nil || !strings.Contains(err.Error(), "仅支持 sing-box") {
 		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestGenerateXrayFallbackGuardAndResetPreservesMode(t *testing.T) {
+	r := &fakeRunner{port: freePort(t)}
+	a, _ := testApp(t, r)
+	checkedPorts := map[int]int{}
+	a.PortFree = func(port int) error {
+		checkedPorts[port]++
+		return nil
+	}
+	o := domain.GenerateOptions{
+		Server: "server.example.com", Port: r.port, SNI: "speed.cloudflare.com", Target: "speed.cloudflare.com:443",
+		XrayFallbackGuard: true, XrayFallbackPort: 15444, NonInteractive: true,
+	}
+	n, err := a.Generate(context.Background(), domain.CoreXray, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !n.XrayFallbackGuard || n.XrayFallbackPort != 15444 || checkedPorts[r.port] != 1 || checkedPorts[15444] != 1 {
+		t.Fatalf("node=%#v checkedPorts=%v", n, checkedPorts)
+	}
+	config, err := os.ReadFile(a.Layout.Resolve(xray.New().ConfigPath()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(config), `"protocol": "dokodemo-door"`) || !strings.Contains(string(config), `"target": "127.0.0.1:15444"`) {
+		t.Fatalf("fallback guard config=%s", config)
+	}
+
+	reset, err := a.ResetCredentials(context.Background(), domain.CoreXray, domain.ResetOptions{SNI: "www.example.com", Target: "origin.example.com:8443"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reset.XrayFallbackGuard || reset.XrayFallbackPort != 15444 {
+		t.Fatalf("reset node=%#v", reset)
+	}
+	config, err = os.ReadFile(a.Layout.Resolve(xray.New().ConfigPath()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"address": "origin.example.com"`, `"port": 8443`, `"serverNames": [`, `"www.example.com"`, `"domain": [`} {
+		if !strings.Contains(string(config), want) {
+			t.Fatalf("reset config missing %s: %s", want, config)
+		}
+	}
+}
+
+func TestGenerateRejectsInvalidXrayFallbackGuardOptions(t *testing.T) {
+	r := &fakeRunner{port: freePort(t)}
+	a, _ := testApp(t, r)
+	base := domain.GenerateOptions{Server: "server.example.com", Port: r.port, SNI: "www.example.com", NonInteractive: true}
+	tests := []struct {
+		name string
+		core string
+		opts domain.GenerateOptions
+		want string
+	}{
+		{"port without mode", domain.CoreXray, func() domain.GenerateOptions { o := base; o.XrayFallbackPort = 4431; return o }(), "必须同时启用"},
+		{"same public and fallback port", domain.CoreXray, func() domain.GenerateOptions {
+			o := base
+			o.XrayFallbackGuard = true
+			o.XrayFallbackPort = o.Port
+			return o
+		}(), "不能与公网监听端口相同"},
+		{"unsupported core", domain.CoreSingBox, func() domain.GenerateOptions { o := base; o.XrayFallbackGuard = true; return o }(), "仅支持 xray"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := a.Generate(context.Background(), tt.core, tt.opts)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error=%v", err)
+			}
+		})
 	}
 }
 

@@ -482,6 +482,15 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if opts.SimplifiedConfig && core != domain.CoreSingBox {
 		return domain.NodeSpec{}, fmt.Errorf("简化服务端配置目前仅支持 sing-box")
 	}
+	if opts.XrayFallbackGuard && opts.XrayFallbackPort == 0 {
+		opts.XrayFallbackPort = 4431
+	}
+	if (opts.XrayFallbackGuard || opts.XrayFallbackPort != 0) && core != domain.CoreXray {
+		return domain.NodeSpec{}, fmt.Errorf("REALITY 回落防偷跑配置仅支持 xray")
+	}
+	if !opts.XrayFallbackGuard && opts.XrayFallbackPort != 0 {
+		return domain.NodeSpec{}, fmt.Errorf("设置 Xray 回落端口时必须同时启用 --xray-fallback-guard")
+	}
 	if err := validateGenerate(opts); err != nil {
 		return domain.NodeSpec{}, err
 	}
@@ -521,19 +530,32 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if err := system.ValidateTag(inboundTag); err != nil {
 		return domain.NodeSpec{}, err
 	}
+	if opts.XrayFallbackGuard && inboundTag == "dokodemo-in" {
+		return domain.NodeSpec{}, fmt.Errorf("入站标签 %q 已由 Xray 回落防偷跑入站使用，请选择其他标签", inboundTag)
+	}
 	other := domain.CoreSingBox
 	if core == other {
 		other = domain.CoreXray
 	}
-	if otherState, e := a.Store.Load(other); e == nil && otherState.Port == opts.Port {
-		return domain.NodeSpec{}, fmt.Errorf("端口 %d 已由受管的 %s 节点使用", opts.Port, other)
+	if otherState, e := a.Store.Load(other); e == nil {
+		if otherState.Port == opts.Port || (otherState.XrayFallbackGuard && otherState.XrayFallbackPort == opts.Port) {
+			return domain.NodeSpec{}, fmt.Errorf("端口 %d 已由受管的 %s 节点使用", opts.Port, other)
+		}
+		if opts.XrayFallbackGuard && otherState.Port == opts.XrayFallbackPort {
+			return domain.NodeSpec{}, fmt.Errorf("Xray 回落端口 %d 已由受管的 %s 节点使用", opts.XrayFallbackPort, other)
+		}
 	}
 	a.progressf("检测 %s 版本和配置能力", core)
 	version, err := p.Version(ctx, a.Runner)
 	if err != nil {
 		return domain.NodeSpec{}, fmt.Errorf("内核不可用或不支持所需能力: %w", err)
 	}
-	n := domain.NodeSpec{ManagedBy: "proxyforge", Core: core, InboundTag: inboundTag, Server: opts.Server, Port: opts.Port, SNI: opts.SNI, Target: opts.Target, UserName: userName, SimplifiedConfig: opts.SimplifiedConfig, CoreVersion: version, UpdatedAt: a.Now().UTC()}
+	n := domain.NodeSpec{
+		ManagedBy: "proxyforge", Core: core, InboundTag: inboundTag, Server: opts.Server, Port: opts.Port,
+		SNI: opts.SNI, Target: opts.Target, UserName: userName, SimplifiedConfig: opts.SimplifiedConfig,
+		XrayFallbackGuard: opts.XrayFallbackGuard, XrayFallbackPort: opts.XrayFallbackPort,
+		CoreVersion: version, UpdatedAt: a.Now().UTC(),
+	}
 	if n.SimplifiedConfig {
 		fmt.Fprintln(a.Out, "[ProxyForge/警告] 已选择 sing-box 简化配置；域名将在出站连接阶段由系统 DNS 解析，域名解析到私网地址时可能绕过路由私网拦截。")
 	}
@@ -633,18 +655,29 @@ func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, co
 		serviceStopped = false
 		return cause
 	}
-	if !hasOld || old.Port != n.Port {
+	checkPublicPort := !hasOld || old.Port != n.Port
+	checkFallbackPort := n.XrayFallbackGuard && (!hasOld || !old.XrayFallbackGuard || old.XrayFallbackPort != n.XrayFallbackPort)
+	if checkPublicPort || checkFallbackPort {
 		status, _ := a.Services.IsActive(ctx, p.ServiceName())
-		if status.Active {
+		if status.Active && checkPublicPort {
 			a.progressf("临时停止 systemd 服务 %s 以检查监听端口", p.ServiceName())
 			if _, err := a.Services.Action(ctx, p.ServiceName(), "stop"); err != nil {
 				return n, fmt.Errorf("停止 %s 失败: %w", p.ServiceName(), err)
 			}
 			serviceStopped = true
 		}
-		a.progressf("检查监听端口 %d 是否可用", n.Port)
-		if err := a.PortFree(n.Port); err != nil {
-			return n, restoreStoppedService(err)
+		ports := []int{}
+		if checkPublicPort {
+			ports = append(ports, n.Port)
+		}
+		if checkFallbackPort {
+			ports = append(ports, n.XrayFallbackPort)
+		}
+		for _, port := range ports {
+			a.progressf("检查监听端口 %d 是否可用", port)
+			if err := a.PortFree(port); err != nil {
+				return n, restoreStoppedService(err)
+			}
 		}
 	}
 	a.progressf("原子写入服务端配置 %s", configPath)
@@ -1186,6 +1219,14 @@ func validateGenerate(o domain.GenerateOptions) error {
 	}
 	if err := system.ValidatePort(o.Port); err != nil {
 		return err
+	}
+	if o.XrayFallbackGuard {
+		if err := system.ValidatePort(o.XrayFallbackPort); err != nil {
+			return fmt.Errorf("Xray 回落端口无效: %w", err)
+		}
+		if o.XrayFallbackPort == o.Port {
+			return fmt.Errorf("Xray 回落端口不能与公网监听端口相同")
+		}
 	}
 	if err := system.ValidateSNI(o.SNI); err != nil {
 		return err

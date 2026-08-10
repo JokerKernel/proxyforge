@@ -249,6 +249,8 @@ func (c *commandSet) generateCommand() *cobra.Command {
 	cmd.Flags().StringVar(&o.UserName, "user-name", "", "服务端用户名称（默认 one）")
 	cmd.Flags().StringVar(&o.InboundTag, "inbound-tag", "", "入站标签（默认按内核自动生成）")
 	cmd.Flags().BoolVar(&o.SimplifiedConfig, "simplified-config", false, "sing-box 使用简化配置（系统 DNS、较少 DNS 日志，但私网域名拦截较弱）")
+	cmd.Flags().BoolVar(&o.XrayFallbackGuard, "xray-fallback-guard", false, "Xray 使用 dokodemo-door 限制 REALITY 未认证回落流量")
+	cmd.Flags().IntVar(&o.XrayFallbackPort, "xray-fallback-port", 0, "Xray 防偷跑回落入站端口（默认 4431）")
 	cmd.Flags().BoolVar(&o.RotateCredentials, "rotate-credentials", false, "轮换 UUID、密钥和 short ID，使旧客户端失效")
 	cmd.Flags().Bool("take-over", false, "兼容旧版本；当前始终备份并完整覆盖现有配置")
 	_ = cmd.Flags().MarkDeprecated("take-over", "当前生成流程会自动备份并完整覆盖现有配置，无需此参数")
@@ -317,6 +319,22 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 			return err
 		}
 		o.SimplifiedConfig = choice == 2
+	} else if core == domain.CoreXray {
+		fmt.Fprintln(c.out, "\n配置模式")
+		fmt.Fprintln(c.out, "1) 标准配置（默认；REALITY 未认证流量直接转发到 target）")
+		fmt.Fprintln(c.out, "2) 回落防偷跑配置（dokodemo-door 仅放行与 SNI 一致的 TLS 流量）")
+		defaultChoice := 1
+		if o.XrayFallbackGuard {
+			defaultChoice = 2
+		}
+		choice, err := c.chooseNumberCancelable("请选择配置模式", 1, 2, defaultChoice)
+		if err != nil {
+			return err
+		}
+		o.XrayFallbackGuard = choice == 2
+		if !o.XrayFallbackGuard {
+			o.XrayFallbackPort = 0
+		}
 	}
 	if o.Server == "" {
 		detected, err := c.selectPublicAddress(ctx)
@@ -338,6 +356,23 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 			return fmt.Errorf("端口无效: %w", err)
 		}
 		o.Port = port
+	}
+	if o.XrayFallbackGuard && o.XrayFallbackPort == 0 {
+		defaultPort := 4431
+		if c.app != nil {
+			if current, err := c.app.Store.Load(core); err == nil && current.XrayFallbackGuard && current.XrayFallbackPort != 0 {
+				defaultPort = current.XrayFallbackPort
+			}
+		}
+		v, err := c.askDefaultCancelable("本机 dokodemo-door 回落端口", strconv.Itoa(defaultPort))
+		if err != nil {
+			return err
+		}
+		port, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("Xray 回落端口无效: %w", err)
+		}
+		o.XrayFallbackPort = port
 	}
 	if o.UserName == "" {
 		defaultUserName := domain.DefaultUserName
@@ -536,6 +571,12 @@ func printGenerateSuccess(w io.Writer, n domain.NodeSpec) {
 		mode := "标准安全配置"
 		if n.SimplifiedConfig {
 			mode = "简化配置（系统 DNS）"
+		}
+		fmt.Fprintf(w, "配置模式：%s\n", mode)
+	} else if n.Core == domain.CoreXray {
+		mode := "标准配置"
+		if n.XrayFallbackGuard {
+			mode = fmt.Sprintf("回落防偷跑配置（dokodemo-door 127.0.0.1:%d）", n.XrayFallbackPort)
 		}
 		fmt.Fprintf(w, "配置模式：%s\n", mode)
 	}

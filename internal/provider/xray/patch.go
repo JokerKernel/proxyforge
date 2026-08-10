@@ -3,6 +3,8 @@ package xray
 import (
 	"encoding/json"
 	"fmt"
+	"net"
+	"strconv"
 
 	"proxyforge/internal/domain"
 	"proxyforge/internal/provider/jsonutil"
@@ -46,12 +48,77 @@ func (*Provider) PatchServer(config []byte, old, next domain.NodeSpec, updateEnd
 		return nil, err
 	}
 	if updateEndpoint {
-		reality["target"] = next.Target
+		if old.XrayFallbackGuard {
+			if err := xrayPatchFallbackTarget(root, next.Target); err != nil {
+				return nil, err
+			}
+			if err := xrayPatchFallbackDomain(root, old.SNI, next.SNI); err != nil {
+				return nil, err
+			}
+		} else {
+			reality["target"] = next.Target
+		}
 		if err := xrayReplaceManagedString(reality, "serverNames", old.SNI, next.SNI, "Xray REALITY serverNames"); err != nil {
 			return nil, err
 		}
 	}
 	return jsonutil.Marshal(root)
+}
+
+func xrayPatchFallbackTarget(root map[string]any, target string) error {
+	inbound, err := xrayInbound(root, fallbackGuardInboundTag)
+	if err != nil {
+		return err
+	}
+	settings, err := xrayChildObject(inbound, "settings", "Xray dokodemo-door settings")
+	if err != nil {
+		return err
+	}
+	host, rawPort, err := net.SplitHostPort(target)
+	if err != nil {
+		return fmt.Errorf("解析 REALITY target %s: %w", target, err)
+	}
+	port, err := strconv.Atoi(rawPort)
+	if err != nil {
+		return fmt.Errorf("解析 REALITY target 端口 %s: %w", rawPort, err)
+	}
+	settings["address"] = host
+	settings["port"] = port
+	return nil
+}
+
+func xrayPatchFallbackDomain(root map[string]any, oldSNI, nextSNI string) error {
+	routing, err := xrayChildObject(root, "routing", "Xray routing")
+	if err != nil {
+		return err
+	}
+	rules, err := xrayObjectList(routing, "rules", "Xray routing rules")
+	if err != nil {
+		return err
+	}
+	var matches []map[string]any
+	for _, rule := range rules {
+		if rule["outboundTag"] == "direct" && xrayStringListContains(rule["inboundTag"], fallbackGuardInboundTag) {
+			matches = append(matches, rule)
+		}
+	}
+	if len(matches) != 1 {
+		return fmt.Errorf("现有 Xray 配置中 dokodemo-door 放行规则数量为 %d，无法安全定点重置", len(matches))
+	}
+	return xrayReplaceManagedString(matches[0], "domain", oldSNI, nextSNI, "Xray dokodemo-door 放行域名")
+}
+
+func xrayStringListContains(value any, want string) bool {
+	values, ok := value.([]any)
+	if !ok {
+		return false
+	}
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func xrayInbound(root map[string]any, tag string) (map[string]any, error) {
