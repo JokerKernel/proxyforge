@@ -1,229 +1,78 @@
 # ProxyForge
 
-ProxyForge 是一个面向 Linux/systemd 的 Go 单二进制管理器，用来在同一台服务器上彼此隔离地管理一个 sing-box 和一个 Xray-core `VLESS + REALITY + Vision` 节点。两个内核拥有独立的配置、凭据、端口、状态和 systemd 服务，可以同时运行。
+ProxyForge 是面向 Linux/systemd 的 Go 单二进制管理器，用于在同一台服务器上独立管理 sing-box 和 Xray-core 的 `VLESS + REALITY + Vision` 节点。
 
-首版支持 Debian/Ubuntu 与 RHEL/CentOS/Rocky/AlmaLinux/Fedora 系发行版的 amd64、arm64。除 `--help` 和 `--version` 外，菜单及所有操作命令都必须由 root 执行；PID 1 不是 systemd 时会拒绝安装。
+## 核心能力
 
-## 一键安装
+- 同时管理 sing-box 与 Xray，配置、凭据、端口和 systemd 服务彼此隔离。
+- 交互菜单与完整 CLI，支持安装、升级、配置、客户端导出、服务管理和卸载。
+- 默认生成 REALITY 回落防偷跑配置，并提供 SNI/target 自动检测。
+- 配置写入前校验和备份，失败时自动回滚。
+- 支持原生 sing-box/Xray 客户端及 Mihomo/Clash Meta 配置。
+- 支持 Debian/Ubuntu 与 RHEL/CentOS/Rocky/AlmaLinux/Fedora 的 amd64、arm64。
 
-自动识别 amd64/arm64，通过 Release 的 `version` 取得最新正式版本，核对 `SHA256SUMS` 后原子安装或升级到 `/usr/local/sbin/proxyforge`。旧 Release 没有 `version` 时会自动兼容原来的 `latest/download` 方式：
+除 `--help` 和 `--version` 外，所有操作都需要 root 权限和 systemd 环境。
+
+## 快速安装
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | sudo bash
-```
-
-安装完成后直接运行：
-
-```bash
 sudo /usr/local/sbin/proxyforge
 ```
 
-如需固定版本，可传入发布标签；脚本不会安装校验清单中不存在或校验失败的文件：
+安装脚本会校验 Release 的 `SHA256SUMS`，并将 ProxyForge 原子安装到 `/usr/local/sbin/proxyforge`。安装固定版本、审阅脚本、代理环境和卸载说明见[安装文档](docs/installation.md)。
+
+## 快速使用
+
+无参数运行进入中文交互菜单：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | sudo PROXYFORGE_VERSION=v0.0.4 bash
+sudo proxyforge
 ```
 
-若希望先审阅脚本，请先下载 `scripts/install.sh`，确认内容后再使用 `sudo bash scripts/install.sh` 执行。一键安装只替换 ProxyForge 自身二进制，不安装或修改 sing-box、Xray、节点配置和 systemd 服务。
+常用非交互命令：
 
-## 构建
+```bash
+sudo proxyforge install sing-box
+
+sudo proxyforge config generate sing-box \
+  --yes --server 203.0.113.10 --port 443 --sni www.example.com
+
+sudo proxyforge config client sing-box --output ./sing-box-client.json
+sudo proxyforge service sing-box status
+```
+
+使用 `proxyforge --help` 或 `proxyforge <command> --help` 查看命令参数。
+
+## REALITY SNI 检测
+
+没有项目源码时可单独下载黑盒检测脚本：
+
+```bash
+wget --https-only \
+  -O ~/proxyforge-test-reality-sni.sh \
+  https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/test-reality-sni.sh
+
+chmod +x ~/proxyforge-test-reality-sni.sh
+~/proxyforge-test-reality-sni.sh \
+  --host YOUR_SERVER_IP --port 443 --sni YOUR_ALLOWED_SNI
+```
+
+判定逻辑和排障说明见 [REALITY SNI 检测指南](docs/reality-sni-check.md)。
+
+## 文档
+
+- [安装、升级与卸载](docs/installation.md)
+- [配置与日常使用](docs/configuration.md)
+- [文件与安全边界](docs/security.md)
+- [REALITY SNI 检测指南](docs/reality-sni-check.md)
+- [构建、测试与发布](docs/development.md)
+
+## 开发
 
 ```bash
 ./scripts/build.sh
 go test ./...
 ```
 
-构建脚本会从 Git 自动取得版本和提交号，并注入 UTC 构建时间；`make build` 是它的快捷入口。可以通过环境变量显式覆盖，便于发布流水线构建可复现版本：
-
-```bash
-VERSION=v1.0.0 COMMIT=0123456789abcdef0123456789abcdef01234567 BUILD_DATE=2026-08-08T12:00:00Z ./scripts/build.sh
-./proxyforge --version
-```
-
-不使用 Make 时，对应的直接构建命令为：
-
-```bash
-VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
-COMMIT="${COMMIT:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
-BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
-
-go build -trimpath -ldflags="-s -w \
-  -X proxyforge/internal/version.Version=${VERSION} \
-  -X proxyforge/internal/version.Commit=${COMMIT} \
-  -X proxyforge/internal/version.BuildDate=${BUILD_DATE}" \
-  -o proxyforge ./cmd/proxyforge
-```
-
-无参数运行会进入中文数字菜单：
-
-```bash
-sudo ./proxyforge
-```
-
-## CLI
-
-```text
-proxyforge install <sing-box|xray> [--version VERSION]
-proxyforge update [--yes]
-proxyforge uninstall <sing-box|xray> [--yes]
-proxyforge cleanup <sing-box|xray|all> [--yes]
-proxyforge config generate <sing-box|xray> --server HOST --port PORT --sni DOMAIN [--target HOST:PORT] [--user-name NAME] [--inbound-tag TAG] [--standard-config] [--simplified-config] [--sing-box-fallback-guard] [--sing-box-fallback-port PORT] [--xray-fallback-guard] [--xray-fallback-port PORT]
-proxyforge config client <sing-box|xray> [--format native|clash] [--output FILE] [--force]
-proxyforge config reset <sing-box|xray> [--sni DOMAIN] [--target HOST:PORT] [--yes]
-proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
-```
-
-`install` 同时用于首次安装和后续升级；旧的 `upgrade` 名称保留为兼容别名。无参数运行时会先选择 sing-box 或 Xray-core，再进入该内核独立的安装/升级、配置、客户端、重置、服务和卸载菜单。
-
-`update` 用于升级 ProxyForge 自身。它会先读取最新正式 Release 的版本，当前已是最新版时直接退出；需要升级时，从仓库 `main` 分支下载当前 `scripts/install.sh`，限制 HTTPS 来源并检查大小、文本格式、shebang 和 `bash -n`，展示脚本 SHA-256 后要求确认，再由该脚本核对 Release 的 `SHA256SUMS` 并原子替换 `/usr/local/sbin/proxyforge`。非交互升级必须显式提供 `--yes`：
-
-```bash
-sudo proxyforge update
-sudo proxyforge update --yes
-```
-
-`update` 只更新官方安装位置，不修改 sing-box、Xray、节点配置或 systemd 服务。`upgrade <sing-box|xray>` 仍仅表示内核升级，不是 ProxyForge 自升级。
-
-安装 Xray 时会按 `HTTPS_PROXY`/`HTTP_PROXY` 和 `NO_PROXY` 检查当前进程的运行时代理；检测到代理后会自动传递给 Xray 官方管理脚本。通过 `sudo` 运行时需确保这些环境变量被保留，例如使用经过本机 sudo 策略允许的 `sudo -E`。命令日志会显示代理协议、主机和端口，便于排查所用节点；用户名、密码、路径和查询参数仍会隐藏。
-
-ProxyForge 自升级的版本检查、脚本下载以及脚本内的 Release 下载也会继承当前进程的标准代理环境；若代理变量默认被 `sudo` 清除，同样需要按本机 sudo 策略显式保留。
-
-非交互安装必须显式固定本次下载内容，`--yes` 不能跳过：
-
-```bash
-sudo proxyforge install sing-box --yes --trust-script-sha256 <64位哈希>
-```
-
-卸载必须交互确认，自动化时必须显式提供 `--yes`。卸载前会临时备份当前服务端配置；卸载命令完成后会核验二进制、systemd unit、服务运行状态和开机启用状态。核验通过后会自动清理该内核的配置目录、运行数据、文件日志、ProxyForge 状态、信任记录和所有历史备份，包括外部修改或非受管的内核配置。卸载或核验失败时不会执行自动清理；若内核本来就已完全卸载，会跳过重复卸载并直接清理残留。Xray 卸载仍会执行其官方管理脚本，因此非交互模式还必须提供当前脚本哈希（已确认内核不存在并跳过官方脚本时除外）：
-
-```bash
-sudo proxyforge uninstall sing-box --yes
-sudo proxyforge uninstall xray --yes --trust-script-sha256 <64位哈希>
-```
-
-独立的 `cleanup` 命令作为兼容和故障恢复入口保留，不再出现在交互菜单中。它会同时检查内核二进制、systemd unit、服务运行状态和开机启用状态；无法完成检查或检测到任一残留时会拒绝清理，必须先执行 `uninstall`。`all` 会先确认两个内核均已完全卸载，再同时清理。程序不会删除 systemd journal，也不会记录或删除此前导出到用户指定位置的客户端配置。
-
-```bash
-sudo proxyforge cleanup sing-box
-sudo proxyforge cleanup all --yes
-```
-
-首次交互安装会展示来源、最终重定向地址、大小、危险操作摘要和 SHA-256，输入 `yes`、`y` 或 `Y` 才执行；该规则适用于所有交互确认。脚本变化后，非交互执行会被阻止，必须重新进行交互确认。安装器下载受限临时文件，不使用 `curl | sh`，并检查 HTTPS 主机白名单、重定向、HTTP 状态、大小、shebang、NUL/文本格式和 `bash -n`。执行安装脚本时会实时转发 stdout/stderr，并保留最近 64 KiB 输出用于失败诊断。
-
-选择“生成/更新服务端配置”时会先检查对应内核二进制和 systemd unit，未安装或安装不完整时直接返回配置管理菜单，不会进入参数输入。生成首个节点时交互默认端口为 443；检测到另一个受管节点后默认建议 8443。sing-box 和 Xray 默认都生成“回落防偷跑配置”，交互菜单直接回车即可采用；非交互命令不传模式参数时同样采用该模式。需要恢复原标准模板时使用 `--standard-config`；sing-box 仍可使用 `--simplified-config` 选择简化配置，这些模式参数不能组合使用。sing-box 简化配置不启用内部 DNS 和路由预解析，改由出站连接使用系统 DNS，DNS 日志更少，但域名解析到私网地址时可能绕过路由私网拦截。sing-box 回落防偷跑配置在 `127.0.0.1` 上增加 `direct` 入站，将 REALITY handshake 指向该本机入站，通过 TLS sniff 和精确域名规则只允许与 SNI 一致的未认证回落流量访问真实 target，其余回落流量执行 reject；`--sing-box-fallback-port` 可指定内部端口（默认 61432）。Xray 回落防偷跑配置在 `127.0.0.1` 上增加一个 `dokodemo-door` 入站，将 REALITY target 指向该本机入站，并只允许嗅探域名与 `serverNames` 一致的未认证回落流量访问真实 target，其余回落流量进入 blackhole；`--xray-fallback-port` 可指定内部端口（默认 61431）。原有的 `--sing-box-fallback-guard` 和 `--xray-fallback-guard` 参数继续兼容，但默认模式下无需再显式提供。两个内核的内部回落端口都必须空闲，不能与公网监听端口或另一个受管节点的端口冲突。重置 SNI/target 时会同步更新真实回落目标、REALITY SNI/serverNames 和路由放行域名，配置模式与内部端口保持不变。SNI 输入留空时，程序会并发验证内置候选域名的 DNS、TCP/TLS 和证书名称，按延迟展示当前最快的 10 个；候选列表使用“域名主行 + 状态摘要行”，摘要仅保留延迟、TLS/ALPN 和 CDN 特征，并直接标记随机默认项，证书通过状态统一显示在列表提示中。手动输入的 SNI 也会执行相同检测，并额外展示详细证书 SAN，单独确认采用后再进行 SNI/REALITY target 最终确认。CDN 信息仅根据 CNAME、域名和解析地址数量进行启发式判断，不代表权威的服务归属；测速也只反映当前探测速度，最终 SNI/target 仍需人工确认。重新生成会保留 UUID、REALITY 密钥和 short ID；只有 `--rotate-credentials` 或凭证重置会同时轮换它们并让旧客户端失效。主菜单的“重置节点”只定点更新 SNI、target、UUID、REALITY 密钥和 short ID；“重置凭证”只定点更新 UUID、REALITY 密钥和 short ID，保留当前 SNI/target。两者都会保留 DNS、路由、出站、日志、其他用户及其他手动配置，找不到唯一受管入站或用户时会拒绝修改；修改前仍会备份，失败时回滚。`config reset` 保留地址和端口，并允许同时修改 SNI/target；只指定新 SNI 时 target 默认变为 `<新 SNI>:443`。只有“生成/更新服务端配置”会在确认后使用 ProxyForge 模板完整覆盖现有文件，原有自定义内容不会合并；非交互覆盖必须显式传入 `--yes`。
-
-在真实终端中，主界面会显示当前 ProxyForge 版本，交互菜单切换页面时会自动清屏；操作结果和错误会保留到按 Enter 返回菜单。菜单标题、选项、输入提示以及步骤、命令、信息、警告、错误、结果、官方脚本和服务日志均使用固定语义颜色区分。管道和文件重定向会自动关闭颜色，不会混入 ANSI 控制字符；设置 `NO_COLOR=1` 或 `PROXYFORGE_COLOR=never` 可强制关闭，设置 `PROXYFORGE_COLOR=always` 可在非终端输出中强制开启。服务管理菜单可通过“实时日志查看”持续跟踪对应 systemd journal，按 `Ctrl+C` 仅停止日志并返回当前服务管理菜单，不会退出 ProxyForge；也可通过“设置日志级别”查看并修改当前服务端配置。sing-box 支持 `trace/debug/info/warn/error/fatal/panic/关闭`，默认模板使用 `info`；Xray 支持 `debug/info/warning/error/关闭`，默认模板使用 `warning`。修改前会备份并用内核原生命令校验配置，服务正在运行时才会重启，失败会恢复旧配置；关闭后将没有可供持续查看的常规内核运行日志。非交互命令不会额外等待输入。
-
-运行输出会明确标记来源：`[ProxyForge/步骤]` 表示程序自身流程，`[ProxyForge/命令]` 表示程序调用的本机命令，`[系统命令/输出]` 表示软件包管理器等本机命令的实时输出；官方脚本分别使用 `[官方脚本/信息]`、`[官方脚本/风险]`、`[官方脚本/状态]` 和 `[官方脚本/输出]`，systemd journal 使用 `[服务日志/<内核>]`。步骤和命令日志写入 stderr，客户端 JSON 仍单独写入 stdout 或 `--output` 指定的文件；密钥生成命令的返回内容不会作为命令日志输出。
-
-Xray 服务端和原生客户端模板会显式配置系统 DNS：`servers: ["localhost"]`、`queryStrategy: "UseIP"`。路由仍使用 `IPOnDemand` 在私网 IP 规则前解析域名，Freedom 出站仍使用 `UseIP` 连接解析结果；该配置只是将原先隐式使用的系统 DNS 明确写入 JSON，不改用第三方 DNS。
-
-“服务端配置管理 → DNS 设置”可在系统 DNS（推荐）、明文公共 DNS 和加密 DNS/DoH 之间切换，公共 DNS 与 DoH 都分别提供 Cloudflare 和 Google。Xray 的明文及 DoH 选项都会写入两家服务器，按照所选顺序自动回退；DoH 使用 IP 形式的 `https+local` 地址，不依赖系统 DNS 引导。sing-box 没有相同的自动回退语义，因此只写入所选的一个公共上游；DoH 模式额外保留系统 DNS 作为 `cloudflare-dns.com` 或 `dns.google` 的引导解析器，普通域名查询仍走 HTTPS/443。sing-box 会同步所选服务器到 `dns.final`、`route.default_domain_resolver` 和所有 `resolve` 规则。修改会先使用对应内核的原生命令校验，再备份并原子写入；服务正在运行时自动重启，失败则恢复旧配置。所有选项仅影响代理内核，不修改系统全局 DNS。
-
-示例：
-
-```bash
-sudo proxyforge config generate sing-box \
-  --yes --server 203.0.113.10 --port 443 --sni www.example.com --user-name phone --inbound-tag phone-in
-
-sudo proxyforge config generate xray \
-  --yes --server 203.0.113.10 --port 8443 --sni www.example.com --user-name laptop --inbound-tag laptop-in
-
-sudo proxyforge config client sing-box --output ./sing-box-client.json
-sudo proxyforge config client xray --output ./xray-client.json
-sudo proxyforge config client sing-box --format clash --output ./clash.yaml
-```
-
-服务端用户名称默认为 `one`，可通过交互提示或 `--user-name` 修改；它在 sing-box 中写入 `users[].name`，在 Xray 中写入 `clients[].email`。入站标签也可在交互配置时自定义，直接回车会按内核自动使用 `singbox-one` 或 `xray-one`，非交互模式可通过 `--inbound-tag` 指定；两种内核都写入入站的 `tag` 字段。客户端文件以 `0600` 创建。`--format native` 是默认值，输出前会调用对应内核的原生配置校验：sing-box 客户端提供 `127.0.0.1:2080` mixed 入站，Xray 客户端提供 `127.0.0.1:10808` SOCKS 与 `127.0.0.1:10809` HTTP 入站。`--format clash` 输出带 `mixed-port: 7890`、`PROXY` 策略组和 `MATCH` 规则的完整 Mihomo/Clash Meta YAML；由于传统 Clash 不支持 VLESS REALITY，不能使用该文件，且 ProxyForge 不会用 sing-box/Xray 二进制校验这种非原生格式。
-
-交互生成服务端配置时可选择公网地址来源：默认从已启用的物理网卡读取公网单播 IP（IPv4 排在 IPv6 前，拒绝内网、NAT 和保留地址），检测到多个时会列出网卡名和地址供用户选择；也可选择通过 `api.ipify.org` HTTPS 探测或手动输入。物理网卡未配置公网 IP 时会要求重新选择，不会自动把私网地址写入节点配置。
-
-生成服务端配置的任意输入步骤均可输入 `q` 取消；菜单模式会直接返回内核主菜单，且不会写入配置或重启服务。
-
-## 文件与安全边界
-
-| 用途 | sing-box | Xray |
-|---|---|---|
-| 服务端配置 | `/etc/sing-box/config.json` | `/usr/local/etc/xray/config.json` |
-| 状态 | `/var/lib/proxyforge/state/sing-box.json` | `/var/lib/proxyforge/state/xray.json` |
-| systemd unit | `sing-box.service` | `xray.service` |
-
-信任记录位于 `/var/lib/proxyforge/trust/`，备份位于 `/var/lib/proxyforge/backups/<core>/<timestamp>/`，每个内核仅保留最近 3 份，成功创建新备份后自动删除更早的 ProxyForge 时间戳备份。状态、信任和备份为 root-only；服务配置按 unit 的实际 `User=` 设置为 root 私有或 root 所有、服务组只读，绝不设为世界可读。
-
-配置更新先写临时文件并运行 `sing-box check` 或 `xray run -test`，再原子替换、只重启目标服务并确认 active/监听状态。任一步失败都会恢复该内核的旧配置和状态并重启旧服务，不触碰另一个内核。
-
-ProxyForge 会验证 REALITY target 的 DNS、TCP/TLS、证书名称和地址属性，拒绝本机、私网及保留地址。使用 CDN 目标可能把未认证的回落流量转发给第三方，必须自行评估。工具只提示 ufw/firewalld 所需 TCP 端口，不会修改防火墙。
-
-生成的服务端和客户端配置会拒绝访问 IPv4/IPv6 私网、本机、链路本地、CGNAT、云元数据、基准测试、多播和保留地址。域名目标会先解析为 IP 再匹配黑洞规则；Xray 的 Freedom 出站也固定使用 IP 解析策略。
-
-官方参考：[sing-box 安装](https://sing-box.sagernet.org/installation/package-manager/)、[sing-box VLESS](https://sing-box.sagernet.org/configuration/inbound/vless/)、[sing-box REALITY TLS](https://sing-box.sagernet.org/configuration/shared/tls/)、[Xray-install](https://github.com/XTLS/Xray-install)、[Xray VLESS](https://xtls.github.io/en/config/inbounds/vless.html)、[XTLS REALITY](https://github.com/XTLS/REALITY/blob/main/README.en.md)。
-
-## 验收测试
-
-golden、安全与事务回滚测试由 `go test ./...` 执行。提供官方二进制后可复跑四份配置的原生验收：
-
-```bash
-SING_BOX_BIN=/path/to/sing-box XRAY_BIN=/path/to/xray \
-  go test -v ./internal/integration
-```
-
-可从节点之外的机器使用黑盒探测脚本检查 REALITY SNI 过滤。脚本会验证允许 SNI 能获得匹配的目标站证书，并确认错误 TLS SNI 与无 SNI 访问是否能获得证书；HTTP 明文访问作为附加暴露面单独报告。测试不需要 UUID、REALITY 公钥或 short ID，也不会修改服务端配置：
-
-```bash
-./scripts/test-reality-sni.sh --host YOUR_SERVER_IP --port 443 --sni YOUR_ALLOWED_SNI
-```
-
-一键检测示例（只需替换服务器地址、端口和允许的 SNI）：
-
-```bash
-bash scripts/test-reality-sni.sh \
-  --host 192.0.2.10 \
-  --port 443 \
-  --sni se-edge.itunes.apple.com
-```
-
-没有下载项目源码时，可一键下载测试脚本（不会自动执行，也不会写入系统目录）：
-
-```bash
-wget --https-only \
-  -O ~/proxyforge-test-reality-sni.sh \
-  https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/test-reality-sni.sh
-```
-
-下载完成后运行：
-
-```bash
-~/proxyforge-test-reality-sni.sh --host YOUR_SERVER_IP --port 443 --sni YOUR_ALLOWED_SNI
-```
-
-可重复传入 `--bad-sni DOMAIN` 指定错误 SNI；脚本会显示收到证书的 Subject 和 SAN，使用 `--verbose` 可进一步查看原始 TLS 输出。允许项获得 SAN 匹配证书、错误项和无 SNI 均无证书时判定为“增强 SNI 过滤生效”；允许项与错误项均无证书、仅无 SNI 获得证书时，提示 SNI 过滤已经存在，但命令中填写的 SNI 可能不是当前允许回落域名；四类 TLS 探测都无证书时，提示端口可能不可访问或所有探测均被静默过滤。TLS Alert 等无证书响应不算异常放行。
-
-HTTP 状态码会附带对应含义，例如 `400（错误的请求）`，同时仍会记录服务端存在响应；HTTP 附加结果不会改变 TLS SNI 判定。错误 SNI 获得证书能直接证明存在异常放行；黑盒通过时仍建议同步查看 Xray 或 sing-box debug 日志，排除目标站自身拒绝错误 SNI 造成的假通过。
-
-在一次性 Debian/Ubuntu 或 Rocky/AlmaLinux systemd VM 中，可设置脚本要求的公网地址、SNI 和两个已人工核对的安装脚本哈希，再以 root 运行 `scripts/smoke-systemd.sh`。它会真实安装两个内核、生成 443/8443 节点、验证两个客户端并确认两项服务同时 active，因此不应在生产主机上直接运行。
-
-## CI/CD 与发布
-
-GitHub Actions 会在分支 push、Pull Request 和手动触发时运行测试、`go vet`，随后编译 Linux amd64、arm64，并将独立二进制文件保存为工作流产物。
-
-发布正式版本时创建并推送一个 `v` 开头的 Git 标签：
-
-```bash
-git tag -a v1.0.0 -m "ProxyForge v1.0.0"
-git push origin v1.0.0
-```
-
-Release 工作流会构建该标签并发布以下资产到当前 GitHub 仓库的 Releases；测试与 `go vet` 由独立的 CI 工作流负责：
-
-```text
-proxyforge_linux_amd64_v1.0.0
-proxyforge_linux_arm64_v1.0.0
-version
-SHA256SUMS
-```
-
-`version` 只包含当前发布标签和换行，例如 `v1.0.0`，并与二进制一起纳入 `SHA256SUMS`。可通过固定地址 `https://github.com/JokerKernel/proxyforge/releases/latest/download/version` 查询最新正式版本。下载对应架构的二进制后需要赋予执行权限，例如 `chmod +x proxyforge_linux_amd64_v1.0.0`，随后即可直接运行，不需要解压。安装脚本优先识别版本号位于末尾的新格式，并兼容已经发布的 `proxyforge_v1.0.0_linux_amd64` 旧格式。
-
-也可以在 GitHub Actions 的 `Release` 工作流中手动输入一个已经存在的标签重新发布。发布任务只在最后阶段取得 `contents: write` 权限；普通 CI 和构建任务保持只读权限。
-
-Dependabot 每周一检查 Go Modules 和 GitHub Actions 更新，并分别创建依赖更新 Pull Request。
+构建参数、原生集成测试、CI 和发布流程见[开发文档](docs/development.md)。
