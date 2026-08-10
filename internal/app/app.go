@@ -482,13 +482,13 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if opts.SimplifiedConfig && core != domain.CoreSingBox {
 		return domain.NodeSpec{}, fmt.Errorf("简化服务端配置目前仅支持 sing-box")
 	}
-	if opts.StandardConfig && (opts.SimplifiedConfig || opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != 0 || opts.XrayFallbackGuard || opts.XrayFallbackPort != 0) {
+	if opts.StandardConfig && (opts.SimplifiedConfig || opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != 0 || opts.SingBoxFallbackHTTPDomain || opts.XrayFallbackGuard || opts.XrayFallbackPort != 0) {
 		return domain.NodeSpec{}, fmt.Errorf("--standard-config 不能与简化或回落防偷跑配置参数同时使用")
 	}
 	if opts.SingBoxFallbackGuard && opts.SimplifiedConfig {
 		return domain.NodeSpec{}, fmt.Errorf("sing-box 简化配置不能与回落防偷跑配置同时启用")
 	}
-	if (opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != 0) && core != domain.CoreSingBox {
+	if (opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != 0 || opts.SingBoxFallbackHTTPDomain) && core != domain.CoreSingBox {
 		return domain.NodeSpec{}, fmt.Errorf("sing-box 回落防偷跑配置仅支持 sing-box")
 	}
 	if (opts.XrayFallbackGuard || opts.XrayFallbackPort != 0) && core != domain.CoreXray {
@@ -506,6 +506,9 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	}
 	if opts.SingBoxFallbackGuard && opts.SingBoxFallbackPort == 0 {
 		opts.SingBoxFallbackPort = domain.DefaultSingBoxFallbackPort
+	}
+	if opts.SingBoxFallbackHTTPDomain && !opts.SingBoxFallbackGuard {
+		return domain.NodeSpec{}, fmt.Errorf("sing-box HTTP 回落域名限制必须与回落防偷跑配置同时启用")
 	}
 	if opts.XrayFallbackGuard && opts.XrayFallbackPort == 0 {
 		opts.XrayFallbackPort = domain.DefaultXrayFallbackPort
@@ -578,7 +581,8 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		ManagedBy: "proxyforge", Core: core, InboundTag: inboundTag, Server: opts.Server, Port: opts.Port,
 		SNI: opts.SNI, Target: opts.Target, UserName: userName, SimplifiedConfig: opts.SimplifiedConfig,
 		SingBoxFallbackGuard: opts.SingBoxFallbackGuard, SingBoxFallbackPort: opts.SingBoxFallbackPort,
-		XrayFallbackGuard: opts.XrayFallbackGuard, XrayFallbackPort: opts.XrayFallbackPort,
+		SingBoxFallbackHTTPDomain: opts.SingBoxFallbackHTTPDomain,
+		XrayFallbackGuard:         opts.XrayFallbackGuard, XrayFallbackPort: opts.XrayFallbackPort,
 		CoreVersion: version, UpdatedAt: a.Now().UTC(),
 	}
 	if n.SimplifiedConfig {

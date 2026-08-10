@@ -196,7 +196,7 @@ func TestGenerateCommandOffersUserNameAndInboundTag(t *testing.T) {
 	if flag == nil || flag.DefValue != "false" {
 		t.Fatalf("simplified-config flag=%v", flag)
 	}
-	for _, name := range []string{"standard-config", "sing-box-fallback-guard", "sing-box-fallback-port", "xray-fallback-guard", "xray-fallback-port"} {
+	for _, name := range []string{"standard-config", "sing-box-fallback-guard", "sing-box-fallback-port", "sing-box-fallback-http-domain", "xray-fallback-guard", "xray-fallback-port"} {
 		if flag := cmd.Flags().Lookup(name); flag == nil {
 			t.Fatalf("missing %s flag", name)
 		}
@@ -860,7 +860,7 @@ func TestFillGenerateSelectsSimplifiedSingBoxConfig(t *testing.T) {
 func TestFillGenerateSelectsXrayFallbackGuardConfig(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("\n\n\n\nyes\nyes\n")),
+		reader: bufio.NewReader(strings.NewReader("\n\n\n\n\nyes\nyes\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
 			return []app.SNICandidate{{Domain: candidates[0], Latency: 5 * time.Millisecond, TLSVersion: "1.3", CertificateSANs: []string{candidates[0]}}}, nil
@@ -885,7 +885,7 @@ func TestFillGenerateSelectsXrayFallbackGuardConfig(t *testing.T) {
 func TestFillGenerateSelectsSingBoxFallbackGuardConfig(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("\n\n\n\nyes\nyes\n")),
+		reader: bufio.NewReader(strings.NewReader("\n\n\n\n\nyes\nyes\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
 			return []app.SNICandidate{{Domain: candidates[0], Latency: 5 * time.Millisecond, TLSVersion: "1.3", CertificateSANs: []string{candidates[0]}}}, nil
@@ -897,13 +897,36 @@ func TestFillGenerateSelectsSingBoxFallbackGuardConfig(t *testing.T) {
 	if err := c.fillGenerate(context.Background(), domain.CoreSingBox, &opts); err != nil {
 		t.Fatal(err)
 	}
-	if !opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != domain.DefaultSingBoxFallbackPort || opts.SimplifiedConfig {
+	if !opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != domain.DefaultSingBoxFallbackPort || opts.SingBoxFallbackHTTPDomain || opts.SimplifiedConfig {
 		t.Fatalf("generate options=%#v", opts)
 	}
-	for _, want := range []string{"回落防偷跑配置", "direct 入站", "本机 direct 回落端口"} {
+	for _, want := range []string{"回落防偷跑配置", "direct 入站", "本机 direct 回落端口", "不限制 HTTP Host（默认）"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("output missing %q: %q", want, out.String())
 		}
+	}
+}
+
+func TestFillGenerateEnablesSingBoxFallbackHTTPDomain(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{
+		reader: bufio.NewReader(strings.NewReader("\n2\n\n\n\nyes\nyes\n")),
+		out:    &out,
+		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
+			return []app.SNICandidate{{Domain: candidates[0], Latency: 5 * time.Millisecond, TLSVersion: "1.3", CertificateSANs: []string{candidates[0]}}}, nil
+		},
+	}
+	opts := domain.GenerateOptions{
+		Server: "server.example.com", Port: 443, SNI: "speed.cloudflare.com", Target: "speed.cloudflare.com:443",
+	}
+	if err := c.fillGenerate(context.Background(), domain.CoreSingBox, &opts); err != nil {
+		t.Fatal(err)
+	}
+	if !opts.SingBoxFallbackGuard || !opts.SingBoxFallbackHTTPDomain {
+		t.Fatalf("generate options=%#v", opts)
+	}
+	if !strings.Contains(out.String(), "仅放行与 SNI 一致的 HTTP Host") {
+		t.Fatalf("HTTP domain option missing: %q", out.String())
 	}
 }
 

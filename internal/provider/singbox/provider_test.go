@@ -178,7 +178,7 @@ func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertFallbackGuardConfig(t, config, "speed.cloudflare.com", 443, "speed.cloudflare.com", "old-uuid", "old-private", "old-short")
+	assertFallbackGuardConfig(t, config, "speed.cloudflare.com", 443, "speed.cloudflare.com", false, "old-uuid", "old-private", "old-short")
 
 	next := old
 	next.SNI = "www.example.com"
@@ -188,7 +188,7 @@ func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertFallbackGuardConfig(t, patched, "origin.example.com", 8443, "www.example.com", "new-uuid", "new-private", "new-short")
+	assertFallbackGuardConfig(t, patched, "origin.example.com", 8443, "www.example.com", false, "new-uuid", "new-private", "new-short")
 	assertSingBoxFieldsInOrder(t, patched, `"log"`, `"dns"`, `"inbounds"`, `"outbounds"`, `"route"`)
 	fallback := singBoxConfigSection(t, patched, `"type": "direct"`, `"type": "vless"`)
 	assertSingBoxFieldsInOrder(t, fallback,
@@ -196,48 +196,31 @@ func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 	)
 }
 
-func TestPatchFallbackGuardAddsDomainToLegacyHTTPRule(t *testing.T) {
+func TestFallbackGuardHTTPDomainSwitchAndPatch(t *testing.T) {
 	p := New()
 	old := domain.NodeSpec{
 		InboundTag: "singbox-one", Server: "203.0.113.10", Port: 443, SNI: "old.example.com",
 		Target: "old.example.com:443", UserName: "one", UUID: "old-uuid", PrivateKey: "old-private",
 		PublicKey: "old-public", ShortID: "old-short", SingBoxFallbackGuard: true, SingBoxFallbackPort: domain.DefaultSingBoxFallbackPort,
+		SingBoxFallbackHTTPDomain: true,
 	}
 	config, err := p.RenderServer(old)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var root map[string]any
-	if err := json.Unmarshal(config, &root); err != nil {
-		t.Fatal(err)
-	}
-	rules := root["route"].(map[string]any)["rules"].([]any)
-	delete(rules[2].(map[string]any), "domain")
-	legacyConfig, err := json.Marshal(root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assertFallbackGuardConfig(t, config, "old.example.com", 443, "old.example.com", true, "old-uuid", "old-private", "old-short")
 
 	next := old
 	next.SNI = "new.example.com"
 	next.Target = "new.example.com:443"
-	patched, err := p.PatchServer(legacyConfig, old, next, true)
+	patched, err := p.PatchServer(config, old, next, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := json.Unmarshal(patched, &root); err != nil {
-		t.Fatal(err)
-	}
-	rules = root["route"].(map[string]any)["rules"].([]any)
-	for _, index := range []int{1, 2} {
-		domains := rules[index].(map[string]any)["domain"].([]any)
-		if len(domains) != 1 || domains[0] != next.SNI {
-			t.Fatalf("rule[%d] domains=%#v", index, domains)
-		}
-	}
+	assertFallbackGuardConfig(t, patched, "new.example.com", 443, "new.example.com", true, "old-uuid", "old-private", "old-short")
 }
 
-func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, targetPort int, allowedDomain, uuid, privateKey, shortID string) {
+func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, targetPort int, allowedDomain string, restrictHTTP bool, uuid, privateKey, shortID string) {
 	t.Helper()
 	var root map[string]any
 	if err := json.Unmarshal(config, &root); err != nil {
@@ -275,10 +258,15 @@ func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, t
 	}
 	httpAllow := rules[2].(map[string]any)
 	httpProtocols := httpAllow["protocol"].([]any)
-	httpDomains := httpAllow["domain"].([]any)
-	if httpAllow["action"] != "route" || httpAllow["outbound"] != "direct" || len(httpProtocols) != 1 || httpProtocols[0] != "http" ||
-		len(httpDomains) != 1 || httpDomains[0] != allowedDomain {
+	if httpAllow["action"] != "route" || httpAllow["outbound"] != "direct" || len(httpProtocols) != 1 || httpProtocols[0] != "http" {
 		t.Fatalf("fallback HTTP allow rule=%#v", httpAllow)
+	}
+	httpDomains, hasHTTPDomains := httpAllow["domain"].([]any)
+	if restrictHTTP && (!hasHTTPDomains || len(httpDomains) != 1 || httpDomains[0] != allowedDomain) {
+		t.Fatalf("fallback HTTP domains=%#v", httpAllow["domain"])
+	}
+	if !restrictHTTP && hasHTTPDomains {
+		t.Fatalf("fallback HTTP rule should not restrict domains: %#v", httpAllow)
 	}
 }
 

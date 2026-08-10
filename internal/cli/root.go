@@ -253,6 +253,7 @@ func (c *commandSet) generateCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&o.SimplifiedConfig, "simplified-config", false, "sing-box 使用简化配置（系统 DNS、较少 DNS 日志，但私网域名拦截较弱）")
 	cmd.Flags().BoolVar(&o.SingBoxFallbackGuard, "sing-box-fallback-guard", false, "sing-box 使用 direct 入站限制 REALITY 未认证回落流量")
 	cmd.Flags().IntVar(&o.SingBoxFallbackPort, "sing-box-fallback-port", 0, "sing-box 防偷跑回落入站端口（默认 61432）")
+	cmd.Flags().BoolVar(&o.SingBoxFallbackHTTPDomain, "sing-box-fallback-http-domain", false, "sing-box HTTP 回落仅放行与 SNI 一致的域名（默认不限制）")
 	cmd.Flags().BoolVar(&o.XrayFallbackGuard, "xray-fallback-guard", false, "Xray 使用 dokodemo-door 限制 REALITY 未认证回落流量")
 	cmd.Flags().IntVar(&o.XrayFallbackPort, "xray-fallback-port", 0, "Xray 防偷跑回落入站端口（默认 61431）")
 	cmd.Flags().BoolVar(&o.RotateCredentials, "rotate-credentials", false, "轮换 UUID、密钥和 short ID，使旧客户端失效")
@@ -332,6 +333,20 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		o.SingBoxFallbackGuard = choice == 3
 		if !o.SingBoxFallbackGuard {
 			o.SingBoxFallbackPort = 0
+			o.SingBoxFallbackHTTPDomain = false
+		} else {
+			fmt.Fprintln(c.out, "\nHTTP 回落域名限制")
+			fmt.Fprintln(c.out, "1) 不限制 HTTP Host（默认）")
+			fmt.Fprintln(c.out, "2) 仅放行与 SNI 一致的 HTTP Host")
+			defaultHTTPChoice := 1
+			if o.SingBoxFallbackHTTPDomain {
+				defaultHTTPChoice = 2
+			}
+			choice, err := c.chooseNumberCancelable("请选择 HTTP 回落策略", 1, 2, defaultHTTPChoice)
+			if err != nil {
+				return err
+			}
+			o.SingBoxFallbackHTTPDomain = choice == 2
 		}
 	} else if core == domain.CoreXray {
 		fmt.Fprintln(c.out, "\n配置模式")
@@ -615,7 +630,11 @@ func printGenerateSuccess(w io.Writer, n domain.NodeSpec) {
 	if n.Core == domain.CoreSingBox {
 		mode := "标准安全配置"
 		if n.SingBoxFallbackGuard {
-			mode = fmt.Sprintf("回落防偷跑配置（direct 127.0.0.1:%d）", n.SingBoxFallbackPort)
+			httpPolicy := "HTTP Host 不限制"
+			if n.SingBoxFallbackHTTPDomain {
+				httpPolicy = "HTTP Host 仅限 SNI"
+			}
+			mode = fmt.Sprintf("回落防偷跑配置（direct 127.0.0.1:%d；%s）", n.SingBoxFallbackPort, httpPolicy)
 		} else if n.SimplifiedConfig {
 			mode = "简化配置（系统 DNS）"
 		}

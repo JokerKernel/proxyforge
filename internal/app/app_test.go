@@ -722,13 +722,13 @@ func TestGenerateSingBoxFallbackGuardAndResetPreservesMode(t *testing.T) {
 	}
 	o := domain.GenerateOptions{
 		Server: "server.example.com", Port: r.port, SNI: "speed.cloudflare.com", Target: "speed.cloudflare.com:443",
-		SingBoxFallbackGuard: true, SingBoxFallbackPort: 15445, NonInteractive: true,
+		SingBoxFallbackGuard: true, SingBoxFallbackPort: 15445, SingBoxFallbackHTTPDomain: true, NonInteractive: true,
 	}
 	n, err := a.Generate(context.Background(), domain.CoreSingBox, o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !n.SingBoxFallbackGuard || n.SingBoxFallbackPort != 15445 || checkedPorts[r.port] != 1 || checkedPorts[15445] != 1 {
+	if !n.SingBoxFallbackGuard || n.SingBoxFallbackPort != 15445 || !n.SingBoxFallbackHTTPDomain || checkedPorts[r.port] != 1 || checkedPorts[15445] != 1 {
 		t.Fatalf("node=%#v checkedPorts=%v", n, checkedPorts)
 	}
 	config, err := os.ReadFile(a.Layout.Resolve(singbox.New().ConfigPath()))
@@ -745,7 +745,7 @@ func TestGenerateSingBoxFallbackGuardAndResetPreservesMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reset.SingBoxFallbackGuard || reset.SingBoxFallbackPort != 15445 {
+	if !reset.SingBoxFallbackGuard || reset.SingBoxFallbackPort != 15445 || !reset.SingBoxFallbackHTTPDomain {
 		t.Fatalf("reset node=%#v", reset)
 	}
 	config, err = os.ReadFile(a.Layout.Resolve(singbox.New().ConfigPath()))
@@ -787,7 +787,14 @@ func TestGenerateRejectsInvalidSingBoxFallbackGuardOptions(t *testing.T) {
 			o.SimplifiedConfig = true
 			return o
 		}(), "不能与回落防偷跑配置同时启用"},
+		{"HTTP domain without fallback mode", domain.CoreSingBox, func() domain.GenerateOptions {
+			o := base
+			o.SimplifiedConfig = true
+			o.SingBoxFallbackHTTPDomain = true
+			return o
+		}(), "必须与回落防偷跑配置同时启用"},
 		{"unsupported core", domain.CoreXray, func() domain.GenerateOptions { o := base; o.SingBoxFallbackGuard = true; return o }(), "仅支持 sing-box"},
+		{"HTTP domain unsupported core", domain.CoreXray, func() domain.GenerateOptions { o := base; o.SingBoxFallbackHTTPDomain = true; return o }(), "仅支持 sing-box"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

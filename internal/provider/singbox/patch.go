@@ -57,7 +57,7 @@ func (*Provider) PatchServer(config []byte, old, next domain.NodeSpec, updateEnd
 			if err := patchFallbackTarget(root, host, port); err != nil {
 				return nil, err
 			}
-			if err := patchFallbackDomain(root, old.SNI, next.SNI); err != nil {
+			if err := patchFallbackDomain(root, old.SNI, next.SNI, old.SingBoxFallbackHTTPDomain); err != nil {
 				return nil, err
 			}
 		} else {
@@ -82,7 +82,7 @@ func patchFallbackTarget(root map[string]any, host string, port int) error {
 	return nil
 }
 
-func patchFallbackDomain(root map[string]any, oldSNI, nextSNI string) error {
+func patchFallbackDomain(root map[string]any, oldSNI, nextSNI string, restrictHTTP bool) error {
 	route, err := childObject(root, "route", "sing-box route")
 	if err != nil {
 		return err
@@ -91,7 +91,11 @@ func patchFallbackDomain(root map[string]any, oldSNI, nextSNI string) error {
 	if err != nil {
 		return err
 	}
-	for _, protocol := range []string{"tls", "http"} {
+	protocols := []string{"tls"}
+	if restrictHTTP {
+		protocols = append(protocols, "http")
+	}
+	for _, protocol := range protocols {
 		var matches []map[string]any
 		for _, rule := range rules {
 			if rule["action"] != "route" || rule["outbound"] != "direct" ||
@@ -99,18 +103,12 @@ func patchFallbackDomain(root map[string]any, oldSNI, nextSNI string) error {
 				!stringListContains(rule["protocol"], protocol) {
 				continue
 			}
-			_, hasDomain := rule["domain"]
-			if stringListContains(rule["domain"], oldSNI) || (protocol == "http" && !hasDomain) {
+			if stringListContains(rule["domain"], oldSNI) {
 				matches = append(matches, rule)
 			}
 		}
 		if len(matches) != 1 {
 			return fmt.Errorf("现有 sing-box 配置中 %s 回落放行规则数量为 %d，无法安全定点重置", protocol, len(matches))
-		}
-		if _, hasDomain := matches[0]["domain"]; !hasDomain {
-			// 兼容曾经未给 HTTP 规则设置域名的受管配置，并在重置时收紧规则。
-			matches[0]["domain"] = []string{nextSNI}
-			continue
 		}
 		if err := replaceManagedString(matches[0], "domain", oldSNI, nextSNI, "sing-box "+protocol+" 回落放行域名"); err != nil {
 			return err

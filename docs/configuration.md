@@ -38,6 +38,7 @@ sudo proxyforge config generate xray \
 sing-box 和 Xray 默认生成回落防偷跑配置。可用 `--standard-config` 恢复标准模板；sing-box 还支持 `--simplified-config`。这些模式参数不能组合。
 
 - sing-box 防偷跑模式在 `127.0.0.1` 创建 `direct` 入站，将 REALITY handshake 指向该入站，通过 TLS sniff 和域名规则控制真实 target；内部端口默认 61432。
+- sing-box 的明文 HTTP 回落默认不限制 Host。使用 `--sing-box-fallback-http-domain`（或交互菜单中的对应开关）后，HTTP 规则才会写入当前 SNI 的域名限制。
 - Xray 防偷跑模式在 `127.0.0.1` 创建 `dokodemo-door` 入站，将 REALITY target 指向该入站，匹配 `serverNames` 的流量走 direct，其余进入 blackhole；内部端口默认 61431。
 - `--sing-box-fallback-port` 和 `--xray-fallback-port` 可修改内部端口。端口不能与公网监听端口或另一个受管节点冲突。
 - 原有的 `--sing-box-fallback-guard` 和 `--xray-fallback-guard` 参数继续兼容，但默认模式不需要显式提供。
@@ -54,7 +55,7 @@ CDN 识别只基于 CNAME、域名和地址数量进行启发式判断，不代�
 
 ## 重置节点
 
-`config reset` 保留地址和端口，可修改 SNI 和 target；只指定新 SNI 时，target 默认变为 `<新 SNI>:443`。重置会同步更新 REALITY 配置、真实回落目标和路由放行域名，同时保留当前配置模式和内部回落端口。
+`config reset` 保留地址和端口，可修改 SNI 和 target；只指定新 SNI 时，target 默认变为 `<新 SNI>:443`。重置会同步更新 REALITY 配置、真实回落目标和已启用的路由放行域名，同时保留当前配置模式、HTTP 回落策略和内部回落端口。
 
 普通重新生成会保留 UUID、REALITY 密钥和 short ID。只有使用 `--rotate-credentials` 或执行凭据重置时才会轮换它们，并让旧客户端失效。
 
