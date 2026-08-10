@@ -114,14 +114,14 @@ func TestFallbackGuardServerFollowsOfficialExampleFieldOrder(t *testing.T) {
 		`"log"`, `"dns"`, `"inbounds"`, `"outbounds"`, `"routing"`,
 	)
 
-	dokodemoStart := bytes.Index(config, []byte(`"tag": "dokodemo-in"`))
-	vlessStart := bytes.Index(config, []byte(`"tag": "xray-one"`))
+	dokodemoStart := bytes.Index(config, []byte(`"listen": "127.0.0.1"`))
+	vlessStart := bytes.Index(config, []byte(`"listen": "0.0.0.0"`))
 	if dokodemoStart < 0 || vlessStart <= dokodemoStart {
 		t.Fatalf("cannot locate ordered inbounds: %s", config)
 	}
 	dokodemo := config[dokodemoStart:vlessStart]
 	assertFieldsInOrder(t, dokodemo,
-		`"tag": "dokodemo-in"`, `"listen"`, `"port": 61431`, `"protocol": "dokodemo-door"`, `"settings"`, `"sniffing"`,
+		`"listen"`, `"port": 61431`, `"protocol": "dokodemo-door"`, `"settings"`, `"tag": "dokodemo-in"`, `"sniffing"`,
 	)
 	assertFieldsInOrder(t, dokodemo,
 		`"address": "speed.cloudflare.com"`, `"port": 443`, `"network": "tcp"`,
@@ -132,7 +132,7 @@ func TestFallbackGuardServerFollowsOfficialExampleFieldOrder(t *testing.T) {
 
 	vless := config[vlessStart:]
 	assertFieldsInOrder(t, vless,
-		`"tag": "xray-one"`, `"listen"`, `"port": 443`, `"protocol": "vless"`, `"settings"`, `"streamSettings"`, `"sniffing"`,
+		`"listen"`, `"port": 443`, `"protocol": "vless"`, `"settings"`, `"streamSettings"`, `"tag": "xray-one"`, `"sniffing"`,
 	)
 	assertFieldsInOrder(t, vless,
 		`"show": false`, `"target": "127.0.0.1:61431"`, `"xver": 0`, `"serverNames"`, `"privateKey"`, `"shortIds"`,
@@ -150,9 +150,9 @@ func TestStandardServerFollowsOfficialFieldOrder(t *testing.T) {
 	}
 	assertFieldsInOrder(t, config, `"log"`, `"dns"`, `"inbounds"`, `"outbounds"`, `"routing"`)
 
-	inbound := xrayConfigSection(t, config, `"tag": "xray-one"`, `"outbounds"`)
+	inbound := xrayConfigSection(t, config, `"listen": "0.0.0.0"`, `"outbounds"`)
 	assertFieldsInOrder(t, inbound,
-		`"tag": "xray-one"`, `"listen"`, `"port": 443`, `"protocol": "vless"`, `"settings"`, `"streamSettings"`,
+		`"listen"`, `"port": 443`, `"protocol": "vless"`, `"settings"`, `"streamSettings"`, `"tag": "xray-one"`,
 	)
 	assertFieldsInOrder(t, inbound, `"clients"`, `"id"`, `"email"`, `"flow"`, `"decryption"`)
 	assertFieldsInOrder(t, inbound, `"network": "raw"`, `"security": "reality"`, `"realitySettings"`)
@@ -239,13 +239,13 @@ func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 	}
 	assertFallbackGuardConfig(t, patched, "origin.example.com", 8443, "127.0.0.1:61431", "new-uuid", "new-private", "new-short")
 	assertFieldsInOrder(t, patched, `"log"`, `"dns"`, `"inbounds"`, `"outbounds"`, `"routing"`)
-	dokodemoStart := bytes.Index(patched, []byte(`"tag": "dokodemo-in"`))
-	vlessStart := bytes.Index(patched, []byte(`"tag": "xray-one"`))
+	dokodemoStart := bytes.Index(patched, []byte(`"listen": "127.0.0.1"`))
+	vlessStart := bytes.Index(patched, []byte(`"listen": "0.0.0.0"`))
 	if dokodemoStart < 0 || vlessStart <= dokodemoStart {
 		t.Fatalf("cannot locate patched ordered inbounds: %s", patched)
 	}
 	assertFieldsInOrder(t, patched[dokodemoStart:vlessStart],
-		`"tag": "dokodemo-in"`, `"listen"`, `"port": 61431`, `"protocol": "dokodemo-door"`, `"settings"`, `"sniffing"`,
+		`"listen"`, `"port": 61431`, `"protocol": "dokodemo-door"`, `"settings"`, `"tag": "dokodemo-in"`, `"sniffing"`,
 	)
 	var root map[string]any
 	if err := json.Unmarshal(patched, &root); err != nil {
