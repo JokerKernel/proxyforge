@@ -170,8 +170,30 @@ SING_BOX_BIN=/path/to/sing-box XRAY_BIN=/path/to/xray \
 可从节点之外的机器使用黑盒探测脚本检查回落防偷跑规则。脚本会验证允许 SNI 能获得目标站证书，同时确认错误 SNI 和无 SNI 无法获得 TLS 响应；测试不需要 UUID、REALITY 公钥或 short ID，也不会修改服务端配置：
 
 ```bash
-./scripts/test-reality-sni.sh \
-  --host 203.0.113.10 --port 443 --sni speed.cloudflare.com
+./scripts/test-reality-sni.sh --host YOUR_SERVER_IP --port 443 --sni YOUR_ALLOWED_SNI
+```
+
+一键检测示例（只需替换服务器地址、端口和允许的 SNI）：
+
+```bash
+bash scripts/test-reality-sni.sh \
+  --host 192.0.2.10 \
+  --port 443 \
+  --sni se-edge.itunes.apple.com
+```
+
+没有下载项目源码时，可一键下载测试脚本（不会自动执行，也不会写入系统目录）：
+
+```bash
+wget --https-only \
+  -O ~/proxyforge-test-reality-sni.sh \
+  https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/test-reality-sni.sh
+```
+
+下载完成后运行：
+
+```bash
+~/proxyforge-test-reality-sni.sh --host YOUR_SERVER_IP --port 443 --sni YOUR_ALLOWED_SNI
 ```
 
 可重复传入 `--bad-sni DOMAIN` 指定错误 SNI；脚本会显示收到证书的 Subject 和 SAN，使用 `--verbose` 可进一步查看原始 TLS 输出。黑盒失败能直接证明存在异常放行；黑盒通过时仍建议同步查看 Xray 或 sing-box debug 日志，排除目标站自身拒绝错误 SNI 造成的假通过。
