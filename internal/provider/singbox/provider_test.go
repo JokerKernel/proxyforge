@@ -51,7 +51,7 @@ func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 	old := domain.NodeSpec{
 		InboundTag: "singbox-one", Server: "203.0.113.10", Port: 443, SNI: "speed.cloudflare.com",
 		Target: "speed.cloudflare.com:443", UserName: "one", UUID: "old-uuid", PrivateKey: "old-private",
-		PublicKey: "old-public", ShortID: "old-short", SingBoxFallbackGuard: true, SingBoxFallbackPort: 4432,
+		PublicKey: "old-public", ShortID: "old-short", SingBoxFallbackGuard: true, SingBoxFallbackPort: domain.DefaultSingBoxFallbackPort,
 	}
 	config, err := p.RenderServer(old)
 	if err != nil {
@@ -82,7 +82,7 @@ func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, t
 	}
 	fallback := inbounds[0].(map[string]any)
 	if fallback["type"] != "direct" || fallback["tag"] != fallbackGuardInboundTag || fallback["listen"] != "127.0.0.1" ||
-		fallback["listen_port"] != float64(4432) || fallback["network"] != "tcp" || fallback["override_address"] != targetHost || fallback["override_port"] != float64(targetPort) {
+		fallback["listen_port"] != float64(domain.DefaultSingBoxFallbackPort) || fallback["network"] != "tcp" || fallback["override_address"] != targetHost || fallback["override_port"] != float64(targetPort) {
 		t.Fatalf("fallback inbound=%#v", fallback)
 	}
 	vless := inbounds[1].(map[string]any)
@@ -92,7 +92,7 @@ func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, t
 	handshake := reality["handshake"].(map[string]any)
 	shortIDs := reality["short_id"].([]any)
 	if user["uuid"] != uuid || user["flow"] != domain.VisionFlow || tls["server_name"] != allowedDomain ||
-		handshake["server"] != "127.0.0.1" || handshake["server_port"] != float64(4432) || reality["private_key"] != privateKey ||
+		handshake["server"] != "127.0.0.1" || handshake["server_port"] != float64(domain.DefaultSingBoxFallbackPort) || reality["private_key"] != privateKey ||
 		len(shortIDs) != 1 || shortIDs[0] != shortID {
 		t.Fatalf("vless inbound=%#v", vless)
 	}

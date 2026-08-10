@@ -486,7 +486,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		return domain.NodeSpec{}, fmt.Errorf("sing-box 简化配置不能与回落防偷跑配置同时启用")
 	}
 	if opts.SingBoxFallbackGuard && opts.SingBoxFallbackPort == 0 {
-		opts.SingBoxFallbackPort = 4432
+		opts.SingBoxFallbackPort = domain.DefaultSingBoxFallbackPort
 	}
 	if (opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != 0) && core != domain.CoreSingBox {
 		return domain.NodeSpec{}, fmt.Errorf("sing-box 回落防偷跑配置仅支持 sing-box")
@@ -495,7 +495,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		return domain.NodeSpec{}, fmt.Errorf("设置 sing-box 回落端口时必须同时启用 --sing-box-fallback-guard")
 	}
 	if opts.XrayFallbackGuard && opts.XrayFallbackPort == 0 {
-		opts.XrayFallbackPort = 4431
+		opts.XrayFallbackPort = domain.DefaultXrayFallbackPort
 	}
 	if (opts.XrayFallbackGuard || opts.XrayFallbackPort != 0) && core != domain.CoreXray {
 		return domain.NodeSpec{}, fmt.Errorf("REALITY 回落防偷跑配置仅支持 xray")

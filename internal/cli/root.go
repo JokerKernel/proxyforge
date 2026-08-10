@@ -250,9 +250,9 @@ func (c *commandSet) generateCommand() *cobra.Command {
 	cmd.Flags().StringVar(&o.InboundTag, "inbound-tag", "", "入站标签（默认按内核自动生成）")
 	cmd.Flags().BoolVar(&o.SimplifiedConfig, "simplified-config", false, "sing-box 使用简化配置（系统 DNS、较少 DNS 日志，但私网域名拦截较弱）")
 	cmd.Flags().BoolVar(&o.SingBoxFallbackGuard, "sing-box-fallback-guard", false, "sing-box 使用 direct 入站限制 REALITY 未认证回落流量")
-	cmd.Flags().IntVar(&o.SingBoxFallbackPort, "sing-box-fallback-port", 0, "sing-box 防偷跑回落入站端口（默认 4432）")
+	cmd.Flags().IntVar(&o.SingBoxFallbackPort, "sing-box-fallback-port", 0, "sing-box 防偷跑回落入站端口（默认 61432）")
 	cmd.Flags().BoolVar(&o.XrayFallbackGuard, "xray-fallback-guard", false, "Xray 使用 dokodemo-door 限制 REALITY 未认证回落流量")
-	cmd.Flags().IntVar(&o.XrayFallbackPort, "xray-fallback-port", 0, "Xray 防偷跑回落入站端口（默认 4431）")
+	cmd.Flags().IntVar(&o.XrayFallbackPort, "xray-fallback-port", 0, "Xray 防偷跑回落入站端口（默认 61431）")
 	cmd.Flags().BoolVar(&o.RotateCredentials, "rotate-credentials", false, "轮换 UUID、密钥和 short ID，使旧客户端失效")
 	cmd.Flags().Bool("take-over", false, "兼容旧版本；当前始终备份并完整覆盖现有配置")
 	_ = cmd.Flags().MarkDeprecated("take-over", "当前生成流程会自动备份并完整覆盖现有配置，无需此参数")
@@ -367,7 +367,7 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		o.Port = port
 	}
 	if o.XrayFallbackGuard && o.XrayFallbackPort == 0 {
-		defaultPort := 4431
+		defaultPort := domain.DefaultXrayFallbackPort
 		if c.app != nil {
 			if current, err := c.app.Store.Load(core); err == nil && current.XrayFallbackGuard && current.XrayFallbackPort != 0 {
 				defaultPort = current.XrayFallbackPort
@@ -384,7 +384,7 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		o.XrayFallbackPort = port
 	}
 	if o.SingBoxFallbackGuard && o.SingBoxFallbackPort == 0 {
-		defaultPort := 4432
+		defaultPort := domain.DefaultSingBoxFallbackPort
 		if c.app != nil {
 			if current, err := c.app.Store.Load(core); err == nil && current.SingBoxFallbackGuard && current.SingBoxFallbackPort != 0 {
 				defaultPort = current.SingBoxFallbackPort

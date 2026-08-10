@@ -873,7 +873,7 @@ func TestFillGenerateSelectsXrayFallbackGuardConfig(t *testing.T) {
 	if err := c.fillGenerate(context.Background(), domain.CoreXray, &opts); err != nil {
 		t.Fatal(err)
 	}
-	if !opts.XrayFallbackGuard || opts.XrayFallbackPort != 4431 {
+	if !opts.XrayFallbackGuard || opts.XrayFallbackPort != domain.DefaultXrayFallbackPort {
 		t.Fatalf("generate options=%#v", opts)
 	}
 	for _, want := range []string{"回落防偷跑配置", "dokodemo-door", "本机 dokodemo-door 回落端口"} {
@@ -898,7 +898,7 @@ func TestFillGenerateSelectsSingBoxFallbackGuardConfig(t *testing.T) {
 	if err := c.fillGenerate(context.Background(), domain.CoreSingBox, &opts); err != nil {
 		t.Fatal(err)
 	}
-	if !opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != 4432 || opts.SimplifiedConfig {
+	if !opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != domain.DefaultSingBoxFallbackPort || opts.SimplifiedConfig {
 		t.Fatalf("generate options=%#v", opts)
 	}
 	for _, want := range []string{"回落防偷跑配置", "direct 入站", "本机 direct 回落端口"} {

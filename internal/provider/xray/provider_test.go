@@ -69,13 +69,13 @@ func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 	old := domain.NodeSpec{
 		InboundTag: "xray-one", Server: "203.0.113.10", Port: 443, SNI: "speed.cloudflare.com",
 		Target: "speed.cloudflare.com:443", UserName: "one", UUID: "old-uuid", PrivateKey: "old-private",
-		PublicKey: "old-public", ShortID: "old-short", XrayFallbackGuard: true, XrayFallbackPort: 4431,
+		PublicKey: "old-public", ShortID: "old-short", XrayFallbackGuard: true, XrayFallbackPort: domain.DefaultXrayFallbackPort,
 	}
 	config, err := p.RenderServer(old)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertFallbackGuardConfig(t, config, "speed.cloudflare.com", 443, "127.0.0.1:4431", "old-uuid", "old-private", "old-short")
+	assertFallbackGuardConfig(t, config, "speed.cloudflare.com", 443, "127.0.0.1:61431", "old-uuid", "old-private", "old-short")
 
 	next := old
 	next.SNI = "www.example.com"
@@ -85,7 +85,7 @@ func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertFallbackGuardConfig(t, patched, "origin.example.com", 8443, "127.0.0.1:4431", "new-uuid", "new-private", "new-short")
+	assertFallbackGuardConfig(t, patched, "origin.example.com", 8443, "127.0.0.1:61431", "new-uuid", "new-private", "new-short")
 	var root map[string]any
 	if err := json.Unmarshal(patched, &root); err != nil {
 		t.Fatal(err)

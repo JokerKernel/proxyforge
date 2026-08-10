@@ -711,7 +711,11 @@ func TestGenerateRejectsInvalidSingBoxFallbackGuardOptions(t *testing.T) {
 		opts domain.GenerateOptions
 		want string
 	}{
-		{"port without mode", domain.CoreSingBox, func() domain.GenerateOptions { o := base; o.SingBoxFallbackPort = 4432; return o }(), "必须同时启用"},
+		{"port without mode", domain.CoreSingBox, func() domain.GenerateOptions {
+			o := base
+			o.SingBoxFallbackPort = domain.DefaultSingBoxFallbackPort
+			return o
+		}(), "必须同时启用"},
 		{"same public and fallback port", domain.CoreSingBox, func() domain.GenerateOptions {
 			o := base
 			o.SingBoxFallbackGuard = true
@@ -746,7 +750,11 @@ func TestGenerateRejectsInvalidXrayFallbackGuardOptions(t *testing.T) {
 		opts domain.GenerateOptions
 		want string
 	}{
-		{"port without mode", domain.CoreXray, func() domain.GenerateOptions { o := base; o.XrayFallbackPort = 4431; return o }(), "必须同时启用"},
+		{"port without mode", domain.CoreXray, func() domain.GenerateOptions {
+			o := base
+			o.XrayFallbackPort = domain.DefaultXrayFallbackPort
+			return o
+		}(), "必须同时启用"},
 		{"same public and fallback port", domain.CoreXray, func() domain.GenerateOptions {
 			o := base
 			o.XrayFallbackGuard = true
