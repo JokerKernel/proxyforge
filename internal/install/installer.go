@@ -123,8 +123,7 @@ func (i Installer) PrepareScript(ctx context.Context, scriptURL string, hosts []
 // ExecutePreparedScript writes a validated script to a private temporary file
 // and executes it. Environment entries are applied only to the child process.
 func (i Installer) ExecutePreparedScript(ctx context.Context, script DownloadedScript, environment []string, scriptArgs ...string) error {
-	// 官方内核安装脚本使用清晰的 xray 前缀，便于用户从执行日志识别脚本用途。
-	f, err := os.CreateTemp("", "xray-*.sh")
+	f, err := os.CreateTemp("", "proxyforge-install-*.sh")
 	if err != nil {
 		return err
 	}
