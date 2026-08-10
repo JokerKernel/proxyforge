@@ -695,7 +695,7 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 	for {
 		c.clearScreen()
 		fmt.Fprintf(c.out, "服务端配置管理：%s\n\n", core)
-		fmt.Fprintln(c.out, "1) 生成/更新服务端配置")
+		fmt.Fprintln(c.out, "1) 生成/更新服务端配置（完整覆盖现有配置，不合并原配置）")
 		fmt.Fprintln(c.out, "2) 查看当前配置")
 		fmt.Fprintln(c.out, "3) DNS 设置")
 		fmt.Fprintln(c.out, "0) 返回内核菜单")

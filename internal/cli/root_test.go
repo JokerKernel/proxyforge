@@ -272,7 +272,7 @@ func TestServerConfigMenuShowsCurrentConfig(t *testing.T) {
 	if err := c.serverConfigMenu(context.Background(), domain.CoreSingBox); err != nil {
 		t.Fatal(err)
 	}
-	for _, text := range []string{"服务端配置管理", "查看当前配置", "DNS 设置", "REALITY 私钥", "server-secret"} {
+	for _, text := range []string{"服务端配置管理", "完整覆盖现有配置，不合并原配置", "查看当前配置", "DNS 设置", "REALITY 私钥", "server-secret"} {
 		if !strings.Contains(out.String(), text) {
 			t.Fatalf("server config menu missing %q: %q", text, out.String())
 		}
