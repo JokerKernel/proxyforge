@@ -120,7 +120,6 @@ type routingSettings struct {
 }
 
 type routingRule struct {
-	Type        string   `json:"type"`
 	InboundTag  []string `json:"inboundTag,omitempty"`
 	Domain      []string `json:"domain,omitempty"`
 	IP          []string `json:"ip,omitempty"`
@@ -248,8 +247,8 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 	}
 	routing := privateNetworkRouting()
 	routing.Rules = append([]routingRule{
-		{Type: "field", InboundTag: []string{fallbackGuardInboundTag}, Domain: []string{n.SNI}, OutboundTag: "direct"},
-		{Type: "field", InboundTag: []string{fallbackGuardInboundTag}, OutboundTag: "blocked-private"},
+		{InboundTag: []string{fallbackGuardInboundTag}, Domain: []string{n.SNI}, OutboundTag: "direct"},
+		{InboundTag: []string{fallbackGuardInboundTag}, OutboundTag: "blocked-private"},
 	}, routing.Rules...)
 	v := xrayConfig{
 		Log:       map[string]any{"loglevel": "warning"},
@@ -292,7 +291,7 @@ func privateNetworkRouting() routingSettings {
 	return routingSettings{
 		DomainStrategy: "IPOnDemand",
 		Rules: []routingRule{{
-			Type: "field", IP: xrayBlockedDestinations(), OutboundTag: "blocked-private",
+			IP: xrayBlockedDestinations(), OutboundTag: "blocked-private",
 		}},
 	}
 }
