@@ -67,7 +67,7 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 	c := &commandSet{
 		app: a, in: os.Stdin, reader: bufio.NewReader(os.Stdin), out: stdout, errOut: stderr,
 		probeSNI: app.ProbeSNICandidates, randomIndex: secureRandomIndex,
-		physicalIPs: app.PhysicalPublicAddresses, externalIP: app.PublicAddress,
+		physicalIPs: app.PhysicalInterfaceAddresses, externalIP: app.PublicAddress,
 		currentVersion: strings.SplitN(version, "\n", 2)[0], selfUpdate: updater.Run,
 	}
 	root := &cobra.Command{
@@ -518,7 +518,7 @@ func (c *commandSet) confirmServerConfigOverwrite(core string, interactive bool)
 func (c *commandSet) selectPublicAddress(ctx context.Context) (string, error) {
 	physicalIPs := c.physicalIPs
 	if physicalIPs == nil {
-		physicalIPs = app.PhysicalPublicAddresses
+		physicalIPs = app.PhysicalInterfaceAddresses
 	}
 	externalIP := c.externalIP
 	if externalIP == nil {
@@ -558,22 +558,36 @@ func (c *commandSet) selectPhysicalPublicAddress(addresses []app.PublicInterface
 	if len(addresses) == 0 {
 		return "", fmt.Errorf("物理网卡没有可用公网地址")
 	}
-	if len(addresses) == 1 {
-		return addresses[0].Address, nil
+	public := make([]app.PublicInterfaceAddress, 0, len(addresses))
+	private := make([]app.PublicInterfaceAddress, 0, len(addresses))
+	for _, item := range addresses {
+		if item.Private {
+			private = append(private, item)
+		} else {
+			public = append(public, item)
+		}
 	}
-	fmt.Fprintln(c.out, "检测到多个物理网卡公网地址：")
-	for index, item := range addresses {
+	ordered := append(public, private...)
+	fmt.Fprintln(c.out, "检测到多个物理网卡地址（公网地址优先）：")
+	for index, item := range ordered {
 		family := "IPv4"
 		if strings.Contains(item.Address, ":") {
 			family = "IPv6"
 		}
-		fmt.Fprintf(c.out, "%d) %s  %s（%s）\n", index+1, item.Interface, item.Address, family)
+		scope := "公网"
+		if item.Private {
+			scope = "内网"
+		}
+		fmt.Fprintf(c.out, "%d) %s  %s（%s） %s\n", index+1, item.Interface, item.Address, family, scope)
 	}
-	choice, err := c.chooseNumberCancelable("请选择公网地址", 1, len(addresses), 1)
+	if len(ordered) == 1 {
+		return ordered[0].Address, nil
+	}
+	choice, err := c.chooseNumberCancelable("请选择网卡地址", 1, len(ordered), 1)
 	if err != nil {
 		return "", err
 	}
-	return addresses[choice-1].Address, nil
+	return ordered[choice-1].Address, nil
 }
 
 func (c *commandSet) runGenerate(ctx context.Context, core string, o domain.GenerateOptions) error {

@@ -18,6 +18,7 @@ type interfaceAddressCandidate struct {
 type PublicInterfaceAddress struct {
 	Interface string
 	Address   string
+	Private   bool
 }
 
 // PhysicalPublicAddress returns a public unicast address assigned directly to
@@ -34,6 +35,26 @@ func PhysicalPublicAddress() (string, error) {
 // PhysicalPublicAddresses returns every usable address, ordered with IPv4
 // before IPv6 while preserving the operating system's interface order.
 func PhysicalPublicAddresses() ([]PublicInterfaceAddress, error) {
+	addresses, err := PhysicalInterfaceAddresses()
+	if err != nil {
+		return nil, err
+	}
+	public := make([]PublicInterfaceAddress, 0, len(addresses))
+	for _, address := range addresses {
+		if !address.Private {
+			public = append(public, address)
+		}
+	}
+	if len(public) != 0 {
+		return public, nil
+	}
+	return nil, fmt.Errorf("已启用的物理网卡没有公网 IP（内网/NAT 地址不会使用）")
+}
+
+// PhysicalInterfaceAddresses returns addresses assigned to active physical
+// interfaces. Public addresses are returned first, followed by private/NAT
+// addresses; loopback, virtual and reserved addresses are omitted.
+func PhysicalInterfaceAddresses() ([]PublicInterfaceAddress, error) {
 	interfaces, err := net.Interfaces()
 	if err != nil {
 		return nil, fmt.Errorf("枚举物理网卡: %w", err)
@@ -56,11 +77,11 @@ func PhysicalPublicAddresses() ([]PublicInterfaceAddress, error) {
 		}
 		candidates = append(candidates, candidate)
 	}
-	addresses := physicalPublicAddresses(candidates)
+	addresses := physicalInterfaceAddresses(candidates)
 	if len(addresses) != 0 {
 		return addresses, nil
 	}
-	return nil, fmt.Errorf("已启用的物理网卡没有公网 IP（内网/NAT 地址不会使用）")
+	return nil, fmt.Errorf("已启用的物理网卡没有可用 IP")
 }
 
 func physicalNetworkInterface(name string) bool {
@@ -83,15 +104,15 @@ func interfaceIP(address net.Addr) net.IP {
 	}
 }
 
-func physicalPublicAddresses(candidates []interfaceAddressCandidate) []PublicInterfaceAddress {
-	var ipv4, ipv6 []PublicInterfaceAddress
+func physicalInterfaceAddresses(candidates []interfaceAddressCandidate) []PublicInterfaceAddress {
+	var publicIPv4, publicIPv6, privateIPv4, privateIPv6 []PublicInterfaceAddress
 	seen := make(map[string]struct{})
 	for _, candidate := range candidates {
 		if !candidate.up || candidate.loopback || !candidate.physical {
 			continue
 		}
 		for _, ip := range candidate.addresses {
-			if forbiddenTargetIP(ip) {
+			if !ip.IsGlobalUnicast() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
 				continue
 			}
 			address := ip.String()
@@ -99,13 +120,30 @@ func physicalPublicAddresses(candidates []interfaceAddressCandidate) []PublicInt
 				continue
 			}
 			seen[address] = struct{}{}
-			item := PublicInterfaceAddress{Interface: candidate.name, Address: address}
-			if ip.To4() != nil {
-				ipv4 = append(ipv4, item)
+			item := PublicInterfaceAddress{Interface: candidate.name, Address: address, Private: forbiddenTargetIP(ip)}
+			if item.Private {
+				if ip.To4() != nil {
+					privateIPv4 = append(privateIPv4, item)
+				} else {
+					privateIPv6 = append(privateIPv6, item)
+				}
+			} else if ip.To4() != nil {
+				publicIPv4 = append(publicIPv4, item)
 			} else {
-				ipv6 = append(ipv6, item)
+				publicIPv6 = append(publicIPv6, item)
 			}
 		}
 	}
-	return append(ipv4, ipv6...)
+	return append(append(append(publicIPv4, publicIPv6...), privateIPv4...), privateIPv6...)
+}
+
+func physicalPublicAddresses(candidates []interfaceAddressCandidate) []PublicInterfaceAddress {
+	all := physicalInterfaceAddresses(candidates)
+	public := make([]PublicInterfaceAddress, 0, len(all))
+	for _, address := range all {
+		if !address.Private {
+			public = append(public, address)
+		}
+	}
+	return public
 }
