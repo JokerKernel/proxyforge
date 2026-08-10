@@ -310,7 +310,7 @@ func (c *commandSet) serviceCommand() *cobra.Command {
 func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.GenerateOptions) error {
 	c.clearScreen()
 	fmt.Fprintf(c.out, "生成服务端配置：%s\n\n", core)
-	fmt.Fprintln(c.out, "提示：任意输入步骤输入 q 可取消并返回主菜单。")
+	fmt.Fprintln(c.out, "提示：任意输入步骤输入 q 或 0 可取消并返回主菜单。")
 	if core == domain.CoreSingBox {
 		fmt.Fprintln(c.out, "\n配置模式")
 		fmt.Fprintln(c.out, "1) 标准安全配置（内部 DNS 解析后拦截私网和保留地址）")
@@ -1380,7 +1380,7 @@ func (c *commandSet) chooseNumberInput(label string, min, max, def int, cancelab
 			return 0, err
 		}
 		value := strings.TrimSpace(line)
-		if cancelable && strings.EqualFold(value, "q") {
+		if cancelable && (strings.EqualFold(value, "q") || value == "0") {
 			return 0, errReturnToMenu
 		}
 		if value == "" && def >= min && def <= max {
@@ -1394,7 +1394,7 @@ func (c *commandSet) chooseNumberInput(label string, min, max, def int, cancelab
 			eraseChoiceRetry(c.out, invalidShown)
 		}
 		if cancelable {
-			fmt.Fprintf(c.out, "无效选择，请输入 %d 到 %d 之间的数字，或输入 q 返回主菜单。\n", min, max)
+			fmt.Fprintf(c.out, "无效选择，请输入 %d 到 %d 之间的数字，或输入 q/0 返回主菜单。\n", min, max)
 		} else {
 			fmt.Fprintf(c.out, "无效选择，请输入 %d 到 %d 之间的数字。\n", min, max)
 		}
