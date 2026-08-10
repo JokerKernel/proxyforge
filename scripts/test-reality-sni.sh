@@ -138,7 +138,7 @@ done
 if ((${#filtered_rejected_snis[@]} == 0)); then
   filtered_rejected_snis=('proxyforge-invalid.invalid')
 fi
-total_probes=$((3 + ${#filtered_rejected_snis[@]}))
+total_probes=$((5 + ${#filtered_rejected_snis[@]}))
 
 case ${node_host} in
   \[*\]) endpoint="${node_host}:${node_port}" ;;
@@ -264,6 +264,28 @@ run_http_probe() {
   fi
 }
 
+run_http_host_probe() {
+  local host=$1
+  local output_file http_code http_exit http_url="http://${endpoint}/"
+  probe_number=$((probe_number + 1))
+  output_file="${probe_tmp}/probe-${probe_number}-http-host.log"
+  printf '\n%s[%s/%s]%s %sHTTP Host 伪装测试%s\n' "${color_blue}" "${probe_number}" "${total_probes}" "${color_reset}" "${color_bold}" "${color_reset}"
+  printf '    Host: %s%s%s\n' "${color_cyan}" "${host}" "${color_reset}"
+  set +e
+  curl --noproxy '*' --connect-timeout "${probe_timeout}" --max-time "${probe_timeout}" \
+    --silent --show-error --output /dev/null --write-out '%{http_code}' \
+    -H "Host: ${host}" "${http_url}" >"${output_file}" 2>&1
+  http_exit=$?
+  set -e
+  http_code=$(sed -n 's/.*\([1-5][0-9][0-9]\)$/\1/p' "${output_file}" | tail -n 1)
+  if [[ ${http_exit} -eq 0 && ${http_code} =~ ^[1-5][0-9][0-9]$ ]]; then
+    printf '    %s● 收到 HTTP 响应%s 状态码=%s\n' "${color_red}" "${color_reset}" "${http_code}"
+    return 0
+  fi
+  printf '    %s● 未收到 HTTP 响应%s curl退出码=%d\n' "${color_green}" "${color_reset}" "${http_exit}"
+  return 1
+}
+
 print_header
 printf '%s节点地址%s  %s%s%s\n' "${color_dim}" "${color_reset}" "${color_bold}" "${endpoint}" "${color_reset}"
 printf '%s允许 SNI%s  %s%s%s\n' "${color_dim}" "${color_reset}" "${color_bold}" "${allowed_sni}" "${color_reset}"
@@ -289,6 +311,12 @@ fi
 
 run_http_probe
 if ${http_received}; then
+  leak_count=$((leak_count + 1))
+fi
+
+# 测试 HTTP Host 头：HTTP 没有 TLS SNI，只能通过 Host 头模拟域名。
+run_http_host_probe "${allowed_sni}" || true
+if run_http_host_probe "${filtered_rejected_snis[0]}"; then
   leak_count=$((leak_count + 1))
 fi
 
