@@ -174,7 +174,7 @@ SING_BOX_BIN=/path/to/sing-box XRAY_BIN=/path/to/xray \
   --host 203.0.113.10 --port 443 --sni speed.cloudflare.com
 ```
 
-可重复传入 `--bad-sni DOMAIN` 指定错误 SNI，并用 `--verbose` 查看原始 TLS 输出。黑盒失败能直接证明存在异常放行；黑盒通过时仍建议同步查看 Xray 或 sing-box debug 日志，排除目标站自身拒绝错误 SNI 造成的假通过。
+可重复传入 `--bad-sni DOMAIN` 指定错误 SNI；脚本会显示收到证书的 Subject 和 SAN，使用 `--verbose` 可进一步查看原始 TLS 输出。黑盒失败能直接证明存在异常放行；黑盒通过时仍建议同步查看 Xray 或 sing-box debug 日志，排除目标站自身拒绝错误 SNI 造成的假通过。
 
 在一次性 Debian/Ubuntu 或 Rocky/AlmaLinux systemd VM 中，可设置脚本要求的公网地址、SNI 和两个已人工核对的安装脚本哈希，再以 root 运行 `scripts/smoke-systemd.sh`。它会真实安装两个内核、生成 443/8443 节点、验证两个客户端并确认两项服务同时 active，因此不应在生产主机上直接运行。
 

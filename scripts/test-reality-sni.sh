@@ -84,6 +84,42 @@ done
 command -v openssl >/dev/null 2>&1 || die '未找到 openssl'
 command -v timeout >/dev/null 2>&1 || die '未找到 timeout（需要 GNU coreutils）'
 
+color_reset=''
+color_bold=''
+color_cyan=''
+color_blue=''
+color_green=''
+color_yellow=''
+color_red=''
+color_dim=''
+color_enabled=false
+if [[ -t 1 && ${NO_COLOR:-} != 1 && ${NO_COLOR:-} != true && ${PROXYFORGE_COLOR:-auto} != never ]] || [[ ${PROXYFORGE_COLOR:-auto} == always ]]; then
+  color_enabled=true
+  color_reset=$'\033[0m'
+  color_bold=$'\033[1m'
+  color_cyan=$'\033[36m'
+  color_blue=$'\033[34m'
+  color_green=$'\033[32m'
+  color_yellow=$'\033[33m'
+  color_red=$'\033[31m'
+  color_dim=$'\033[2m'
+fi
+
+print_header() {
+  printf '%s╭────────────────────────────────────────────╮%s\n' "${color_cyan}" "${color_reset}"
+  printf '%s│%s  %sProxyForge REALITY SNI 检测器%s            %s│%s\n' \
+    "${color_cyan}" "${color_reset}" "${color_bold}" "${color_reset}" "${color_cyan}" "${color_reset}"
+  printf '%s╰────────────────────────────────────────────╯%s\n' "${color_cyan}" "${color_reset}"
+}
+
+print_probe_header() {
+  local number=$1
+  local title=$2
+  local sni=$3
+  printf '\n%s[%s/3]%s %s%s%s\n' "${color_blue}" "${number}" "${color_reset}" "${color_bold}" "${title}" "${color_reset}"
+  printf '    SNI: %s%s%s\n' "${color_cyan}" "${sni}" "${color_reset}"
+}
+
 if ((${#rejected_snis[@]} == 0)); then
   rejected_snis=('www.cloudflare.com' 'example.com')
 fi
@@ -114,6 +150,7 @@ trap 'rm -rf -- "${probe_tmp}"' EXIT
 probe_number=0
 probe_has_certificate=false
 probe_received_tls=false
+probe_certificate_info=''
 probe_exit=0
 probe_output=''
 
@@ -132,6 +169,8 @@ run_probe() {
     command+=(-noservername)
   fi
 
+  print_probe_header "${probe_number}" "${label}" "${server_name:-<无 SNI>}"
+
   set +e
   "${command[@]}" </dev/null >"${output_file}" 2>&1
   probe_exit=$?
@@ -140,21 +179,33 @@ run_probe() {
   probe_output=${output_file}
   probe_has_certificate=false
   probe_received_tls=false
+  probe_certificate_info=''
   if grep -Fq -- '-----BEGIN CERTIFICATE-----' "${output_file}"; then
     probe_has_certificate=true
+  fi
+  if ${probe_has_certificate}; then
+    local certificate_file="${output_file}.pem"
+    awk '/-----BEGIN CERTIFICATE-----/{capture=1} capture{print} /-----END CERTIFICATE-----/{exit}' \
+      "${output_file}" >"${certificate_file}"
+    probe_certificate_info=$(openssl x509 -in "${certificate_file}" -noout -subject -issuer -ext subjectAltName 2>/dev/null || true)
   fi
   if ${probe_has_certificate} || grep -Eq '^[[:space:]]*<<< ' "${output_file}"; then
     probe_received_tls=true
   fi
 
   if ${probe_has_certificate}; then
-    printf '[收到证书] %-12s SNI=%s，openssl退出码=%d\n' "${label}" "${server_name:-<无>}" "${probe_exit}"
+    printf '    %s● 收到证书%s  openssl退出码=%d\n' "${color_green}" "${color_reset}" "${probe_exit}"
+    if [[ -n ${probe_certificate_info} ]]; then
+      while IFS= read -r certificate_line; do
+        printf '  证书信息：%s\n' "${certificate_line}"
+      done <<<"${probe_certificate_info}"
+    fi
   elif ${probe_received_tls}; then
-    printf '[收到TLS响应] %-10s SNI=%s，openssl退出码=%d\n' "${label}" "${server_name:-<无>}" "${probe_exit}"
+    printf '    %s● 收到 TLS 响应%s  openssl退出码=%d\n' "${color_red}" "${color_reset}" "${probe_exit}"
   elif ((probe_exit == 124)); then
-    printf '[未收到TLS响应] %-9s SNI=%s，连接超时\n' "${label}" "${server_name:-<无>}"
+    printf '    %s● 未收到 TLS 响应%s 连接超时\n' "${color_green}" "${color_reset}"
   else
-    printf '[未收到TLS响应] %-9s SNI=%s，openssl退出码=%d\n' "${label}" "${server_name:-<无>}" "${probe_exit}"
+    printf '    %s● 未收到 TLS 响应%s 退出码=%d\n' "${color_green}" "${color_reset}" "${probe_exit}"
   fi
 
   if ${verbose}; then
@@ -164,8 +215,10 @@ run_probe() {
   fi
 }
 
-printf '测试节点：%s\n' "${endpoint}"
-printf '允许 SNI：%s\n\n' "${allowed_sni}"
+print_header
+printf '%s节点地址%s  %s%s%s\n' "${color_dim}" "${color_reset}" "${color_bold}" "${endpoint}" "${color_reset}"
+printf '%s允许 SNI%s  %s%s%s\n' "${color_dim}" "${color_reset}" "${color_bold}" "${allowed_sni}" "${color_reset}"
+printf '%s检测模式%s  未认证 TLS 回落探测\n' "${color_dim}" "${color_reset}"
 
 run_probe '允许项' "${allowed_sni}"
 allowed_has_certificate=${probe_has_certificate}
@@ -186,23 +239,29 @@ fi
 
 printf '\n'
 if ((leak_count > 0)); then
-  printf '[结论] SNI 过滤未生效\n'
+  printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_red}" "${color_reset}"
+  printf '%s│  ✗ SNI 过滤未生效%s                         %s│%s\n' "${color_red}" "${color_reset}" "${color_red}" "${color_reset}"
+  printf '%s╰────────────────────────────────────────────╯%s\n' "${color_red}" "${color_reset}"
   printf '检测到 %d 个不应放行的请求收到了 TLS 响应（证书、ServerHello 或 TLS 告警）。\n' "${leak_count}"
-  printf '请检查当前运行配置、路由规则和服务是否已重启。\n'
+  printf '%s请检查当前运行配置、路由规则和服务是否已重启。%s\n' "${color_yellow}" "${color_reset}"
   exit 1
 fi
 
 if ! ${allowed_has_certificate}; then
-  printf '[结论] 无法确认 SNI 过滤状态\n'
+  printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_yellow}" "${color_reset}"
+  printf '%s│  ? 无法确认 SNI 过滤状态%s                 %s│%s\n' "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
+  printf '%s╰────────────────────────────────────────────╯%s\n' "${color_yellow}" "${color_reset}"
   printf '允许的 SNI 也没有收到 TLS 证书，无法证明回落链路正常。\n'
   printf '请检查节点地址、端口、REALITY target、防火墙和目标站 TLS 状态。允许项输出：\n'
   sed -n '1,40p' "${allowed_output}"
   exit 2
 fi
 
-printf '[结论] SNI 过滤生效\n'
+printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_green}" "${color_reset}"
+printf '%s│  ✓ SNI 过滤生效%s                           %s│%s\n' "${color_green}" "${color_reset}" "${color_green}" "${color_reset}"
+printf '%s╰────────────────────────────────────────────╯%s\n' "${color_green}" "${color_reset}"
 printf '允许 SNI 收到证书，错误 SNI 和无 SNI 均未收到 TLS 响应。\n'
-printf '这是外部黑盒检测结果。目标站自身也可能拒绝错误 SNI；如需强确认，请同步查看服务日志：\n'
+printf '%s这是外部黑盒检测结果。目标站自身也可能拒绝错误 SNI；如需强确认，请同步查看服务日志：%s\n' "${color_dim}" "${color_reset}"
 printf '  Xray:    sudo journalctl -u xray -f -o cat\n'
 printf '  sing-box: sudo journalctl -u sing-box -f -o cat\n'
 printf '确认错误请求命中 blackhole/blocked-private 或 reject，而不是连接真实 target。\n'
