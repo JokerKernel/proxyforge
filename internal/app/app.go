@@ -803,18 +803,24 @@ func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.Res
 	n.Target = desiredTarget
 	n.CoreVersion = version
 	n.UpdatedAt = a.Now().UTC()
-	if n.UUID, err = system.UUID(); err != nil {
-		return n, err
+	rotateCredentials := opts.Credentials || (requestedSNI == "" && requestedTarget == "")
+	if !rotateCredentials {
+		n.UUID, n.PrivateKey, n.PublicKey, n.ShortID = current.UUID, current.PrivateKey, current.PublicKey, current.ShortID
 	}
-	if n.ShortID, err = system.ShortID(); err != nil {
-		return n, err
+	if rotateCredentials {
+		if n.UUID, err = system.UUID(); err != nil {
+			return n, err
+		}
+		if n.ShortID, err = system.ShortID(); err != nil {
+			return n, err
+		}
+		keys, err := p.GenerateKeyPair(ctx, a.Runner)
+		if err != nil {
+			return n, err
+		}
+		n.PrivateKey, n.PublicKey = keys.Private, keys.Public
 	}
-	keys, err := p.GenerateKeyPair(ctx, a.Runner)
-	if err != nil {
-		return n, err
-	}
-	n.PrivateKey, n.PublicKey = keys.Private, keys.Public
-	if n.UUID == current.UUID || n.PrivateKey == current.PrivateKey || n.PublicKey == current.PublicKey || n.ShortID == current.ShortID {
+	if rotateCredentials && (n.UUID == current.UUID || n.PrivateKey == current.PrivateKey || n.PublicKey == current.PublicKey || n.ShortID == current.ShortID) {
 		return n, fmt.Errorf("凭据生成器返回了重复值，已拒绝修改现有节点")
 	}
 	configPath := a.Layout.Resolve(p.ConfigPath())

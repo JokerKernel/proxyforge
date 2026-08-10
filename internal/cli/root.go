@@ -1016,8 +1016,8 @@ func (c *commandSet) confirmCleanup(target string) (bool, error) {
 func (c *commandSet) resetMenu(ctx context.Context, core string) (bool, error) {
 	c.clearScreen()
 	fmt.Fprintf(c.out, "重置 %s\n", core)
-	fmt.Fprintln(c.out, "1) 重置节点（重选 SNI/target，并重置凭证）")
-	fmt.Fprintln(c.out, "2) 重置凭证（保留 SNI/target，仅重置 UUID、REALITY 密钥和 short ID）")
+	fmt.Fprintln(c.out, "1) 仅重置 SNI/target（保留 UUID、REALITY 密钥和 short ID）")
+	fmt.Fprintln(c.out, "2) 重置 UUID、REALITY 密钥和 short ID（保留 SNI/target）")
 	fmt.Fprintln(c.out, "0) 返回内核菜单")
 	choice, err := c.chooseNumber("请选择", 0, 2, 1)
 	if err != nil {
@@ -1040,6 +1040,7 @@ func (c *commandSet) resetMenu(ctx context.Context, core string) (bool, error) {
 			fmt.Fprintln(c.out, "已取消节点重置。")
 			return true, nil
 		}
+		opts.Credentials = false
 	} else {
 		c.clearScreen()
 		fmt.Fprintf(c.out, "重置凭证：%s\n\n", core)
@@ -1051,6 +1052,7 @@ func (c *commandSet) resetMenu(ctx context.Context, core string) (bool, error) {
 			fmt.Fprintln(c.out, "已取消凭证重置。")
 			return true, nil
 		}
+		opts.Credentials = true
 	}
 	return true, c.runCredentialReset(ctx, core, opts)
 }
@@ -1097,7 +1099,6 @@ func (c *commandSet) confirmCredentialReset(core string, opts domain.ResetOption
 		"危险操作确认：重置节点",
 		[]string{"目标内核：" + core, "新 SNI：" + opts.SNI, "新 Target：" + opts.Target},
 		confirmationSection{title: "将更新", items: []string{
-			"UUID、REALITY 密钥和 short ID",
 			"受管入站的 SNI 和 target",
 		}},
 		confirmationSection{title: "将保留", items: []string{
@@ -1105,7 +1106,7 @@ func (c *commandSet) confirmCredentialReset(core string, opts domain.ResetOption
 			"修改前会备份当前配置",
 		}},
 		confirmationSection{title: "重要影响", items: []string{
-			"所有旧客户端配置会立即失效",
+			"所有旧客户端配置中的 SNI/target 会立即失效；UUID、密钥和 short ID 保持不变",
 		}},
 	)
 	return c.confirm("重置 " + core + " 节点？")
@@ -1138,7 +1139,11 @@ func (c *commandSet) runCredentialReset(ctx context.Context, core string, opts d
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(c.out, "%s 节点凭据已全部重置，SNI=%s，target=%s；请重新导出并分发客户端配置。\n", core, n.SNI, n.Target)
+	if opts.Credentials {
+		fmt.Fprintf(c.out, "%s 节点凭据已全部重置，SNI=%s，target=%s；请重新导出并分发客户端配置。\n", core, n.SNI, n.Target)
+	} else {
+		fmt.Fprintf(c.out, "%s 节点 SNI/target 已重置为 %s / %s。\n", core, n.SNI, n.Target)
+	}
 	return nil
 }
 

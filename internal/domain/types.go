@@ -65,6 +65,9 @@ func DefaultInboundTag(core string) string {
 type ResetOptions struct {
 	SNI    string
 	Target string
+	// Credentials controls whether UUID/REALITY key material/short ID are rotated.
+	// Zero value preserves the historical credential-reset behavior.
+	Credentials bool
 }
 
 type KeyPair struct {
