@@ -152,6 +152,7 @@ trap 'rm -rf -- "${probe_tmp}"' EXIT
 probe_number=0
 probe_has_certificate=false
 probe_received_tls=false
+probe_connected=false
 probe_certificate_matches_sni=false
 probe_certificate_info=''
 probe_exit=0
@@ -182,6 +183,7 @@ run_probe() {
   probe_output=${output_file}
   probe_has_certificate=false
   probe_received_tls=false
+  probe_connected=false
   probe_certificate_matches_sni=false
   probe_certificate_info=''
   if grep -Fq -- '-----BEGIN CERTIFICATE-----' "${output_file}"; then
@@ -199,6 +201,9 @@ run_probe() {
   if ${probe_has_certificate} || grep -Eq '^[[:space:]]*<<< ' "${output_file}"; then
     probe_received_tls=true
   fi
+  if ${probe_received_tls} || grep -Fq -- 'CONNECTED(' "${output_file}"; then
+    probe_connected=true
+  fi
 
   if ${probe_has_certificate}; then
     printf '    %s● 收到证书%s  openssl退出码=%d\n' "${color_green}" "${color_reset}" "${probe_exit}"
@@ -215,7 +220,7 @@ run_probe() {
       done <<<"${probe_certificate_info}"
     fi
   elif ${probe_received_tls}; then
-    printf '    %s● 收到 TLS 响应%s  openssl退出码=%d\n' "${color_red}" "${color_reset}" "${probe_exit}"
+    printf '    %s● 收到 TLS 数据但未获得证书%s  openssl退出码=%d\n' "${color_yellow}" "${color_reset}" "${probe_exit}"
   elif ((probe_exit == 124)); then
     printf '    %s● 未收到 TLS 响应%s 连接超时\n' "${color_red}" "${color_reset}"
   else
@@ -253,7 +258,7 @@ run_http_probe() {
   fi
 
   if ${http_received}; then
-    printf '    %s● 收到 HTTP 响应%s 状态码=%s\n' "${color_green}" "${color_reset}" "${http_code}"
+    print_http_result "${http_code}"
   else
     printf '    %s● 未收到 HTTP 响应%s curl退出码=%d\n' "${color_red}" "${color_reset}" "${http_exit}"
   fi
@@ -262,6 +267,34 @@ run_http_probe() {
     sed -n '1,80p' "${output_file}"
     printf '%s\n' '-------------------------'
   fi
+}
+
+print_http_result() {
+  local http_code=$1
+  local description='服务端响应'
+  local result_color=${color_yellow}
+
+  case ${http_code} in
+    2??)
+      description='请求成功'
+      result_color=${color_red}
+      ;;
+    3??)
+      description='重定向'
+      result_color=${color_red}
+      ;;
+    400)
+      description='错误的请求'
+      ;;
+    4??)
+      description='客户端请求错误'
+      ;;
+    5??)
+      description='服务端错误'
+      ;;
+  esac
+  printf '    %s● 收到 HTTP 响应%s 状态码=%s（%s）\n' \
+    "${result_color}" "${color_reset}" "${http_code}" "${description}"
 }
 
 run_http_host_probe() {
@@ -279,11 +312,27 @@ run_http_host_probe() {
   set -e
   http_code=$(sed -n 's/.*\([1-5][0-9][0-9]\)$/\1/p' "${output_file}" | tail -n 1)
   if [[ ${http_exit} -eq 0 && ${http_code} =~ ^[1-5][0-9][0-9]$ ]]; then
-    printf '    %s● 收到 HTTP 响应%s 状态码=%s\n' "${color_green}" "${color_reset}" "${http_code}"
+    print_http_result "${http_code}"
     return 0
   fi
   printf '    %s● 未收到 HTTP 响应%s curl退出码=%d\n' "${color_red}" "${color_reset}" "${http_exit}"
   return 1
+}
+
+print_http_summary() {
+  if ((http_response_count > 0)); then
+    printf '%sHTTP 附加探测中有 %d 个请求收到了响应；该结果不改变 TLS SNI 判定。%s\n' \
+      "${color_yellow}" "${http_response_count}" "${color_reset}"
+  else
+    printf 'HTTP 明文附加探测均未收到响应。\n'
+  fi
+}
+
+print_log_hint() {
+  printf '%s这是外部黑盒检测结果。目标站自身也可能拒绝错误 SNI；如需强确认，请同步查看服务日志：%s\n' "${color_dim}" "${color_reset}"
+  printf '  Xray:    sudo journalctl -u xray -f -o cat\n'
+  printf '  sing-box: sudo journalctl -u sing-box -f -o cat\n'
+  printf '确认错误请求命中 blackhole/blocked-private 或 reject，而不是连接真实 target。\n'
 }
 
 print_header
@@ -295,48 +344,82 @@ run_probe '允许项' "${allowed_sni}"
 allowed_has_certificate=${probe_has_certificate}
 allowed_certificate_matches_sni=${probe_certificate_matches_sni}
 allowed_output=${probe_output}
+tls_connection_seen=${probe_connected}
 
-leak_count=0
+rejected_sni_certificate_count=0
 for rejected_sni in "${filtered_rejected_snis[@]}"; do
   run_probe '错误项' "${rejected_sni}"
-  if ${probe_received_tls}; then
-    leak_count=$((leak_count + 1))
+  if ${probe_has_certificate}; then
+    rejected_sni_certificate_count=$((rejected_sni_certificate_count + 1))
+  fi
+  if ${probe_connected}; then
+    tls_connection_seen=true
   fi
 done
 
 run_probe '无 SNI' ''
-if ${probe_received_tls}; then
-  leak_count=$((leak_count + 1))
+no_sni_has_certificate=${probe_has_certificate}
+if ${probe_connected}; then
+  tls_connection_seen=true
 fi
 
+http_response_count=0
 run_http_probe
 if ${http_received}; then
-  leak_count=$((leak_count + 1))
+  http_response_count=$((http_response_count + 1))
 fi
 
 # 测试 HTTP Host 头：HTTP 没有 TLS SNI，只能通过 Host 头模拟域名。
-run_http_host_probe "${allowed_sni}" || true
+if run_http_host_probe "${allowed_sni}"; then
+  http_response_count=$((http_response_count + 1))
+fi
 if run_http_host_probe "${filtered_rejected_snis[0]}"; then
-  leak_count=$((leak_count + 1))
+  http_response_count=$((http_response_count + 1))
+fi
+
+tls_certificate_count=${rejected_sni_certificate_count}
+if ${allowed_has_certificate}; then
+  tls_certificate_count=$((tls_certificate_count + 1))
+fi
+if ${no_sni_has_certificate}; then
+  tls_certificate_count=$((tls_certificate_count + 1))
 fi
 
 printf '\n'
-if ((leak_count > 0)); then
+if ((tls_certificate_count == 0)); then
+  printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_yellow}" "${color_reset}"
+  printf '%s│  ? 未获得任何 TLS 证书%s                   %s│%s\n' "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
+  printf '%s╰────────────────────────────────────────────╯%s\n' "${color_yellow}" "${color_reset}"
+  printf '允许 SNI、错误 SNI 和无 SNI 探测均未获得证书。\n'
+  if ${tls_connection_seen} || ((http_response_count > 0)); then
+    printf '节点端口存在连接或响应，更可能是所有 TLS 探测均被拒绝，或填写的 SNI 与当前配置不一致。\n'
+  else
+    printf '节点端口可能无法访问，也可能所有探测都被防火墙或增强过滤静默丢弃。\n'
+  fi
+  print_http_summary
+  printf '允许项原始输出：\n'
+  sed -n '1,40p' "${allowed_output}"
+  exit 2
+fi
+
+if ((rejected_sni_certificate_count > 0)); then
   printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_red}" "${color_reset}"
   printf '%s│  ✗ SNI 过滤未生效%s                         %s│%s\n' "${color_red}" "${color_reset}" "${color_red}" "${color_reset}"
   printf '%s╰────────────────────────────────────────────╯%s\n' "${color_red}" "${color_reset}"
-  printf '检测到 %d 个不应放行的请求收到了 TLS/HTTP 响应。\n' "${leak_count}"
+  printf '检测到 %d 个错误 SNI 获得了 TLS 证书。\n' "${rejected_sni_certificate_count}"
+  print_http_summary
   printf '%s请检查当前运行配置、路由规则和服务是否已重启。%s\n' "${color_yellow}" "${color_reset}"
   exit 1
 fi
 
 if ! ${allowed_has_certificate}; then
   printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_yellow}" "${color_reset}"
-  printf '%s│  ? 无法确认 SNI 过滤状态%s                 %s│%s\n' "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
+  printf '%s│  △ 检测到 SNI 过滤行为%s                   %s│%s\n' "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
   printf '%s╰────────────────────────────────────────────╯%s\n' "${color_yellow}" "${color_reset}"
-  printf '允许的 SNI 也没有收到 TLS 证书，无法证明回落链路正常。\n'
-  printf '请检查节点地址、端口、REALITY target、防火墙和目标站 TLS 状态。允许项输出：\n'
-  sed -n '1,40p' "${allowed_output}"
+  printf '带 SNI 的允许项和错误项均未获得证书，但无 SNI 探测获得了证书。\n'
+  printf '这与 SNI 过滤已经启用、但填写的 SNI 不是当前允许回落域名的情况一致。\n'
+  print_http_summary
+  print_log_hint
   exit 2
 fi
 
@@ -345,14 +428,22 @@ if ! ${allowed_certificate_matches_sni}; then
   printf '%s│  ? 无法确认 SNI 过滤状态%s                 %s│%s\n' "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
   printf '%s╰────────────────────────────────────────────╯%s\n' "${color_yellow}" "${color_reset}"
   printf '允许 SNI 收到了证书，但证书 SAN 不包含该 SNI。请确认 target 是否允许 SNI 与证书域名不同。\n'
+  print_http_summary
   exit 2
 fi
 
 printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_green}" "${color_reset}"
-printf '%s│  ✓ SNI 过滤生效%s                           %s│%s\n' "${color_green}" "${color_reset}" "${color_green}" "${color_reset}"
+if ${no_sni_has_certificate}; then
+  printf '%s│  ✓ SNI 过滤生效%s                           %s│%s\n' "${color_green}" "${color_reset}" "${color_green}" "${color_reset}"
+else
+  printf '%s│  ✓ 增强 SNI 过滤生效%s                      %s│%s\n' "${color_green}" "${color_reset}" "${color_green}" "${color_reset}"
+fi
 printf '%s╰────────────────────────────────────────────╯%s\n' "${color_green}" "${color_reset}"
-printf '允许 SNI 收到证书，错误 SNI、无 SNI 和 HTTP 明文均未收到响应。\n'
-printf '%s这是外部黑盒检测结果。目标站自身也可能拒绝错误 SNI；如需强确认，请同步查看服务日志：%s\n' "${color_dim}" "${color_reset}"
-printf '  Xray:    sudo journalctl -u xray -f -o cat\n'
-printf '  sing-box: sudo journalctl -u sing-box -f -o cat\n'
-printf '确认错误请求命中 blackhole/blocked-private 或 reject，而不是连接真实 target。\n'
+printf '允许 SNI 收到匹配证书，%d 个错误 SNI 均未获得证书。\n' "${#filtered_rejected_snis[@]}"
+if ${no_sni_has_certificate}; then
+  printf '%s无 SNI 探测仍获得了证书，说明无 SNI 回落链路保持开放。%s\n' "${color_yellow}" "${color_reset}"
+else
+  printf '无 SNI 探测也未获得证书，说明无 SNI 访问已被增强过滤拒绝。\n'
+fi
+print_http_summary
+print_log_hint

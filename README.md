@@ -167,7 +167,7 @@ SING_BOX_BIN=/path/to/sing-box XRAY_BIN=/path/to/xray \
   go test -v ./internal/integration
 ```
 
-可从节点之外的机器使用黑盒探测脚本检查回落防偷跑规则。脚本会验证允许 SNI 能获得目标站证书，同时逐个测试错误 SNI、无 SNI 和 HTTP 明文访问无法获得响应；测试不需要 UUID、REALITY 公钥或 short ID，也不会修改服务端配置：
+可从节点之外的机器使用黑盒探测脚本检查 REALITY SNI 过滤。脚本会验证允许 SNI 能获得匹配的目标站证书，并确认错误 TLS SNI 与无 SNI 访问是否能获得证书；HTTP 明文访问作为附加暴露面单独报告。测试不需要 UUID、REALITY 公钥或 short ID，也不会修改服务端配置：
 
 ```bash
 ./scripts/test-reality-sni.sh --host YOUR_SERVER_IP --port 443 --sni YOUR_ALLOWED_SNI
@@ -196,7 +196,9 @@ wget --https-only \
 ~/proxyforge-test-reality-sni.sh --host YOUR_SERVER_IP --port 443 --sni YOUR_ALLOWED_SNI
 ```
 
-可重复传入 `--bad-sni DOMAIN` 指定错误 SNI；脚本会显示收到证书的 Subject 和 SAN，使用 `--verbose` 可进一步查看原始 TLS 输出。黑盒失败能直接证明存在异常放行；黑盒通过时仍建议同步查看 Xray 或 sing-box debug 日志，排除目标站自身拒绝错误 SNI 造成的假通过。
+可重复传入 `--bad-sni DOMAIN` 指定错误 SNI；脚本会显示收到证书的 Subject 和 SAN，使用 `--verbose` 可进一步查看原始 TLS 输出。允许项获得 SAN 匹配证书、错误项和无 SNI 均无证书时判定为“增强 SNI 过滤生效”；允许项与错误项均无证书、仅无 SNI 获得证书时，提示 SNI 过滤已经存在，但命令中填写的 SNI 可能不是当前允许回落域名；四类 TLS 探测都无证书时，提示端口可能不可访问或所有探测均被静默过滤。TLS Alert 等无证书响应不算异常放行。
+
+HTTP 状态码会附带对应含义，例如 `400（错误的请求）`，同时仍会记录服务端存在响应；HTTP 附加结果不会改变 TLS SNI 判定。错误 SNI 获得证书能直接证明存在异常放行；黑盒通过时仍建议同步查看 Xray 或 sing-box debug 日志，排除目标站自身拒绝错误 SNI 造成的假通过。
 
 在一次性 Debian/Ubuntu 或 Rocky/AlmaLinux systemd VM 中，可设置脚本要求的公网地址、SNI 和两个已人工核对的安装脚本哈希，再以 root 运行 `scripts/smoke-systemd.sh`。它会真实安装两个内核、生成 443/8443 节点、验证两个客户端并确认两项服务同时 active，因此不应在生产主机上直接运行。
 
