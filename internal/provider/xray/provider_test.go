@@ -1,6 +1,7 @@
 package xray
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -61,6 +62,41 @@ func TestRenderedConfigsExplicitlyUseSystemDNS(t *testing.T) {
 		if !ok || len(servers) != 1 || servers[0] != "localhost" {
 			t.Fatalf("dns servers=%#v", dns["servers"])
 		}
+	}
+}
+
+func TestRenderedRealityStreamFieldOrder(t *testing.T) {
+	p := New()
+	n := domain.NodeSpec{
+		InboundTag: "xray-one", Server: "203.0.113.10", Port: 443, SNI: "example.com", Target: "example.com:443",
+		UserName: "one", UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private", PublicKey: "public",
+		ShortID: "0123456789abcdef", XrayFallbackPort: domain.DefaultXrayFallbackPort,
+	}
+	renders := []struct {
+		name   string
+		render func() ([]byte, error)
+	}{
+		{"server", func() ([]byte, error) { return p.RenderServer(n) }},
+		{"fallback guard server", func() ([]byte, error) {
+			guard := n
+			guard.XrayFallbackGuard = true
+			return p.RenderServer(guard)
+		}},
+		{"client", func() ([]byte, error) { return p.RenderClient(n) }},
+	}
+	for _, tt := range renders {
+		t.Run(tt.name, func(t *testing.T) {
+			config, err := tt.render()
+			if err != nil {
+				t.Fatal(err)
+			}
+			networkAt := bytes.Index(config, []byte(`"network": "raw"`))
+			securityAt := bytes.Index(config, []byte(`"security": "reality"`))
+			realityAt := bytes.Index(config, []byte(`"realitySettings"`))
+			if networkAt < 0 || securityAt < networkAt || realityAt < securityAt {
+				t.Fatalf("unexpected streamSettings field order: %s", config)
+			}
+		})
 	}
 }
 

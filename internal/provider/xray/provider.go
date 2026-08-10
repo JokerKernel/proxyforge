@@ -14,6 +14,12 @@ import (
 
 type Provider struct{}
 
+type realityStreamSettings struct {
+	Network         string         `json:"network"`
+	Security        string         `json:"security"`
+	RealitySettings map[string]any `json:"realitySettings"`
+}
+
 func New() *Provider                  { return &Provider{} }
 func (*Provider) Name() string        { return domain.CoreXray }
 func (*Provider) Binary() string      { return "xray" }
@@ -96,7 +102,7 @@ func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 		"inbounds": []any{map[string]any{
 			"listen": "0.0.0.0", "port": n.Port, "protocol": "vless", "tag": n.InboundTag,
 			"settings": map[string]any{"clients": []any{map[string]any{"email": n.UserName, "id": n.UUID, "flow": domain.VisionFlow}}, "decryption": "none"},
-			"streamSettings": map[string]any{"network": "raw", "security": "reality", "realitySettings": map[string]any{
+			"streamSettings": realityStreamSettings{Network: "raw", Security: "reality", RealitySettings: map[string]any{
 				"show": false, "target": n.Target, "xver": 0, "serverNames": []string{n.SNI}, "privateKey": n.PrivateKey, "shortIds": []string{n.ShortID},
 			}},
 		}},
@@ -125,7 +131,7 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 	vless := map[string]any{
 		"listen": "0.0.0.0", "port": n.Port, "protocol": "vless", "tag": n.InboundTag,
 		"settings": map[string]any{"clients": []any{map[string]any{"email": n.UserName, "id": n.UUID, "flow": domain.VisionFlow}}, "decryption": "none"},
-		"streamSettings": map[string]any{"network": "raw", "security": "reality", "realitySettings": map[string]any{
+		"streamSettings": realityStreamSettings{Network: "raw", Security: "reality", RealitySettings: map[string]any{
 			"show": false, "target": net.JoinHostPort("127.0.0.1", strconv.Itoa(n.XrayFallbackPort)), "xver": 0,
 			"serverNames": []string{n.SNI}, "privateKey": n.PrivateKey, "shortIds": []string{n.ShortID},
 		}},
@@ -159,7 +165,7 @@ func (*Provider) RenderClient(n domain.NodeSpec) ([]byte, error) {
 			"protocol": "vless", "tag": "proxy", "settings": map[string]any{"vnext": []any{map[string]any{
 				"address": n.Server, "port": n.Port, "users": []any{map[string]any{"id": n.UUID, "encryption": "none", "flow": domain.VisionFlow}},
 			}}},
-			"streamSettings": map[string]any{"network": "raw", "security": "reality", "realitySettings": map[string]any{
+			"streamSettings": realityStreamSettings{Network: "raw", Security: "reality", RealitySettings: map[string]any{
 				"fingerprint": "chrome", "serverName": n.SNI, "password": n.PublicKey, "shortId": n.ShortID, "spiderX": "/",
 			}},
 		}, blockedOutbound()},
