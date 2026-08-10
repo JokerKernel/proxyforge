@@ -1478,9 +1478,9 @@ func (c *commandSet) confirmInput(message string, cancelable, defaultYes bool) (
 	fmt.Fprintln(c.out, strings.TrimSpace(message))
 	for {
 		if defaultYes {
-			fmt.Fprint(c.out, "请输入 yes/y 确认，也可输入 1（直接回车默认 yes），输入 q 返回当前菜单，也可输入 0： ")
+			fmt.Fprint(c.out, "确认操作？[Y/1=确认，Q/0=返回，回车=确认]： ")
 		} else {
-			fmt.Fprint(c.out, "请输入 yes/y 确认，也可输入 1，输入 q 返回当前菜单，也可输入 0： ")
+			fmt.Fprint(c.out, "确认操作？[Y/1=确认，Q/0=返回]： ")
 		}
 		line, err := c.reader.ReadString('\n')
 		if err != nil && len(line) == 0 {
