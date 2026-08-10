@@ -167,7 +167,7 @@ SING_BOX_BIN=/path/to/sing-box XRAY_BIN=/path/to/xray \
   go test -v ./internal/integration
 ```
 
-可从节点之外的机器使用黑盒探测脚本检查回落防偷跑规则。脚本会验证允许 SNI 能获得目标站证书，同时确认错误 SNI 和无 SNI 无法获得 TLS 响应；测试不需要 UUID、REALITY 公钥或 short ID，也不会修改服务端配置：
+可从节点之外的机器使用黑盒探测脚本检查回落防偷跑规则。脚本会验证允许 SNI 能获得目标站证书，同时逐个测试错误 SNI、无 SNI 和 HTTP 明文访问无法获得响应；测试不需要 UUID、REALITY 公钥或 short ID，也不会修改服务端配置：
 
 ```bash
 ./scripts/test-reality-sni.sh --host YOUR_SERVER_IP --port 443 --sni YOUR_ALLOWED_SNI

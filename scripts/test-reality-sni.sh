@@ -83,6 +83,7 @@ done
 
 command -v openssl >/dev/null 2>&1 || die '未找到 openssl'
 command -v timeout >/dev/null 2>&1 || die '未找到 timeout（需要 GNU coreutils）'
+command -v curl >/dev/null 2>&1 || die '未找到 curl'
 
 color_reset=''
 color_bold=''
@@ -137,7 +138,7 @@ done
 if ((${#filtered_rejected_snis[@]} == 0)); then
   filtered_rejected_snis=('proxyforge-invalid.invalid')
 fi
-total_probes=$((2 + ${#filtered_rejected_snis[@]}))
+total_probes=$((3 + ${#filtered_rejected_snis[@]}))
 
 case ${node_host} in
   \[*\]) endpoint="${node_host}:${node_port}" ;;
@@ -228,6 +229,41 @@ run_probe() {
   fi
 }
 
+run_http_probe() {
+  local output_file
+  local http_code
+  local http_exit
+  local http_url="http://${endpoint}/"
+
+  probe_number=$((probe_number + 1))
+  output_file="${probe_tmp}/probe-${probe_number}-http.log"
+  printf '\n%s[%s/%s]%s %sHTTP 明文访问%s\n' "${color_blue}" "${probe_number}" "${total_probes}" "${color_reset}" "${color_bold}" "${color_reset}"
+  printf '    URL: %s%s%s\n' "${color_cyan}" "${http_url}" "${color_reset}"
+
+  set +e
+  curl --noproxy '*' --connect-timeout "${probe_timeout}" --max-time "${probe_timeout}" \
+    --silent --show-error --output /dev/null --write-out '%{http_code}' \
+    "${http_url}" >"${output_file}" 2>&1
+  http_exit=$?
+  set -e
+  http_code=$(sed -n 's/.*\([1-5][0-9][0-9]\)$/\1/p' "${output_file}" | tail -n 1)
+  http_received=false
+  if [[ ${http_exit} -eq 0 && ${http_code} =~ ^[1-5][0-9][0-9]$ ]]; then
+    http_received=true
+  fi
+
+  if ${http_received}; then
+    printf '    %s● 收到 HTTP 响应%s 状态码=%s\n' "${color_red}" "${color_reset}" "${http_code}"
+  else
+    printf '    %s● 未收到 HTTP 响应%s curl退出码=%d\n' "${color_green}" "${color_reset}" "${http_exit}"
+  fi
+  if ${verbose}; then
+    printf '%s\n' '----- HTTP 原始输出 -----'
+    sed -n '1,80p' "${output_file}"
+    printf '%s\n' '-------------------------'
+  fi
+}
+
 print_header
 printf '%s节点地址%s  %s%s%s\n' "${color_dim}" "${color_reset}" "${color_bold}" "${endpoint}" "${color_reset}"
 printf '%s允许 SNI%s  %s%s%s\n' "${color_dim}" "${color_reset}" "${color_bold}" "${allowed_sni}" "${color_reset}"
@@ -251,12 +287,17 @@ if ${probe_received_tls}; then
   leak_count=$((leak_count + 1))
 fi
 
+run_http_probe
+if ${http_received}; then
+  leak_count=$((leak_count + 1))
+fi
+
 printf '\n'
 if ((leak_count > 0)); then
   printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_red}" "${color_reset}"
   printf '%s│  ✗ SNI 过滤未生效%s                         %s│%s\n' "${color_red}" "${color_reset}" "${color_red}" "${color_reset}"
   printf '%s╰────────────────────────────────────────────╯%s\n' "${color_red}" "${color_reset}"
-  printf '检测到 %d 个不应放行的请求收到了 TLS 响应（证书、ServerHello 或 TLS 告警）。\n' "${leak_count}"
+  printf '检测到 %d 个不应放行的请求收到了 TLS/HTTP 响应。\n' "${leak_count}"
   printf '%s请检查当前运行配置、路由规则和服务是否已重启。%s\n' "${color_yellow}" "${color_reset}"
   exit 1
 fi
@@ -282,7 +323,7 @@ fi
 printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_green}" "${color_reset}"
 printf '%s│  ✓ SNI 过滤生效%s                           %s│%s\n' "${color_green}" "${color_reset}" "${color_green}" "${color_reset}"
 printf '%s╰────────────────────────────────────────────╯%s\n' "${color_green}" "${color_reset}"
-printf '允许 SNI 收到证书，错误 SNI 和无 SNI 均未收到 TLS 响应。\n'
+printf '允许 SNI 收到证书，错误 SNI、无 SNI 和 HTTP 明文均未收到响应。\n'
 printf '%s这是外部黑盒检测结果。目标站自身也可能拒绝错误 SNI；如需强确认，请同步查看服务日志：%s\n' "${color_dim}" "${color_reset}"
 printf '  Xray:    sudo journalctl -u xray -f -o cat\n'
 printf '  sing-box: sudo journalctl -u sing-box -f -o cat\n'

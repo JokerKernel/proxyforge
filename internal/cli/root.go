@@ -682,6 +682,14 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 				fmt.Fprintln(c.out, "已取消卸载。")
 			}
 		}
+		if errors.Is(err, errReturnToMenu) {
+			err = nil
+			if choice == 1 {
+				fmt.Fprintln(c.out, "已取消安装/升级。")
+			} else if choice == 6 {
+				fmt.Fprintln(c.out, "已取消卸载。")
+			}
+		}
 		if err != nil {
 			c.printMenuError(err)
 		}
@@ -1448,25 +1456,28 @@ func (c *commandSet) printConfirmationPanel(title string, details []string, sect
 
 func (c *commandSet) confirmInput(message string, cancelable, defaultYes bool) (bool, error) {
 	fmt.Fprintln(c.out, strings.TrimSpace(message))
-	if cancelable && defaultYes {
-		fmt.Fprint(c.out, "请输入 yes/y 确认（直接回车默认 yes），输入 q 返回当前菜单；其他输入取消： ")
-	} else if cancelable {
-		fmt.Fprint(c.out, "请输入 yes/y 确认，输入 q 返回当前菜单；其他输入取消： ")
-	} else {
-		fmt.Fprint(c.out, "请输入 yes/y 确认；其他输入取消： ")
+	for {
+		if defaultYes {
+			fmt.Fprint(c.out, "请输入 yes/y 确认（直接回车默认 yes），输入 q 返回当前菜单： ")
+		} else {
+			fmt.Fprint(c.out, "请输入 yes/y 确认，输入 q 返回当前菜单： ")
+		}
+		line, err := c.reader.ReadString('\n')
+		if err != nil && len(line) == 0 {
+			return false, err
+		}
+		value := strings.TrimSpace(line)
+		if strings.EqualFold(value, "q") {
+			return false, errReturnToMenu
+		}
+		if defaultYes && value == "" {
+			return true, nil
+		}
+		if strings.EqualFold(value, "yes") || strings.EqualFold(value, "y") {
+			return true, nil
+		}
+		fmt.Fprintln(c.out, "输入无效，请输入 yes/y 确认，或输入 q 返回当前菜单。")
 	}
-	line, err := c.reader.ReadString('\n')
-	if err != nil && len(line) == 0 {
-		return false, err
-	}
-	value := strings.TrimSpace(line)
-	if cancelable && strings.EqualFold(value, "q") {
-		return false, errReturnToMenu
-	}
-	if defaultYes && value == "" {
-		return true, nil
-	}
-	return strings.EqualFold(value, "yes") || strings.EqualFold(value, "y"), nil
 }
 
 func readerInteractive(r io.Reader) bool {

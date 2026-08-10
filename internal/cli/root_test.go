@@ -353,7 +353,7 @@ func TestExistingServerConfigRequiresOverwriteConfirmation(t *testing.T) {
 	markCoreInstalled(a)
 	t.Run("interactive cancel", func(t *testing.T) {
 		var out bytes.Buffer
-		c := &commandSet{app: a, reader: bufio.NewReader(strings.NewReader("n\n")), out: &out}
+		c := &commandSet{app: a, reader: bufio.NewReader(strings.NewReader("q\n")), out: &out}
 		err := c.confirmServerConfigOverwrite(domain.CoreSingBox, true)
 		if !errors.Is(err, errReturnToMenu) || !strings.Contains(out.String(), "完整覆盖") {
 			t.Fatalf("error=%v output=%q", err, out.String())
@@ -475,7 +475,7 @@ func TestInstallConfirmationDescribesSystemChanges(t *testing.T) {
 	for _, want := range []string{
 		"操作确认：安装/升级内核", "目标内核：sing-box", "将执行：", "配置保护：", "安全确认：",
 		"安装或升级 sing-box", "内核二进制", "systemd unit", "现有配置会先备份",
-		"请输入 yes/y 确认；其他输入取消",
+		"请输入 yes/y 确认，输入 q 返回当前菜单",
 	} {
 		if !ok || !strings.Contains(out.String(), want) {
 			t.Fatalf("confirmed=%v output missing %q: %q", ok, want, out.String())
@@ -486,7 +486,7 @@ func TestInstallConfirmationDescribesSystemChanges(t *testing.T) {
 func TestCoreMenuCanCancelInstallBeforeCallingApp(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("1\nn\n\n")),
+		reader: bufio.NewReader(strings.NewReader("1\nq\n\n")),
 		out:    &out,
 	}
 	if err := c.coreMenu(context.Background(), domain.CoreSingBox); err != nil {
@@ -508,15 +508,21 @@ func TestConfirmAcceptsGlobalAffirmativeForms(t *testing.T) {
 			}
 		})
 	}
-	for _, input := range []string{"n\n", "no\n", "\n"} {
-		t.Run("reject_"+strings.TrimSpace(input), func(t *testing.T) {
-			c := &commandSet{reader: bufio.NewReader(strings.NewReader(input)), out: io.Discard}
-			ok, err := c.confirm("confirm")
-			if err != nil || ok {
-				t.Fatalf("input=%q confirmed=%v error=%v", input, ok, err)
-			}
-		})
-	}
+	t.Run("invalid input retries", func(t *testing.T) {
+		var out bytes.Buffer
+		c := &commandSet{reader: bufio.NewReader(strings.NewReader("n\ny\n")), out: &out}
+		ok, err := c.confirm("confirm")
+		if err != nil || !ok || !strings.Contains(out.String(), "输入无效，请输入 yes/y") {
+			t.Fatalf("confirmed=%v error=%v output=%q", ok, err, out.String())
+		}
+	})
+	t.Run("q returns menu", func(t *testing.T) {
+		c := &commandSet{reader: bufio.NewReader(strings.NewReader("q\n")), out: io.Discard}
+		ok, err := c.confirm("confirm")
+		if !errors.Is(err, errReturnToMenu) || ok {
+			t.Fatalf("confirmed=%v error=%v", ok, err)
+		}
+	})
 }
 
 func TestCancelableGenerateInputsRecognizeQ(t *testing.T) {
