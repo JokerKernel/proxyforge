@@ -41,7 +41,6 @@ type commandSet struct {
 	errOut           io.Writer
 	yes              bool
 	probeSNI         sniCandidateProbeFunc
-	randomIndex      func(int) int
 	physicalIPs      func() ([]app.PublicInterfaceAddress, error)
 	externalIP       func(context.Context) (string, error)
 	interruptContext func(context.Context) (context.Context, context.CancelFunc)
@@ -66,7 +65,7 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 	updater := selfupdate.Updater{Installer: a.Installer, Output: stdout}
 	c := &commandSet{
 		app: a, in: os.Stdin, reader: bufio.NewReader(os.Stdin), out: stdout, errOut: stderr,
-		probeSNI: app.ProbeSNICandidates, randomIndex: secureRandomIndex,
+		probeSNI:    app.ProbeSNICandidates,
 		physicalIPs: app.PhysicalInterfaceAddresses, externalIP: app.PublicAddress,
 		currentVersion: strings.SplitN(version, "\n", 2)[0], selfUpdate: updater.Run,
 	}
@@ -1386,7 +1385,7 @@ func (c *commandSet) chooseNumberInput(label string, min, max, def int, cancelab
 			return 0, err
 		}
 		value := strings.TrimSpace(line)
-		if cancelable && (strings.EqualFold(value, "q") || value == "0") {
+		if cancelable && (strings.EqualFold(value, "q") || (value == "0" && min > 0)) {
 			return 0, errReturnToMenu
 		}
 		if value == "" && def >= min && def <= max {

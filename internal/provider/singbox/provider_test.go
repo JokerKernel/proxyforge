@@ -196,6 +196,47 @@ func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 	)
 }
 
+func TestPatchFallbackGuardAddsDomainToLegacyHTTPRule(t *testing.T) {
+	p := New()
+	old := domain.NodeSpec{
+		InboundTag: "singbox-one", Server: "203.0.113.10", Port: 443, SNI: "old.example.com",
+		Target: "old.example.com:443", UserName: "one", UUID: "old-uuid", PrivateKey: "old-private",
+		PublicKey: "old-public", ShortID: "old-short", SingBoxFallbackGuard: true, SingBoxFallbackPort: domain.DefaultSingBoxFallbackPort,
+	}
+	config, err := p.RenderServer(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(config, &root); err != nil {
+		t.Fatal(err)
+	}
+	rules := root["route"].(map[string]any)["rules"].([]any)
+	delete(rules[2].(map[string]any), "domain")
+	legacyConfig, err := json.Marshal(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	next := old
+	next.SNI = "new.example.com"
+	next.Target = "new.example.com:443"
+	patched, err := p.PatchServer(legacyConfig, old, next, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(patched, &root); err != nil {
+		t.Fatal(err)
+	}
+	rules = root["route"].(map[string]any)["rules"].([]any)
+	for _, index := range []int{1, 2} {
+		domains := rules[index].(map[string]any)["domain"].([]any)
+		if len(domains) != 1 || domains[0] != next.SNI {
+			t.Fatalf("rule[%d] domains=%#v", index, domains)
+		}
+	}
+}
+
 func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, targetPort int, allowedDomain, uuid, privateKey, shortID string) {
 	t.Helper()
 	var root map[string]any
@@ -223,7 +264,7 @@ func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, t
 		t.Fatalf("vless inbound=%#v", vless)
 	}
 	rules := root["route"].(map[string]any)["rules"].([]any)
-	if len(rules) != 6 || rules[0].(map[string]any)["action"] != "sniff" || rules[2].(map[string]any)["action"] != "reject" {
+	if len(rules) != 7 || rules[0].(map[string]any)["action"] != "sniff" || rules[3].(map[string]any)["action"] != "reject" {
 		t.Fatalf("route rules=%#v", rules)
 	}
 	allow := rules[1].(map[string]any)
@@ -231,6 +272,13 @@ func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, t
 	protocols := allow["protocol"].([]any)
 	if allow["action"] != "route" || allow["outbound"] != "direct" || len(protocols) != 1 || protocols[0] != "tls" || len(domains) != 1 || domains[0] != allowedDomain {
 		t.Fatalf("fallback allow rule=%#v", allow)
+	}
+	httpAllow := rules[2].(map[string]any)
+	httpProtocols := httpAllow["protocol"].([]any)
+	httpDomains := httpAllow["domain"].([]any)
+	if httpAllow["action"] != "route" || httpAllow["outbound"] != "direct" || len(httpProtocols) != 1 || httpProtocols[0] != "http" ||
+		len(httpDomains) != 1 || httpDomains[0] != allowedDomain {
+		t.Fatalf("fallback HTTP allow rule=%#v", httpAllow)
 	}
 }
 

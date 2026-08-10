@@ -91,16 +91,32 @@ func patchFallbackDomain(root map[string]any, oldSNI, nextSNI string) error {
 	if err != nil {
 		return err
 	}
-	var matches []map[string]any
-	for _, rule := range rules {
-		if rule["action"] == "route" && rule["outbound"] == "direct" && stringListContains(rule["inbound"], fallbackGuardInboundTag) {
-			matches = append(matches, rule)
+	for _, protocol := range []string{"tls", "http"} {
+		var matches []map[string]any
+		for _, rule := range rules {
+			if rule["action"] != "route" || rule["outbound"] != "direct" ||
+				!stringListContains(rule["inbound"], fallbackGuardInboundTag) ||
+				!stringListContains(rule["protocol"], protocol) {
+				continue
+			}
+			_, hasDomain := rule["domain"]
+			if stringListContains(rule["domain"], oldSNI) || (protocol == "http" && !hasDomain) {
+				matches = append(matches, rule)
+			}
+		}
+		if len(matches) != 1 {
+			return fmt.Errorf("现有 sing-box 配置中 %s 回落放行规则数量为 %d，无法安全定点重置", protocol, len(matches))
+		}
+		if _, hasDomain := matches[0]["domain"]; !hasDomain {
+			// 兼容曾经未给 HTTP 规则设置域名的受管配置，并在重置时收紧规则。
+			matches[0]["domain"] = []string{nextSNI}
+			continue
+		}
+		if err := replaceManagedString(matches[0], "domain", oldSNI, nextSNI, "sing-box "+protocol+" 回落放行域名"); err != nil {
+			return err
 		}
 	}
-	if len(matches) != 1 {
-		return fmt.Errorf("现有 sing-box 配置中回落放行规则数量为 %d，无法安全定点重置", len(matches))
-	}
-	return replaceManagedString(matches[0], "domain", oldSNI, nextSNI, "sing-box 回落放行域名")
+	return nil
 }
 
 func stringListContains(value any, want string) bool {

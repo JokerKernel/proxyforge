@@ -2,9 +2,7 @@ package cli
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
-	"math/big"
 	"strings"
 	"time"
 
@@ -115,7 +113,7 @@ func (c *commandSet) selectSNICandidate(ctx context.Context, server string) (str
 	fmt.Fprintln(c.out, "提示：以上候选均已通过 DNS、TLS 和证书名称校验；延迟为完整探测耗时。")
 	fmt.Fprintln(c.out, "      CDN 为启发式识别，不代表目标归属、长期可用性或使用授权。")
 	// 检测期间用户误按的回车会暂存在 bufio.Reader 中；清除空行，避免
-	// 检测结束后被当成“选择默认项”。保留任何非空输入，避免吞掉用户已输入的编号。
+	// 检测结束后立即触发一次无效选择。保留任何非空输入，避免吞掉用户已输入的编号。
 	for c.interactiveUI() && c.reader.Buffered() > 0 {
 		b, peekErr := c.reader.Peek(1)
 		if peekErr != nil || len(b) != 1 || (b[0] != '\n' && b[0] != '\r') {
@@ -222,15 +220,4 @@ func formatCertificateSANs(sans []string, limit int) string {
 		return strings.Join(sans, ", ")
 	}
 	return fmt.Sprintf("%s（另有 %d 项）", strings.Join(sans[:limit], ", "), len(sans)-limit)
-}
-
-func secureRandomIndex(size int) int {
-	if size <= 1 {
-		return 0
-	}
-	value, err := rand.Int(rand.Reader, big.NewInt(int64(size)))
-	if err != nil {
-		return int(time.Now().UnixNano() % int64(size))
-	}
-	return int(value.Int64())
 }

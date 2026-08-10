@@ -163,7 +163,10 @@ func TestStandardServerFollowsOfficialFieldOrder(t *testing.T) {
 	direct := xrayConfigSection(t, config, `"protocol": "freedom"`, `"protocol": "blackhole"`)
 	assertFieldsInOrder(t, direct, `"protocol"`, `"settings"`, `"tag": "direct"`)
 	routing := xrayConfigSection(t, config, `"routing"`, "")
-	assertFieldsInOrder(t, routing, `"domainStrategy"`, `"rules"`, `"type"`, `"ip"`, `"outboundTag"`)
+	assertFieldsInOrder(t, routing, `"domainStrategy"`, `"rules"`, `"ip"`, `"outboundTag"`)
+	if bytes.Contains(routing, []byte(`"type"`)) {
+		t.Fatalf("routing rule unexpectedly contains type: %s", routing)
+	}
 }
 
 func TestClientFollowsOfficialFieldOrder(t *testing.T) {

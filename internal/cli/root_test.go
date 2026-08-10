@@ -379,7 +379,7 @@ func TestExistingServerConfigRequiresOverwriteConfirmation(t *testing.T) {
 		if count := strings.Count(out.String(), "服务端配置管理：sing-box"); count != 2 {
 			t.Fatalf("server config menu count=%d, want 2; output=%q", count, out.String())
 		}
-		for _, text := range []string{"输入 q 返回当前菜单", "已取消生成服务端配置，返回服务端配置管理菜单"} {
+		for _, text := range []string{"Q/0=返回", "已取消生成服务端配置，返回服务端配置管理菜单"} {
 			if !strings.Contains(out.String(), text) {
 				t.Fatalf("cancel output missing %q: %q", text, out.String())
 			}
@@ -440,7 +440,7 @@ func TestCoreMenuMergesUninstallAndCleanup(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{out: &out}
 	c.printCoreMenu(domain.CoreXray)
-	if !strings.Contains(out.String(), "6) 卸载内核并清理数据") || strings.Contains(out.String(), "7)") {
+	if !strings.Contains(out.String(), "5) 卸载内核并清理数据") || strings.Contains(out.String(), "6)") {
 		t.Fatalf("menu did not merge uninstall and cleanup: %q", out.String())
 	}
 }
@@ -475,7 +475,7 @@ func TestInstallConfirmationDescribesSystemChanges(t *testing.T) {
 	for _, want := range []string{
 		"操作确认：安装/升级内核", "目标内核：sing-box", "将执行：", "配置保护：", "安全确认：",
 		"安装或升级 sing-box", "内核二进制", "systemd unit", "现有配置会先备份",
-		"请输入 yes/y 确认，输入 q 返回当前菜单",
+		"确认操作？[Y/1=确认，Q/0=返回]",
 	} {
 		if !ok || !strings.Contains(out.String(), want) {
 			t.Fatalf("confirmed=%v output missing %q: %q", ok, want, out.String())
@@ -553,7 +553,7 @@ func TestSNIConfirmationDefaultsToYes(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("confirmed=%v error=%v", ok, err)
 	}
-	if !strings.Contains(out.String(), "直接回车默认 yes") || !strings.Contains(out.String(), "输入 q 返回当前菜单") {
+	if !strings.Contains(out.String(), "Y/1=确认") || !strings.Contains(out.String(), "Q/0=返回") || !strings.Contains(out.String(), "回车=确认") {
 		t.Fatalf("default confirmation prompt=%q", out.String())
 	}
 }
@@ -614,7 +614,7 @@ func TestCredentialResetConfirmationWarnsAboutOldClients(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !confirmed || !strings.Contains(out.String(), "所有旧客户端配置会立即失效") || !strings.Contains(out.String(), "手动配置会保留") {
+	if !confirmed || !strings.Contains(out.String(), "所有旧客户端配置中的 SNI/target 会立即失效") || !strings.Contains(out.String(), "手动配置会保留") {
 		t.Fatalf("confirmed=%v output=%q", confirmed, out.String())
 	}
 }
@@ -656,7 +656,7 @@ func TestFillResetUsesSameAutomaticSNICandidatesAsGenerate(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
 		app:    &app.App{Store: store},
-		reader: bufio.NewReader(strings.NewReader("\n\n\n")),
+		reader: bufio.NewReader(strings.NewReader("\n1\n\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
 			if len(candidates) < 10 || server != "server.example.com" || limit != 10 {
@@ -664,7 +664,6 @@ func TestFillResetUsesSameAutomaticSNICandidatesAsGenerate(t *testing.T) {
 			}
 			return []app.SNICandidate{{Domain: "new.example.com", Latency: 4 * time.Millisecond, TLSVersion: "1.3", ALPN: "h2", CertificateSANs: []string{"new.example.com"}, CDN: "未发现明显特征"}}, nil
 		},
-		randomIndex: func(size int) int { return 0 },
 	}
 	opts := domain.ResetOptions{}
 	if err := c.fillReset(context.Background(), domain.CoreSingBox, &opts); err != nil {
@@ -804,10 +803,10 @@ func TestClearTerminalClearsVisibleScreenAndScrollback(t *testing.T) {
 	}
 }
 
-func TestFillGenerateSelectsRandomDefaultFromFastCandidates(t *testing.T) {
+func TestFillGenerateRequiresExplicitFastCandidateSelection(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("\n\n\n\n\nyes\n")),
+		reader: bufio.NewReader(strings.NewReader("\n\n\n\n2\nyes\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
 			if len(candidates) < 10 || server != "server.example.com" || limit != 10 {
@@ -818,12 +817,6 @@ func TestFillGenerateSelectsRandomDefaultFromFastCandidates(t *testing.T) {
 				{Domain: "second.example.com", Latency: 8 * time.Millisecond, TLSVersion: "1.2", ALPN: "http/1.1", CertificateSANs: []string{"second.example.com"}, CDN: "未发现明显特征"},
 			}, nil
 		},
-		randomIndex: func(size int) int {
-			if size != 2 {
-				t.Fatalf("random size=%d", size)
-			}
-			return 1
-		},
 	}
 	opts := domain.GenerateOptions{Server: "server.example.com", Port: 443, StandardConfig: true}
 	if err := c.fillGenerate(context.Background(), domain.CoreSingBox, &opts); err != nil {
@@ -832,10 +825,10 @@ func TestFillGenerateSelectsRandomDefaultFromFastCandidates(t *testing.T) {
 	if opts.SNI != "second.example.com" || opts.Target != "second.example.com:443" || opts.UserName != domain.DefaultUserName || opts.InboundTag != domain.DefaultInboundTag(domain.CoreSingBox) {
 		t.Fatalf("generate options=%#v", opts)
 	}
-	if !strings.Contains(out.String(), "最快的候选域名（按延迟排序）") || !strings.Contains(out.String(), "[2]") ||
-		!strings.Contains(out.String(), "second.example.com  [默认]") || !strings.Contains(out.String(), "TLS 1.3 / h2") ||
+	if !strings.Contains(out.String(), "最快的候选域名（按延迟排序）") || !strings.Contains(out.String(), "2) second.example.com") ||
+		!strings.Contains(out.String(), "必须输入编号") || !strings.Contains(out.String(), "TLS 1.3 / h2") ||
 		!strings.Contains(out.String(), "Akamai（CNAME）") || !strings.Contains(out.String(), "均已通过 DNS、TLS 和证书名称校验") ||
-		strings.Contains(out.String(), "证书 SAN=fast.example.com") {
+		strings.Contains(out.String(), "[默认]") || strings.Contains(out.String(), "证书 SAN=fast.example.com") {
 		t.Fatalf("candidate menu output=%q", out.String())
 	}
 }
