@@ -1478,25 +1478,25 @@ func (c *commandSet) confirmInput(message string, cancelable, defaultYes bool) (
 	fmt.Fprintln(c.out, strings.TrimSpace(message))
 	for {
 		if defaultYes {
-			fmt.Fprint(c.out, "请输入 yes/y 确认（直接回车默认 yes），输入 q 返回当前菜单： ")
+			fmt.Fprint(c.out, "请输入 yes/y 确认，也可输入 1（直接回车默认 yes），输入 q 返回当前菜单，也可输入 0： ")
 		} else {
-			fmt.Fprint(c.out, "请输入 yes/y 确认，输入 q 返回当前菜单： ")
+			fmt.Fprint(c.out, "请输入 yes/y 确认，也可输入 1，输入 q 返回当前菜单，也可输入 0： ")
 		}
 		line, err := c.reader.ReadString('\n')
 		if err != nil && len(line) == 0 {
 			return false, err
 		}
 		value := strings.TrimSpace(line)
-		if strings.EqualFold(value, "q") {
+		if strings.EqualFold(value, "q") || value == "0" {
 			return false, errReturnToMenu
 		}
 		if defaultYes && value == "" {
 			return true, nil
 		}
-		if strings.EqualFold(value, "yes") || strings.EqualFold(value, "y") {
+		if strings.EqualFold(value, "yes") || strings.EqualFold(value, "y") || value == "1" {
 			return true, nil
 		}
-		fmt.Fprintln(c.out, "输入无效，请输入 yes/y 确认，或输入 q 返回当前菜单。")
+		fmt.Fprintln(c.out, "输入无效，请输入 yes/y 或 1 确认，或输入 q/0 返回当前菜单。")
 	}
 }
 
