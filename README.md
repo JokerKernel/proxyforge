@@ -6,7 +6,7 @@ ProxyForge 是一个面向 Linux/systemd 的 Go 单二进制管理器，用来�
 
 ## 一键安装
 
-自动识别 amd64/arm64，通过 Release 的 `version` 取得最新正式版本，核对 `SHA256SUMS` 后原子安装或升级到 `/usr/local/sbin/xray`。旧 Release 没有 `version` 时会自动兼容原来的 `latest/download` 方式：
+自动识别 amd64/arm64，通过 Release 的 `version` 取得最新正式版本，核对 `SHA256SUMS` 后原子安装或升级到 `/usr/local/sbin/xraybox`。旧 Release 没有 `version` 时会自动兼容原来的 `latest/download` 方式：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | sudo bash
@@ -15,7 +15,7 @@ curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts
 安装完成后直接运行：
 
 ```bash
-sudo /usr/local/sbin/xray
+sudo /usr/local/sbin/xraybox
 ```
 
 如需固定版本，可传入发布标签；脚本不会安装校验清单中不存在或校验失败的文件：
@@ -75,7 +75,7 @@ proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
 
 `install` 同时用于首次安装和后续升级；旧的 `upgrade` 名称保留为兼容别名。无参数运行时会先选择 sing-box 或 Xray-core，再进入该内核独立的安装/升级、配置、客户端、重置、服务和卸载菜单。
 
-`update` 用于升级 ProxyForge 自身。它会先读取最新正式 Release 的版本，当前已是最新版时直接退出；需要升级时，从仓库 `main` 分支下载当前 `scripts/install.sh`，限制 HTTPS 来源并检查大小、文本格式、shebang 和 `bash -n`，展示脚本 SHA-256 后要求确认，再由该脚本核对 Release 的 `SHA256SUMS` 并原子替换 `/usr/local/sbin/xray`。非交互升级必须显式提供 `--yes`：
+`update` 用于升级 ProxyForge 自身。它会先读取最新正式 Release 的版本，当前已是最新版时直接退出；需要升级时，从仓库 `main` 分支下载当前 `scripts/install.sh`，限制 HTTPS 来源并检查大小、文本格式、shebang 和 `bash -n`，展示脚本 SHA-256 后要求确认，再由该脚本核对 Release 的 `SHA256SUMS` 并原子替换 `/usr/local/sbin/xraybox`。非交互升级必须显式提供 `--yes`：
 
 ```bash
 sudo proxyforge update

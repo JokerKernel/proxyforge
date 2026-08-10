@@ -77,7 +77,7 @@ func (u Updater) Run(ctx context.Context, opts Options) error {
 	fmt.Fprintf(out, "[ProxyForge/更新] 最终地址：%s\n", script.FinalURL)
 	fmt.Fprintf(out, "[ProxyForge/更新] 脚本大小：%d bytes\n", len(script.Content))
 	fmt.Fprintf(out, "[ProxyForge/更新] 脚本 SHA-256：%s\n", script.SHA256)
-	fmt.Fprintln(out, "[ProxyForge/风险] 将以 root 执行脚本并替换 /usr/local/sbin/xray。")
+	fmt.Fprintln(out, "[ProxyForge/风险] 将以 root 执行脚本并替换 /usr/local/sbin/xraybox。")
 
 	if !opts.AssumeYes {
 		if opts.Confirm == nil {

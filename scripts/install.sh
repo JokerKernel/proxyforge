@@ -3,7 +3,7 @@ set -euo pipefail
 
 readonly repository="JokerKernel/proxyforge"
 readonly install_dir="/usr/local/sbin"
-readonly install_path="${install_dir}/xray"
+readonly install_path="${install_dir}/xraybox"
 
 selected_asset=""
 selected_checksum=""
