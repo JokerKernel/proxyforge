@@ -549,7 +549,6 @@ func (c *commandSet) selectPublicAddress(ctx context.Context) (string, error) {
 			address, err = externalIP(ctx)
 		}
 		if err == nil {
-			fmt.Fprintf(c.out, "已获取公网地址：%s\n", address)
 			return address, nil
 		}
 		fmt.Fprintf(c.out, "获取公网地址失败：%v，请重新选择。\n\n", err)
