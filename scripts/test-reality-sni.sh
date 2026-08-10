@@ -217,9 +217,9 @@ run_probe() {
   elif ${probe_received_tls}; then
     printf '    %s● 收到 TLS 响应%s  openssl退出码=%d\n' "${color_red}" "${color_reset}" "${probe_exit}"
   elif ((probe_exit == 124)); then
-    printf '    %s● 未收到 TLS 响应%s 连接超时\n' "${color_green}" "${color_reset}"
+    printf '    %s● 未收到 TLS 响应%s 连接超时\n' "${color_red}" "${color_reset}"
   else
-    printf '    %s● 未收到 TLS 响应%s 退出码=%d\n' "${color_green}" "${color_reset}" "${probe_exit}"
+    printf '    %s● 未收到 TLS 响应%s 退出码=%d\n' "${color_red}" "${color_reset}" "${probe_exit}"
   fi
 
   if ${verbose}; then
@@ -253,9 +253,9 @@ run_http_probe() {
   fi
 
   if ${http_received}; then
-    printf '    %s● 收到 HTTP 响应%s 状态码=%s\n' "${color_red}" "${color_reset}" "${http_code}"
+    printf '    %s● 收到 HTTP 响应%s 状态码=%s\n' "${color_green}" "${color_reset}" "${http_code}"
   else
-    printf '    %s● 未收到 HTTP 响应%s curl退出码=%d\n' "${color_green}" "${color_reset}" "${http_exit}"
+    printf '    %s● 未收到 HTTP 响应%s curl退出码=%d\n' "${color_red}" "${color_reset}" "${http_exit}"
   fi
   if ${verbose}; then
     printf '%s\n' '----- HTTP 原始输出 -----'
@@ -279,10 +279,10 @@ run_http_host_probe() {
   set -e
   http_code=$(sed -n 's/.*\([1-5][0-9][0-9]\)$/\1/p' "${output_file}" | tail -n 1)
   if [[ ${http_exit} -eq 0 && ${http_code} =~ ^[1-5][0-9][0-9]$ ]]; then
-    printf '    %s● 收到 HTTP 响应%s 状态码=%s\n' "${color_red}" "${color_reset}" "${http_code}"
+    printf '    %s● 收到 HTTP 响应%s 状态码=%s\n' "${color_green}" "${color_reset}" "${http_code}"
     return 0
   fi
-  printf '    %s● 未收到 HTTP 响应%s curl退出码=%d\n' "${color_green}" "${color_reset}" "${http_exit}"
+  printf '    %s● 未收到 HTTP 响应%s curl退出码=%d\n' "${color_red}" "${color_reset}" "${http_exit}"
   return 1
 }
 
