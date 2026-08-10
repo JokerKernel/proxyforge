@@ -125,6 +125,9 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 	route["rules"] = append([]any{
 		map[string]any{"inbound": []string{fallbackGuardInboundTag}, "action": "sniff"},
 		map[string]any{"inbound": []string{fallbackGuardInboundTag}, "protocol": []string{"tls"}, "domain": []string{n.SNI}, "action": "route", "outbound": "direct"},
+		// 明文 HTTP 也转发到同一回落目标；目标端口通常为 443，目标站点
+		// 可能返回 400（明文请求访问 HTTPS 端口），但不会在本地直接拒绝。
+		map[string]any{"inbound": []string{fallbackGuardInboundTag}, "protocol": []string{"http"}, "action": "route", "outbound": "direct"},
 		map[string]any{"inbound": []string{fallbackGuardInboundTag}, "action": "reject"},
 		map[string]any{"inbound": []string{n.InboundTag}, "action": "sniff"},
 	}, rules...)
