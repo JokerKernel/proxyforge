@@ -27,8 +27,8 @@ type dnsSettings struct {
 }
 
 type dokodemoInbound struct {
-	Listen   string           `json:"listen"`
 	Tag      string           `json:"tag"`
+	Listen   string           `json:"listen"`
 	Port     int              `json:"port"`
 	Protocol string           `json:"protocol"`
 	Settings dokodemoSettings `json:"settings"`
@@ -42,12 +42,12 @@ type dokodemoSettings struct {
 }
 
 type orderedInbound struct {
+	Tag            string                 `json:"tag,omitempty"`
 	Listen         string                 `json:"listen"`
 	Port           int                    `json:"port"`
 	Protocol       string                 `json:"protocol"`
 	Settings       any                    `json:"settings"`
 	StreamSettings *realityStreamSettings `json:"streamSettings,omitempty"`
-	Tag            string                 `json:"tag,omitempty"`
 	Sniffing       *sniffingSettings      `json:"sniffing,omitempty"`
 }
 

@@ -8,8 +8,9 @@ import (
 	"proxyforge/internal/provider/jsonutil"
 )
 
-// marshalXray keeps Xray's documented field order for managed objects. Unknown
-// fields are retained and sorted after the documented fields, so targeted
+// marshalXray keeps Xray's documented field order for managed objects, except
+// that inbound tags are placed first so managed listeners are easy to identify.
+// Unknown fields are retained and sorted after the known fields, so targeted
 // updates remain readable without dropping manual configuration.
 func marshalXray(value any) ([]byte, error) {
 	return jsonutil.Marshal(orderXrayValue(value))
@@ -91,9 +92,9 @@ func xrayFieldPriority(object map[string]any) map[string]int {
 	case hasAnyXrayKey(object, "inbounds", "outbounds") && hasAnyXrayKey(object, "log", "dns", "routing"):
 		order = []string{"log", "dns", "inbounds", "outbounds", "routing"}
 	case object["protocol"] == "dokodemo-door":
-		order = []string{"listen", "tag", "port", "protocol", "settings", "sniffing"}
+		order = []string{"tag", "listen", "port", "protocol", "settings", "sniffing"}
 	case hasXrayKeys(object, "listen", "protocol", "settings"):
-		order = []string{"listen", "port", "protocol", "settings", "streamSettings", "tag", "sniffing"}
+		order = []string{"tag", "listen", "port", "protocol", "settings", "streamSettings", "sniffing"}
 	case hasXrayKeys(object, "network", "security", "realitySettings"):
 		order = []string{"network", "security", "realitySettings"}
 	case hasXrayKeys(object, "show", "target", "serverNames", "privateKey", "shortIds"):
