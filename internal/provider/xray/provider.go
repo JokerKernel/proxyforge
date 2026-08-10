@@ -9,15 +9,122 @@ import (
 
 	"proxyforge/internal/domain"
 	"proxyforge/internal/provider"
-	"proxyforge/internal/provider/jsonutil"
 )
 
 type Provider struct{}
 
+type xrayConfig struct {
+	Log       map[string]any  `json:"log"`
+	DNS       dnsSettings     `json:"dns"`
+	Inbounds  []any           `json:"inbounds"`
+	Outbounds []xrayOutbound  `json:"outbounds"`
+	Routing   routingSettings `json:"routing"`
+}
+
+type dnsSettings struct {
+	Servers       []any  `json:"servers"`
+	QueryStrategy string `json:"queryStrategy"`
+}
+
+type dokodemoInbound struct {
+	Listen   string           `json:"listen"`
+	Tag      string           `json:"tag"`
+	Port     int              `json:"port"`
+	Protocol string           `json:"protocol"`
+	Settings dokodemoSettings `json:"settings"`
+	Sniffing sniffingSettings `json:"sniffing"`
+}
+
+type dokodemoSettings struct {
+	Address string `json:"address"`
+	Port    int    `json:"port"`
+	Network string `json:"network"`
+}
+
+type orderedInbound struct {
+	Listen         string                 `json:"listen"`
+	Port           int                    `json:"port"`
+	Protocol       string                 `json:"protocol"`
+	Settings       any                    `json:"settings"`
+	StreamSettings *realityStreamSettings `json:"streamSettings,omitempty"`
+	Tag            string                 `json:"tag,omitempty"`
+	Sniffing       *sniffingSettings      `json:"sniffing,omitempty"`
+}
+
+type vlessInboundSettings struct {
+	Clients    []vlessInboundUser `json:"clients"`
+	Decryption string             `json:"decryption"`
+}
+
+type vlessInboundUser struct {
+	ID    string `json:"id"`
+	Email string `json:"email"`
+	Flow  string `json:"flow"`
+}
+
+type sniffingSettings struct {
+	Enabled      bool     `json:"enabled"`
+	DestOverride []string `json:"destOverride"`
+	RouteOnly    bool     `json:"routeOnly"`
+}
+
 type realityStreamSettings struct {
-	Network         string         `json:"network"`
-	Security        string         `json:"security"`
-	RealitySettings map[string]any `json:"realitySettings"`
+	Network         string `json:"network"`
+	Security        string `json:"security"`
+	RealitySettings any    `json:"realitySettings"`
+}
+
+type serverRealitySettings struct {
+	Show        bool     `json:"show"`
+	Target      string   `json:"target"`
+	Xver        int      `json:"xver"`
+	ServerNames []string `json:"serverNames"`
+	PrivateKey  string   `json:"privateKey"`
+	ShortIDs    []string `json:"shortIds"`
+}
+
+type clientRealitySettings struct {
+	ServerName  string `json:"serverName"`
+	Fingerprint string `json:"fingerprint"`
+	Password    string `json:"password"`
+	ShortID     string `json:"shortId"`
+	SpiderX     string `json:"spiderX"`
+}
+
+type xrayOutbound struct {
+	Protocol       string                 `json:"protocol"`
+	Settings       any                    `json:"settings"`
+	Tag            string                 `json:"tag"`
+	StreamSettings *realityStreamSettings `json:"streamSettings,omitempty"`
+}
+
+type vlessOutboundSettings struct {
+	VNext []vlessServer `json:"vnext"`
+}
+
+type vlessServer struct {
+	Address string              `json:"address"`
+	Port    int                 `json:"port"`
+	Users   []vlessOutboundUser `json:"users"`
+}
+
+type vlessOutboundUser struct {
+	ID         string `json:"id"`
+	Encryption string `json:"encryption"`
+	Flow       string `json:"flow"`
+}
+
+type routingSettings struct {
+	DomainStrategy string        `json:"domainStrategy"`
+	Rules          []routingRule `json:"rules"`
+}
+
+type routingRule struct {
+	Type        string   `json:"type"`
+	InboundTag  []string `json:"inboundTag,omitempty"`
+	Domain      []string `json:"domain,omitempty"`
+	IP          []string `json:"ip,omitempty"`
+	OutboundTag string   `json:"outboundTag"`
 }
 
 func New() *Provider                  { return &Provider{} }
@@ -96,20 +203,21 @@ func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 	if n.XrayFallbackGuard {
 		return renderFallbackGuardServer(n)
 	}
-	v := map[string]any{
-		"log": map[string]any{"loglevel": "warning"},
-		"dns": systemDNS(),
-		"inbounds": []any{map[string]any{
-			"listen": "0.0.0.0", "port": n.Port, "protocol": "vless", "tag": n.InboundTag,
-			"settings": map[string]any{"clients": []any{map[string]any{"email": n.UserName, "id": n.UUID, "flow": domain.VisionFlow}}, "decryption": "none"},
-			"streamSettings": realityStreamSettings{Network: "raw", Security: "reality", RealitySettings: map[string]any{
-				"show": false, "target": n.Target, "xver": 0, "serverNames": []string{n.SNI}, "privateKey": n.PrivateKey, "shortIds": []string{n.ShortID},
-			}},
+	stream := realityStreamSettings{Network: "raw", Security: "reality", RealitySettings: serverRealitySettings{
+		Show: false, Target: n.Target, Xver: 0, ServerNames: []string{n.SNI}, PrivateKey: n.PrivateKey, ShortIDs: []string{n.ShortID},
+	}}
+	v := xrayConfig{
+		Log: map[string]any{"loglevel": "warning"},
+		DNS: systemDNS(),
+		Inbounds: []any{orderedInbound{
+			Listen: "0.0.0.0", Port: n.Port, Protocol: "vless",
+			Settings:       vlessInboundSettings{Clients: []vlessInboundUser{{ID: n.UUID, Email: n.UserName, Flow: domain.VisionFlow}}, Decryption: "none"},
+			StreamSettings: &stream, Tag: n.InboundTag,
 		}},
-		"outbounds": []any{directOutbound(), blockedOutbound()},
-		"routing":   privateNetworkRouting(),
+		Outbounds: []xrayOutbound{directOutbound(), blockedOutbound()},
+		Routing:   privateNetworkRouting(),
 	}
-	return jsonutil.Marshal(v)
+	return marshalXray(v)
 }
 
 const fallbackGuardInboundTag = "dokodemo-in"
@@ -123,71 +231,68 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("解析 REALITY target 端口 %s: %w", rawPort, err)
 	}
-	dokodemo := map[string]any{
-		"listen": "127.0.0.1", "tag": fallbackGuardInboundTag, "port": n.XrayFallbackPort, "protocol": "dokodemo-door",
-		"settings": map[string]any{"address": host, "port": targetPort, "network": "tcp"},
-		"sniffing": map[string]any{"enabled": true, "destOverride": []string{"tls"}, "routeOnly": true},
+	dokodemo := dokodemoInbound{
+		Listen: "127.0.0.1", Tag: fallbackGuardInboundTag, Port: n.XrayFallbackPort, Protocol: "dokodemo-door",
+		Settings: dokodemoSettings{Address: host, Port: targetPort, Network: "tcp"},
+		Sniffing: sniffingSettings{Enabled: true, DestOverride: []string{"tls"}, RouteOnly: true},
 	}
-	vless := map[string]any{
-		"listen": "0.0.0.0", "port": n.Port, "protocol": "vless", "tag": n.InboundTag,
-		"settings": map[string]any{"clients": []any{map[string]any{"email": n.UserName, "id": n.UUID, "flow": domain.VisionFlow}}, "decryption": "none"},
-		"streamSettings": realityStreamSettings{Network: "raw", Security: "reality", RealitySettings: map[string]any{
-			"show": false, "target": net.JoinHostPort("127.0.0.1", strconv.Itoa(n.XrayFallbackPort)), "xver": 0,
-			"serverNames": []string{n.SNI}, "privateKey": n.PrivateKey, "shortIds": []string{n.ShortID},
-		}},
-		"sniffing": map[string]any{"enabled": true, "destOverride": []string{"http", "tls", "quic"}, "routeOnly": true},
+	stream := realityStreamSettings{Network: "raw", Security: "reality", RealitySettings: serverRealitySettings{
+		Show: false, Target: net.JoinHostPort("127.0.0.1", strconv.Itoa(n.XrayFallbackPort)), Xver: 0,
+		ServerNames: []string{n.SNI}, PrivateKey: n.PrivateKey, ShortIDs: []string{n.ShortID},
+	}}
+	sniffing := sniffingSettings{Enabled: true, DestOverride: []string{"http", "tls", "quic"}, RouteOnly: true}
+	vless := orderedInbound{
+		Listen: "0.0.0.0", Port: n.Port, Protocol: "vless",
+		Settings:       vlessInboundSettings{Clients: []vlessInboundUser{{ID: n.UUID, Email: n.UserName, Flow: domain.VisionFlow}}, Decryption: "none"},
+		StreamSettings: &stream, Tag: n.InboundTag, Sniffing: &sniffing,
 	}
 	routing := privateNetworkRouting()
-	rules := routing["rules"].([]any)
-	routing["rules"] = append([]any{
-		map[string]any{"type": "field", "inboundTag": []string{fallbackGuardInboundTag}, "domain": []string{n.SNI}, "outboundTag": "direct"},
-		map[string]any{"type": "field", "inboundTag": []string{fallbackGuardInboundTag}, "outboundTag": "blocked-private"},
-	}, rules...)
-	v := map[string]any{
-		"log":       map[string]any{"loglevel": "warning"},
-		"dns":       systemDNS(),
-		"inbounds":  []any{dokodemo, vless},
-		"outbounds": []any{directOutbound(), blockedOutbound()},
-		"routing":   routing,
+	routing.Rules = append([]routingRule{
+		{Type: "field", InboundTag: []string{fallbackGuardInboundTag}, Domain: []string{n.SNI}, OutboundTag: "direct"},
+		{Type: "field", InboundTag: []string{fallbackGuardInboundTag}, OutboundTag: "blocked-private"},
+	}, routing.Rules...)
+	v := xrayConfig{
+		Log:       map[string]any{"loglevel": "warning"},
+		DNS:       systemDNS(),
+		Inbounds:  []any{dokodemo, vless},
+		Outbounds: []xrayOutbound{directOutbound(), blockedOutbound()},
+		Routing:   routing,
 	}
-	return jsonutil.Marshal(v)
+	return marshalXray(v)
 }
 
 func (*Provider) RenderClient(n domain.NodeSpec) ([]byte, error) {
-	v := map[string]any{
-		"log": map[string]any{"loglevel": "warning"},
-		"dns": systemDNS(),
-		"inbounds": []any{
-			map[string]any{"listen": "127.0.0.1", "port": 10808, "protocol": "socks", "settings": map[string]any{"udp": true}},
-			map[string]any{"listen": "127.0.0.1", "port": 10809, "protocol": "http", "settings": map[string]any{}},
+	stream := realityStreamSettings{Network: "raw", Security: "reality", RealitySettings: clientRealitySettings{
+		ServerName: n.SNI, Fingerprint: "chrome", Password: n.PublicKey, ShortID: n.ShortID, SpiderX: "/",
+	}}
+	v := xrayConfig{
+		Log: map[string]any{"loglevel": "warning"},
+		DNS: systemDNS(),
+		Inbounds: []any{
+			orderedInbound{Listen: "127.0.0.1", Port: 10808, Protocol: "socks", Settings: map[string]any{"udp": true}},
+			orderedInbound{Listen: "127.0.0.1", Port: 10809, Protocol: "http", Settings: map[string]any{}},
 		},
-		"outbounds": []any{map[string]any{
-			"protocol": "vless", "tag": "proxy", "settings": map[string]any{"vnext": []any{map[string]any{
-				"address": n.Server, "port": n.Port, "users": []any{map[string]any{"id": n.UUID, "encryption": "none", "flow": domain.VisionFlow}},
+		Outbounds: []xrayOutbound{{
+			Protocol: "vless",
+			Settings: vlessOutboundSettings{VNext: []vlessServer{{
+				Address: n.Server, Port: n.Port, Users: []vlessOutboundUser{{ID: n.UUID, Encryption: "none", Flow: domain.VisionFlow}},
 			}}},
-			"streamSettings": realityStreamSettings{Network: "raw", Security: "reality", RealitySettings: map[string]any{
-				"fingerprint": "chrome", "serverName": n.SNI, "password": n.PublicKey, "shortId": n.ShortID, "spiderX": "/",
-			}},
+			Tag: "proxy", StreamSettings: &stream,
 		}, blockedOutbound()},
-		"routing": privateNetworkRouting(),
+		Routing: privateNetworkRouting(),
 	}
-	return jsonutil.Marshal(v)
+	return marshalXray(v)
 }
 
-func systemDNS() map[string]any {
-	return map[string]any{
-		"servers":       []any{"localhost"},
-		"queryStrategy": "UseIP",
-	}
+func systemDNS() dnsSettings {
+	return dnsSettings{Servers: []any{"localhost"}, QueryStrategy: "UseIP"}
 }
 
-func privateNetworkRouting() map[string]any {
-	return map[string]any{
-		"domainStrategy": "IPOnDemand",
-		"rules": []any{map[string]any{
-			"type":        "field",
-			"ip":          xrayBlockedDestinations(),
-			"outboundTag": "blocked-private",
+func privateNetworkRouting() routingSettings {
+	return routingSettings{
+		DomainStrategy: "IPOnDemand",
+		Rules: []routingRule{{
+			Type: "field", IP: xrayBlockedDestinations(), OutboundTag: "blocked-private",
 		}},
 	}
 }
@@ -196,16 +301,12 @@ func xrayBlockedDestinations() []string {
 	return append([]string{"geoip:private"}, domain.BlockedDestinationCIDRs()...)
 }
 
-func blockedOutbound() map[string]any {
-	return map[string]any{"protocol": "blackhole", "tag": "blocked-private", "settings": map[string]any{}}
+func blockedOutbound() xrayOutbound {
+	return xrayOutbound{Protocol: "blackhole", Settings: map[string]any{}, Tag: "blocked-private"}
 }
 
-func directOutbound() map[string]any {
-	return map[string]any{
-		"protocol": "freedom",
-		"tag":      "direct",
-		"settings": map[string]any{"domainStrategy": "UseIP"},
-	}
+func directOutbound() xrayOutbound {
+	return xrayOutbound{Protocol: "freedom", Settings: map[string]any{"domainStrategy": "UseIP"}, Tag: "direct"}
 }
 
 func (*Provider) ValidateConfig(ctx context.Context, r provider.Runner, path string) error {

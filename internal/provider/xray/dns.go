@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"proxyforge/internal/provider"
-	"proxyforge/internal/provider/jsonutil"
 )
 
 var supportedDNSProfiles = []string{
@@ -103,7 +102,7 @@ func (*Provider) PatchDNSProfile(config []byte, profile string) ([]byte, error) 
 	}
 	dns["servers"] = servers
 	dns["queryStrategy"] = "UseIP"
-	return jsonutil.Marshal(root)
+	return marshalXray(root)
 }
 
 func dnsServerAddress(value any) (string, bool) {
