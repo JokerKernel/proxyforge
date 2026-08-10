@@ -609,6 +609,64 @@ func TestGenerateRejectsSimplifiedConfigForXray(t *testing.T) {
 	}
 }
 
+func TestGenerateDefaultsToFallbackGuardAndStandardConfigOptsOut(t *testing.T) {
+	tests := []struct {
+		core         string
+		fallbackPort int
+		marker       string
+		configPath   string
+	}{
+		{domain.CoreSingBox, domain.DefaultSingBoxFallbackPort, `"tag": "singbox-fallback-in"`, singbox.New().ConfigPath()},
+		{domain.CoreXray, domain.DefaultXrayFallbackPort, `"protocol": "dokodemo-door"`, xray.New().ConfigPath()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.core+" default", func(t *testing.T) {
+			r := &fakeRunner{port: freePort(t)}
+			a, _ := testApp(t, r)
+			n, err := a.Generate(context.Background(), tt.core, domain.GenerateOptions{
+				Server: "server.example.com", Port: r.port, SNI: "speed.cloudflare.com", NonInteractive: true,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if optionsFallbackPort(domain.GenerateOptions{
+				SingBoxFallbackGuard: n.SingBoxFallbackGuard, SingBoxFallbackPort: n.SingBoxFallbackPort,
+				XrayFallbackGuard: n.XrayFallbackGuard, XrayFallbackPort: n.XrayFallbackPort,
+			}) != tt.fallbackPort {
+				t.Fatalf("node=%#v", n)
+			}
+			config, err := os.ReadFile(a.Layout.Resolve(tt.configPath))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(config), tt.marker) {
+				t.Fatalf("default config missing %s: %s", tt.marker, config)
+			}
+		})
+
+		t.Run(tt.core+" standard opt-out", func(t *testing.T) {
+			r := &fakeRunner{port: freePort(t)}
+			a, _ := testApp(t, r)
+			n, err := a.Generate(context.Background(), tt.core, domain.GenerateOptions{
+				Server: "server.example.com", Port: r.port, SNI: "speed.cloudflare.com", StandardConfig: true, NonInteractive: true,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n.SingBoxFallbackGuard || n.SingBoxFallbackPort != 0 || n.XrayFallbackGuard || n.XrayFallbackPort != 0 {
+				t.Fatalf("node=%#v", n)
+			}
+			config, err := os.ReadFile(a.Layout.Resolve(tt.configPath))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(config), tt.marker) {
+				t.Fatalf("standard config contains %s: %s", tt.marker, config)
+			}
+		})
+	}
+}
+
 func TestGenerateXrayFallbackGuardAndResetPreservesMode(t *testing.T) {
 	r := &fakeRunner{port: freePort(t)}
 	a, _ := testApp(t, r)
@@ -711,11 +769,12 @@ func TestGenerateRejectsInvalidSingBoxFallbackGuardOptions(t *testing.T) {
 		opts domain.GenerateOptions
 		want string
 	}{
-		{"port without mode", domain.CoreSingBox, func() domain.GenerateOptions {
+		{"standard conflict", domain.CoreSingBox, func() domain.GenerateOptions {
 			o := base
-			o.SingBoxFallbackPort = domain.DefaultSingBoxFallbackPort
+			o.StandardConfig = true
+			o.SingBoxFallbackGuard = true
 			return o
-		}(), "必须同时启用"},
+		}(), "不能与简化或回落防偷跑配置参数同时使用"},
 		{"same public and fallback port", domain.CoreSingBox, func() domain.GenerateOptions {
 			o := base
 			o.SingBoxFallbackGuard = true
@@ -750,11 +809,12 @@ func TestGenerateRejectsInvalidXrayFallbackGuardOptions(t *testing.T) {
 		opts domain.GenerateOptions
 		want string
 	}{
-		{"port without mode", domain.CoreXray, func() domain.GenerateOptions {
+		{"standard conflict", domain.CoreXray, func() domain.GenerateOptions {
 			o := base
-			o.XrayFallbackPort = domain.DefaultXrayFallbackPort
+			o.StandardConfig = true
+			o.XrayFallbackGuard = true
 			return o
-		}(), "必须同时启用"},
+		}(), "不能与简化或回落防偷跑配置参数同时使用"},
 		{"same public and fallback port", domain.CoreXray, func() domain.GenerateOptions {
 			o := base
 			o.XrayFallbackGuard = true

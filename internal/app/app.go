@@ -482,26 +482,33 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if opts.SimplifiedConfig && core != domain.CoreSingBox {
 		return domain.NodeSpec{}, fmt.Errorf("简化服务端配置目前仅支持 sing-box")
 	}
+	if opts.StandardConfig && (opts.SimplifiedConfig || opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != 0 || opts.XrayFallbackGuard || opts.XrayFallbackPort != 0) {
+		return domain.NodeSpec{}, fmt.Errorf("--standard-config 不能与简化或回落防偷跑配置参数同时使用")
+	}
 	if opts.SingBoxFallbackGuard && opts.SimplifiedConfig {
 		return domain.NodeSpec{}, fmt.Errorf("sing-box 简化配置不能与回落防偷跑配置同时启用")
-	}
-	if opts.SingBoxFallbackGuard && opts.SingBoxFallbackPort == 0 {
-		opts.SingBoxFallbackPort = domain.DefaultSingBoxFallbackPort
 	}
 	if (opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != 0) && core != domain.CoreSingBox {
 		return domain.NodeSpec{}, fmt.Errorf("sing-box 回落防偷跑配置仅支持 sing-box")
 	}
-	if !opts.SingBoxFallbackGuard && opts.SingBoxFallbackPort != 0 {
-		return domain.NodeSpec{}, fmt.Errorf("设置 sing-box 回落端口时必须同时启用 --sing-box-fallback-guard")
-	}
-	if opts.XrayFallbackGuard && opts.XrayFallbackPort == 0 {
-		opts.XrayFallbackPort = domain.DefaultXrayFallbackPort
-	}
 	if (opts.XrayFallbackGuard || opts.XrayFallbackPort != 0) && core != domain.CoreXray {
 		return domain.NodeSpec{}, fmt.Errorf("REALITY 回落防偷跑配置仅支持 xray")
 	}
-	if !opts.XrayFallbackGuard && opts.XrayFallbackPort != 0 {
-		return domain.NodeSpec{}, fmt.Errorf("设置 Xray 回落端口时必须同时启用 --xray-fallback-guard")
+	if !opts.StandardConfig {
+		switch core {
+		case domain.CoreSingBox:
+			if !opts.SimplifiedConfig {
+				opts.SingBoxFallbackGuard = true
+			}
+		case domain.CoreXray:
+			opts.XrayFallbackGuard = true
+		}
+	}
+	if opts.SingBoxFallbackGuard && opts.SingBoxFallbackPort == 0 {
+		opts.SingBoxFallbackPort = domain.DefaultSingBoxFallbackPort
+	}
+	if opts.XrayFallbackGuard && opts.XrayFallbackPort == 0 {
+		opts.XrayFallbackPort = domain.DefaultXrayFallbackPort
 	}
 	if err := validateGenerate(opts); err != nil {
 		return domain.NodeSpec{}, err

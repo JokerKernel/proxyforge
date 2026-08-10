@@ -41,6 +41,7 @@ type GenerateOptions struct {
 	Target               string
 	UserName             string
 	InboundTag           string
+	StandardConfig       bool
 	SimplifiedConfig     bool
 	SingBoxFallbackGuard bool
 	SingBoxFallbackPort  int

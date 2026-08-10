@@ -248,6 +248,7 @@ func (c *commandSet) generateCommand() *cobra.Command {
 	cmd.Flags().StringVar(&o.Target, "target", "", "REALITY 目标 host:port（默认 SNI:443）")
 	cmd.Flags().StringVar(&o.UserName, "user-name", "", "服务端用户名称（默认 one）")
 	cmd.Flags().StringVar(&o.InboundTag, "inbound-tag", "", "入站标签（默认按内核自动生成）")
+	cmd.Flags().BoolVar(&o.StandardConfig, "standard-config", false, "使用不带本机回落防护的原标准配置")
 	cmd.Flags().BoolVar(&o.SimplifiedConfig, "simplified-config", false, "sing-box 使用简化配置（系统 DNS、较少 DNS 日志，但私网域名拦截较弱）")
 	cmd.Flags().BoolVar(&o.SingBoxFallbackGuard, "sing-box-fallback-guard", false, "sing-box 使用 direct 入站限制 REALITY 未认证回落流量")
 	cmd.Flags().IntVar(&o.SingBoxFallbackPort, "sing-box-fallback-port", 0, "sing-box 防偷跑回落入站端口（默认 61432）")
@@ -310,19 +311,22 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 	fmt.Fprintln(c.out, "提示：任意输入步骤输入 q 可取消并返回主菜单。")
 	if core == domain.CoreSingBox {
 		fmt.Fprintln(c.out, "\n配置模式")
-		fmt.Fprintln(c.out, "1) 标准安全配置（默认；内部 DNS 解析后拦截私网和保留地址）")
+		fmt.Fprintln(c.out, "1) 标准安全配置（内部 DNS 解析后拦截私网和保留地址）")
 		fmt.Fprintln(c.out, "2) 简化配置（系统默认 DNS；DNS 日志较少，但域名解析到私网时可能绕过拦截）")
-		fmt.Fprintln(c.out, "3) 回落防偷跑配置（direct 入站仅放行与 SNI 一致的 TLS 流量）")
-		defaultChoice := 1
+		fmt.Fprintln(c.out, "3) 回落防偷跑配置（默认；direct 入站仅放行与 SNI 一致的 TLS 流量）")
+		defaultChoice := 3
 		if o.SingBoxFallbackGuard {
 			defaultChoice = 3
 		} else if o.SimplifiedConfig {
 			defaultChoice = 2
+		} else if o.StandardConfig {
+			defaultChoice = 1
 		}
 		choice, err := c.chooseNumberCancelable("请选择配置模式", 1, 3, defaultChoice)
 		if err != nil {
 			return err
 		}
+		o.StandardConfig = choice == 1
 		o.SimplifiedConfig = choice == 2
 		o.SingBoxFallbackGuard = choice == 3
 		if !o.SingBoxFallbackGuard {
@@ -330,16 +334,17 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		}
 	} else if core == domain.CoreXray {
 		fmt.Fprintln(c.out, "\n配置模式")
-		fmt.Fprintln(c.out, "1) 标准配置（默认；REALITY 未认证流量直接转发到 target）")
-		fmt.Fprintln(c.out, "2) 回落防偷跑配置（dokodemo-door 仅放行与 SNI 一致的 TLS 流量）")
-		defaultChoice := 1
-		if o.XrayFallbackGuard {
-			defaultChoice = 2
+		fmt.Fprintln(c.out, "1) 标准配置（REALITY 未认证流量直接转发到 target）")
+		fmt.Fprintln(c.out, "2) 回落防偷跑配置（默认；dokodemo-door 仅放行与 SNI 一致的 TLS 流量）")
+		defaultChoice := 2
+		if o.StandardConfig {
+			defaultChoice = 1
 		}
 		choice, err := c.chooseNumberCancelable("请选择配置模式", 1, 2, defaultChoice)
 		if err != nil {
 			return err
 		}
+		o.StandardConfig = choice == 1
 		o.XrayFallbackGuard = choice == 2
 		if !o.XrayFallbackGuard {
 			o.XrayFallbackPort = 0
