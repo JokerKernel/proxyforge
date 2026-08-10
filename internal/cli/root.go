@@ -96,7 +96,9 @@ func (c *commandSet) updateCommand() *cobra.Command {
 				return fmt.Errorf("自升级功能未初始化")
 			}
 			var confirm selfupdate.ConfirmFunc
-			if !c.yes && readerInteractive(c.in) {
+			// 与其他确认流程保持一致：未使用 --yes 时始终要求输入有效选项。
+			// 输入无效会在 confirmInput 中循环提示，直到输入 yes/y 或 q。
+			if !c.yes {
 				confirm = c.confirm
 			}
 			return c.selfUpdate(cmd.Context(), selfupdate.Options{
