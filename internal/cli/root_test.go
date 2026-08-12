@@ -445,23 +445,20 @@ func TestCoreMenuMergesUninstallAndCleanup(t *testing.T) {
 	}
 }
 
-func TestCoreMenuTitlesUseDisplayWidthCentering(t *testing.T) {
-	for _, tt := range []struct {
-		core string
-		want string
-	}{
-		{core: domain.CoreXray, want: strings.Repeat(" ", 13) + "xray 管理菜单"},
-		{core: domain.CoreSingBox, want: strings.Repeat(" ", 11) + "sing-box 管理菜单"},
-	} {
+func TestCoreMenusUseGlobalPageHeader(t *testing.T) {
+	for _, core := range []string{domain.CoreXray, domain.CoreSingBox} {
 		var out bytes.Buffer
-		c := &commandSet{out: &out}
-		c.printCoreMenu(tt.core)
-		if !strings.Contains(out.String(), "\n"+tt.want+"\n") {
-			t.Fatalf("core=%s menu output=%q, want centered title %q", tt.core, out.String(), tt.want)
+		c := &commandSet{out: &out, currentVersion: "v1.2.3"}
+		c.printCoreMenu(core)
+		for _, want := range []string{
+			"╭─ ProxyForge",
+			"│ " + core + " 管理菜单  [版本 v1.2.3]",
+			proxyForgeHeaderRule,
+		} {
+			if !strings.Contains(out.String(), want) {
+				t.Fatalf("core=%s menu output=%q, missing %q", core, out.String(), want)
+			}
 		}
-	}
-	if got := terminalDisplayWidth("xray 管理菜单"); got != 13 {
-		t.Fatalf("display width=%d, want 13", got)
 	}
 }
 
@@ -763,14 +760,11 @@ func TestMenuCanReturnFromCoreSelection(t *testing.T) {
 	if err := c.menu(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(out.String(), "╭─ ProxyForge") != 2 {
+	if strings.Count(out.String(), "│ 双内核代理管理器  [版本 v1.2.3]") != 2 {
 		t.Fatalf("core selector was not shown twice: %q", out.String())
 	}
-	if strings.Count(out.String(), "│ 双内核代理管理器  [版本 v1.2.3]") != 2 {
-		t.Fatalf("current version was not shown twice: %q", out.String())
-	}
-	if strings.Count(out.String(), proxyForgeHeaderRule) != 2 {
-		t.Fatalf("server tool header rule was not shown twice: %q", out.String())
+	if strings.Count(out.String(), proxyForgeHeaderRule) != 3 {
+		t.Fatalf("global page header rule count is incorrect: %q", out.String())
 	}
 	if !strings.Contains(out.String(), "sing-box 管理菜单") || !strings.Contains(out.String(), "安装/升级内核") || !strings.Contains(out.String(), "服务端配置管理") {
 		t.Fatalf("core menu missing: %q", out.String())

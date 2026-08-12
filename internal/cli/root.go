@@ -10,7 +10,6 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/spf13/cobra"
 
@@ -26,7 +25,6 @@ import (
 
 var errReturnToMenu = errors.New("返回主菜单")
 
-const menuDisplayWidth = 40
 const proxyForgeHeaderRule = "╰──────────────────────────────────────────────"
 
 type confirmationSection struct {
@@ -159,7 +157,7 @@ func (c *commandSet) installCommand() *cobra.Command {
 			nonInteractive := c.yes || !readerInteractive(c.in)
 			if !nonInteractive {
 				c.clearScreen()
-				fmt.Fprintf(c.out, "安装/升级内核：%s\n\n", args[0])
+				c.printPageHeader("安装/升级内核：" + args[0])
 			}
 			opts := install.Options{URL: scriptURL, Version: version, NonInteractive: nonInteractive, TrustScriptSHA256: trust, Confirm: c.confirm}
 			return c.app.Install(cmd.Context(), args[0], opts)
@@ -302,7 +300,7 @@ func (c *commandSet) serviceCommand() *cobra.Command {
 
 func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.GenerateOptions) error {
 	c.clearScreen()
-	fmt.Fprintf(c.out, "生成服务端配置：%s\n\n", core)
+	c.printPageHeader("生成服务端配置：" + core)
 	fmt.Fprintln(c.out, "提示：任意输入步骤输入 q 或 0 可取消并返回主菜单。")
 	if core == domain.CoreSingBox {
 		fmt.Fprintln(c.out, "\n配置模式")
@@ -458,7 +456,8 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 			o.SNI = selected
 			if c.interactiveUI() {
 				c.clearScreen()
-				fmt.Fprintf(c.out, "生成服务端配置：%s\n\n已选择 REALITY SNI：%s\n", core, o.SNI)
+				c.printPageHeader("生成服务端配置：" + core)
+				fmt.Fprintf(c.out, "已选择 REALITY SNI：%s\n", o.SNI)
 			}
 		}
 	}
@@ -726,7 +725,7 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 	for {
 		c.clearScreen()
-		fmt.Fprintf(c.out, "服务端配置管理：%s\n\n", core)
+		c.printPageHeader("服务端配置管理：" + core)
 		fmt.Fprintln(c.out, "1 生成/更新服务端配置（完整覆盖现有配置，不合并原配置）")
 		fmt.Fprintln(c.out, "2 查看当前配置")
 		fmt.Fprintln(c.out, "3 DNS 设置")
@@ -770,6 +769,7 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 				// ServerConfig may emit progress on stderr. Clear once more after the
 				// read so merged terminal streams cannot split the displayed JSON.
 				c.clearScreen()
+				c.printPageHeader("查看服务端配置：" + core)
 				fmt.Fprintln(c.out, "警告：当前服务端配置可能包含 UUID、REALITY 私钥等敏感信息，请勿泄露。")
 				fmt.Fprintln(c.out, "----------------------------------------")
 				_, err = c.out.Write(b)
@@ -800,7 +800,7 @@ func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
 		return err
 	}
 	c.clearScreen()
-	fmt.Fprintf(c.out, "DNS 设置：%s\n", core)
+	c.printPageHeader("DNS 设置：" + core)
 	fmt.Fprintf(c.out, "当前配置：%s\n\n", dnsProfileDisplay(core, settings.Current))
 	defaultChoice := 1
 	for index, profile := range settings.Profiles {
@@ -935,7 +935,7 @@ func isEncryptedDNSProfile(profile string) bool {
 
 func (c *commandSet) clientMenu(ctx context.Context, core string) (bool, error) {
 	c.clearScreen()
-	fmt.Fprintf(c.out, "查看客户端配置：%s\n\n", core)
+	c.printPageHeader("查看客户端配置：" + core)
 	fmt.Fprintln(c.out, "1 内核原生 JSON")
 	fmt.Fprintln(c.out, "2 Clash YAML（Mihomo/Clash Meta）")
 	fmt.Fprintln(c.out, "0 返回内核菜单")
@@ -958,10 +958,7 @@ func (c *commandSet) clientMenu(ctx context.Context, core string) (bool, error) 
 }
 
 func (c *commandSet) printCoreMenu(core string) {
-	fmt.Fprintln(c.out)
-	fmt.Fprintln(c.out, "========================================")
-	fmt.Fprintln(c.out, centerDisplayText(core+" 管理菜单", menuDisplayWidth))
-	fmt.Fprintln(c.out, "========================================")
+	c.printPageHeader(core + " 管理菜单")
 	fmt.Fprintln(c.out, "1 安装/升级内核")
 	fmt.Fprintln(c.out, "2 服务端配置管理")
 	fmt.Fprintln(c.out, "3 查看订阅配置")
@@ -1029,7 +1026,7 @@ func (c *commandSet) confirmCleanup(target string) (bool, error) {
 
 func (c *commandSet) resetMenu(ctx context.Context, core string) (bool, error) {
 	c.clearScreen()
-	fmt.Fprintf(c.out, "重置 %s\n", core)
+	c.printPageHeader("重置节点：" + core)
 	fmt.Fprintln(c.out, "1 仅重置 SNI/target（保留 UUID、REALITY 密钥和 short ID）")
 	fmt.Fprintln(c.out, "2 重置 UUID、REALITY 密钥和 short ID（保留 SNI/target）")
 	fmt.Fprintln(c.out, "0 返回内核菜单")
@@ -1060,7 +1057,7 @@ func (c *commandSet) resetChoice(ctx context.Context, core string, choice int) e
 		opts.Credentials = false
 	} else {
 		c.clearScreen()
-		fmt.Fprintf(c.out, "重置凭证：%s\n\n", core)
+		c.printPageHeader("重置凭证：" + core)
 		confirmed, err := c.confirmCredentialOnlyReset(core)
 		if err != nil {
 			return err
@@ -1080,7 +1077,7 @@ func (c *commandSet) fillReset(ctx context.Context, core string, opts *domain.Re
 		return err
 	}
 	c.clearScreen()
-	fmt.Fprintf(c.out, "重置节点：%s\n\n", core)
+	c.printPageHeader("重置节点：" + core)
 	opts.SNI = strings.TrimSpace(opts.SNI)
 	manualSNI := opts.SNI != ""
 	if opts.SNI == "" {
@@ -1095,7 +1092,8 @@ func (c *commandSet) fillReset(ctx context.Context, core string, opts *domain.Re
 			opts.SNI = selected
 			if c.interactiveUI() {
 				c.clearScreen()
-				fmt.Fprintf(c.out, "重置节点：%s\n\n已选择 REALITY SNI：%s\n", core, opts.SNI)
+				c.printPageHeader("重置节点：" + core)
+				fmt.Fprintf(c.out, "已选择 REALITY SNI：%s\n", opts.SNI)
 			}
 		}
 	}
@@ -1187,8 +1185,12 @@ func (c *commandSet) selectCore() (string, bool, error) {
 }
 
 func (c *commandSet) printProxyForgeHeader() {
+	c.printPageHeader("双内核代理管理器")
+}
+
+func (c *commandSet) printPageHeader(title string) {
 	fmt.Fprintln(c.out, "╭─ ProxyForge")
-	fmt.Fprintf(c.out, "│ 双内核代理管理器  [版本 %s]\n", displayCurrentVersion(c.currentVersion))
+	fmt.Fprintf(c.out, "│ %s  [版本 %s]\n", title, displayCurrentVersion(c.currentVersion))
 	fmt.Fprintln(c.out, proxyForgeHeaderRule)
 }
 
@@ -1204,7 +1206,7 @@ func (c *commandSet) serviceMenu(ctx context.Context, core string) error {
 	actions := []string{"", "start", "stop", "restart", "status", "logs"}
 	for {
 		c.clearScreen()
-		fmt.Fprintf(c.out, "服务管理：%s\n", core)
+		c.printPageHeader("服务管理：" + core)
 		fmt.Fprintln(c.out, "1 启动服务")
 		fmt.Fprintln(c.out, "2 停止服务")
 		fmt.Fprintln(c.out, "3 重启服务")
@@ -1260,7 +1262,7 @@ func (c *commandSet) logLevelMenu(ctx context.Context, core string) error {
 		return err
 	}
 	c.clearScreen()
-	fmt.Fprintf(c.out, "设置日志级别：%s\n", core)
+	c.printPageHeader("设置日志级别：" + core)
 	fmt.Fprintf(c.out, "当前级别：%s\n\n", logLevelDisplay(core, settings.Current))
 	defaultChoice := 1
 	for index, level := range settings.Levels {
@@ -1366,7 +1368,8 @@ func (c *commandSet) followServiceLogs(ctx context.Context, core string) error {
 	followCtx, stop := interruptContext(ctx)
 	defer stop()
 
-	fmt.Fprintf(c.out, "实时日志：%s（按 Ctrl+C 返回服务管理）\n", core)
+	c.printPageHeader("实时日志：" + core)
+	fmt.Fprintln(c.out, "按 Ctrl+C 返回服务管理")
 	fmt.Fprintln(c.out, "----------------------------------------")
 	err := c.app.FollowServiceLogs(followCtx, core, c.out)
 	if ctx.Err() != nil {
@@ -1476,9 +1479,8 @@ func (c *commandSet) confirmCancelableDefaultYes(message string) (bool, error) {
 }
 
 func (c *commandSet) printConfirmationPanel(title string, details []string, sections ...confirmationSection) {
-	fmt.Fprintln(c.out, "========================================")
-	fmt.Fprintln(c.out, title)
-	fmt.Fprintln(c.out, "========================================")
+	c.clearScreen()
+	c.printPageHeader(title)
 	for _, detail := range details {
 		fmt.Fprintln(c.out, detail)
 	}
@@ -1563,29 +1565,4 @@ func netJoinHostPort(host, port string) string {
 		return "[" + host + "]:" + port
 	}
 	return host + ":" + port
-}
-
-func centerDisplayText(value string, width int) string {
-	valueWidth := terminalDisplayWidth(value)
-	if valueWidth >= width {
-		return value
-	}
-	return strings.Repeat(" ", (width-valueWidth)/2) + value
-}
-
-func terminalDisplayWidth(value string) int {
-	width := 0
-	for _, char := range value {
-		switch {
-		case unicode.Is(unicode.Mn, char), unicode.Is(unicode.Me, char):
-			// Combining marks occupy the same cell as the preceding rune.
-		case char <= unicode.MaxASCII:
-			width++
-		default:
-			// Menu titles currently contain CJK text, which occupies two
-			// terminal cells in the supported Linux locales.
-			width += 2
-		}
-	}
-	return width
 }

@@ -154,6 +154,9 @@ func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
 	var output bytes.Buffer
 	w := NewColorWriter(&output, true)
 	for _, line := range []string{
+		"╭─ ProxyForge\n",
+		"│ 服务管理：xray  [版本 v1.2.3]\n",
+		"╰──────────────────────────────────────────────\n",
 		"========================================\n",
 		"1 安装/升级内核\n",
 		"5 卸载内核并清理数据\n",
@@ -183,6 +186,9 @@ func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
 
 	got := output.String()
 	for _, want := range []string{
+		"\x1b[1;36m╭─ ProxyForge\x1b[0m",
+		"\x1b[36m│ 服务管理：xray  [版本 v1.2.3]\x1b[0m",
+		"\x1b[1;36m╰──────────────────────────────────────────────\x1b[0m",
 		"\x1b[1;36m========================================\x1b[0m",
 		"\x1b[34m1\x1b[0m 安装/升级内核",
 		"\x1b[1;31m5\x1b[0m \x1b[1;31m卸载内核并清理数据\x1b[0m",

@@ -133,6 +133,10 @@ func decorateOutputFragment(fragment string, atLineStart bool) string {
 	if atLineStart {
 		trimmed := strings.TrimSpace(body)
 		switch {
+		case strings.HasPrefix(trimmed, "╭─ "), strings.HasPrefix(trimmed, "╰─"):
+			body = wrapANSI(ansiBoldCyan, body)
+		case strings.HasPrefix(trimmed, "│ ") && strings.Contains(trimmed, "[版本 "):
+			body = wrapANSI(ansiCyan, body)
 		case isRepeated(trimmed, '='):
 			body = wrapANSI(ansiBoldCyan, body)
 		case isRepeated(trimmed, '-'):
