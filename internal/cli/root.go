@@ -312,12 +312,12 @@ func (c *commandSet) serviceCommand() *cobra.Command {
 func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.GenerateOptions) error {
 	c.clearScreen()
 	c.printPageHeader(core, "生成服务端配置")
-	fmt.Fprintln(c.out, "提示：任意输入步骤输入 q 或 0 可取消并返回主菜单。")
+	fmt.Fprintln(c.out, "提示：输入 q 或 0 可取消并返回上级菜单。")
 	if core == domain.CoreSingBox {
 		fmt.Fprintln(c.out, "\n配置模式")
-		c.printMenuChoice("1", "标准安全配置（内部 DNS 解析后拦截私网和保留地址）")
-		c.printMenuChoice("2", "简化配置（系统默认 DNS；DNS 日志较少，但域名解析到私网时可能绕过拦截）")
-		c.printMenuChoice("3", "回落防偷跑配置（默认；direct 入站仅放行与 SNI 一致的 TLS 流量）")
+		c.printMenuChoice("1", "标准安全（内部 DNS 解析后拦截私网和保留地址）")
+		c.printMenuChoice("2", "简化模式（使用系统 DNS；DNS 日志较少，私网域名可能绕过拦截）")
+		c.printMenuChoice("3", "回落防护（默认；direct 入站仅放行与 SNI 一致的 TLS 流量）")
 		defaultChoice := 3
 		if o.SingBoxFallbackGuard {
 			defaultChoice = 3
@@ -338,8 +338,8 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 			o.SingBoxFallbackHTTPDomain = false
 		} else {
 			fmt.Fprintln(c.out, "\nHTTP 回落域名限制")
-			c.printMenuChoice("1", "不限制 HTTP Host（默认）")
-			c.printMenuChoice("2", "仅放行与 SNI 一致的 HTTP Host")
+			c.printMenuChoice("1", "不限制 Host（默认）")
+			c.printMenuChoice("2", "Host 匹配 SNI")
 			defaultHTTPChoice := 1
 			if o.SingBoxFallbackHTTPDomain {
 				defaultHTTPChoice = 2
@@ -352,8 +352,8 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		}
 	} else if core == domain.CoreXray {
 		fmt.Fprintln(c.out, "\n配置模式")
-		c.printMenuChoice("1", "标准配置（REALITY 未认证流量直接转发到 target）")
-		c.printMenuChoice("2", "回落防偷跑配置（默认；dokodemo-door 仅放行与 SNI 一致的 TLS 流量）")
+		c.printMenuChoice("1", "标准模式（REALITY 未认证流量直接转发到 target）")
+		c.printMenuChoice("2", "回落防护（默认；dokodemo-door 仅放行与 SNI 一致的 TLS 流量）")
 		defaultChoice := 2
 		if o.StandardConfig {
 			defaultChoice = 1
@@ -545,8 +545,8 @@ func (c *commandSet) selectPublicAddress(ctx context.Context) (string, error) {
 	}
 	for {
 		fmt.Fprintln(c.out, "公网地址获取方式")
-		c.printMenuChoice("1", "从物理网卡获取（默认）")
-		c.printMenuChoice("2", "通过 api.ipify.org HTTPS 探测")
+		c.printMenuChoice("1", "物理网卡（默认）")
+		c.printMenuChoice("2", "在线探测（api.ipify.org HTTPS）")
 		c.printMenuChoice("3", "手动输入")
 		choice, err := c.chooseNumberCancelable("请选择", 1, 3, 1)
 		if err != nil {
@@ -651,7 +651,7 @@ func printGenerateSuccess(w io.Writer, n domain.NodeSpec) {
 	}
 	fmt.Fprintf(w, "内核版本：%s\n", n.CoreVersion)
 	fmt.Fprintln(w, border)
-	fmt.Fprintln(w, "提示：请从“查看客户端配置”导出并妥善保管客户端配置。")
+	fmt.Fprintln(w, "提示：请从“客户端配置”导出并妥善保管。")
 }
 
 func (c *commandSet) menu(ctx context.Context) error {
@@ -736,13 +736,13 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 	for {
 		c.clearScreen()
-		c.printPageHeader(core, "服务端配置管理")
-		c.printMenuChoice("1", "生成/更新服务端配置（完整覆盖现有配置，不合并原配置）")
-		c.printMenuChoice("2", "查看当前配置")
+		c.printPageHeader(core, "服务端配置")
+		c.printMenuChoice("1", "生成/更新配置（完整覆盖现有配置，不合并原配置）")
+		c.printMenuChoice("2", "查看配置")
 		c.printMenuChoice("3", "DNS 设置")
-		c.printMenuChoice("4", "重置 SNI/target（保留 UUID、REALITY 密钥和 short ID）")
-		c.printMenuChoice("5", "重置节点凭证（重置 UUID、REALITY 密钥和 short ID；保留 SNI/target）")
-		c.printMenuChoice("0/q", "返回内核菜单")
+		c.printMenuChoice("4", "重置 SNI/target（保留节点凭证）")
+		c.printMenuChoice("5", "重置节点凭证（UUID、REALITY 密钥和 short ID；保留 SNI/target）")
+		c.printMenuChoice("0/q", "返回")
 		choice, err := c.chooseNumber("请选择", 0, 5, 0)
 		if err != nil {
 			return err
@@ -760,7 +760,7 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 				err = c.confirmServerConfigOverwrite(core, true)
 			}
 			if errors.Is(err, errReturnToMenu) {
-				fmt.Fprintln(c.out, "已取消生成服务端配置，返回服务端配置管理菜单。")
+				fmt.Fprintln(c.out, "已取消生成服务端配置，返回服务端配置菜单。")
 				continue
 			}
 			if err == nil {
@@ -822,7 +822,7 @@ func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
 			defaultChoice = index + 1
 		}
 	}
-	c.printMenuChoice("0/q", "返回服务端配置管理")
+	c.printMenuChoice("0/q", "返回")
 	choice, err := c.chooseNumber("请选择 DNS", 0, len(settings.Profiles), defaultChoice)
 	if err != nil {
 		return err
@@ -946,10 +946,10 @@ func isEncryptedDNSProfile(profile string) bool {
 
 func (c *commandSet) clientMenu(ctx context.Context, core string) (bool, error) {
 	c.clearScreen()
-	c.printPageHeader(core, "查看客户端配置")
-	c.printMenuChoice("1", "内核原生 JSON")
+	c.printPageHeader(core, "客户端配置")
+	c.printMenuChoice("1", "原生 JSON")
 	c.printMenuChoice("2", "Clash YAML（Mihomo/Clash Meta）")
-	c.printMenuChoice("0/q", "返回内核菜单")
+	c.printMenuChoice("0/q", "返回")
 	choice, err := c.chooseNumber("请选择", 0, 2, 1)
 	if err != nil {
 		return false, err
@@ -970,12 +970,12 @@ func (c *commandSet) clientMenu(ctx context.Context, core string) (bool, error) 
 
 func (c *commandSet) printCoreMenu(core string) {
 	c.printPageHeader(core)
-	c.printMenuChoice("1", "安装/升级内核")
-	c.printMenuChoice("2", "服务端配置管理")
-	c.printMenuChoice("3", "查看订阅配置")
-	c.printMenuChoice("4", "管理服务")
-	c.printMenuChoice("5", "卸载内核并清理数据")
-	c.printMenuChoice("0/q", "返回内核选择")
+	c.printMenuChoice("1", "安装/升级")
+	c.printMenuChoice("2", "服务端配置")
+	c.printMenuChoice("3", "客户端配置")
+	c.printMenuChoice("4", "服务管理")
+	c.printMenuChoice("5", "卸载内核（同时清理配置和运行数据）")
+	c.printMenuChoice("0/q", "返回")
 }
 
 func (c *commandSet) confirmUninstall(core string) (bool, error) {
@@ -1037,9 +1037,9 @@ func (c *commandSet) confirmCleanup(target string) (bool, error) {
 func (c *commandSet) resetMenu(ctx context.Context, core string) (bool, error) {
 	c.clearScreen()
 	c.printPageHeader(core, "重置节点")
-	c.printMenuChoice("1", "仅重置 SNI/target（保留 UUID、REALITY 密钥和 short ID）")
-	c.printMenuChoice("2", "重置 UUID、REALITY 密钥和 short ID（保留 SNI/target）")
-	c.printMenuChoice("0/q", "返回内核菜单")
+	c.printMenuChoice("1", "重置 SNI/target（保留节点凭证）")
+	c.printMenuChoice("2", "重置节点凭证（UUID、REALITY 密钥和 short ID；保留 SNI/target）")
+	c.printMenuChoice("0/q", "返回")
 	choice, err := c.chooseNumber("请选择", 0, 2, 1)
 	if err != nil {
 		return false, err
@@ -1175,8 +1175,8 @@ func (c *commandSet) runCredentialReset(ctx context.Context, core string, opts d
 func (c *commandSet) selectCore() (string, bool, error) {
 	c.clearScreen()
 	c.printProxyForgeHeader()
-	c.printMenuChoice("1", "sing-box 管理")
-	c.printMenuChoice("2", "Xray-core 管理")
+	c.printMenuChoice("1", "sing-box")
+	c.printMenuChoice("2", "Xray-core")
 	c.printMenuChoice("0/q", "退出")
 	choice, err := c.chooseNumber("请选择", 0, 2, 1)
 	if err != nil {
@@ -1251,14 +1251,14 @@ func (c *commandSet) serviceMenu(ctx context.Context, core string) error {
 	for {
 		c.clearScreen()
 		c.printPageHeader(core, "服务管理")
-		c.printMenuChoice("1", "启动服务")
-		c.printMenuChoice("2", "停止服务")
-		c.printMenuChoice("3", "重启服务")
-		c.printMenuChoice("4", "查看状态")
-		c.printMenuChoice("5", "查看最近日志")
-		c.printMenuChoice("6", "实时日志查看（Ctrl+C 返回服务管理）")
-		c.printMenuChoice("7", "设置日志级别")
-		c.printMenuChoice("0/q", "返回内核菜单")
+		c.printMenuChoice("1", "启动")
+		c.printMenuChoice("2", "停止")
+		c.printMenuChoice("3", "重启")
+		c.printMenuChoice("4", "状态")
+		c.printMenuChoice("5", "最近日志")
+		c.printMenuChoice("6", "实时日志（Ctrl+C 返回）")
+		c.printMenuChoice("7", "日志级别")
+		c.printMenuChoice("0/q", "返回")
 		choice, chooseErr := c.chooseNumber("请选择", 0, 7, 4)
 		if chooseErr != nil {
 			return chooseErr
@@ -1306,7 +1306,7 @@ func (c *commandSet) logLevelMenu(ctx context.Context, core string) error {
 		return err
 	}
 	c.clearScreen()
-	c.printPageHeader(core, "设置日志级别")
+	c.printPageHeader(core, "日志级别")
 	fmt.Fprintf(c.out, "当前级别：%s\n\n", logLevelDisplay(core, settings.Current))
 	defaultChoice := 1
 	for index, level := range settings.Levels {
@@ -1315,7 +1315,7 @@ func (c *commandSet) logLevelMenu(ctx context.Context, core string) error {
 			defaultChoice = index + 1
 		}
 	}
-	c.printMenuChoice("0/q", "返回服务管理")
+	c.printMenuChoice("0/q", "返回")
 	choice, err := c.chooseNumber("请选择日志级别", 0, len(settings.Levels), defaultChoice)
 	if err != nil {
 		return err
@@ -1473,7 +1473,7 @@ func (c *commandSet) chooseNumberInput(label string, min, max, def int, cancelab
 			eraseChoiceRetry(c.out, invalidShown)
 		}
 		if cancelable {
-			fmt.Fprintf(c.out, "无效选择，请输入 %d 到 %d 之间的数字，或输入 q/0 返回主菜单。\n", min, max)
+			fmt.Fprintf(c.out, "无效选择，请输入 %d 到 %d 之间的数字，或输入 q/0 返回上级菜单。\n", min, max)
 		} else {
 			fmt.Fprintf(c.out, "无效选择，请输入 %d 到 %d 之间的数字。\n", min, max)
 		}
