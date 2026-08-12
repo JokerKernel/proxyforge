@@ -118,13 +118,24 @@ detect_architecture() {
 download() {
   local url=$1
   local output=$2
+  local show_progress=${3:-false}
   if command -v curl >/dev/null 2>&1; then
-    curl --proto '=https' --tlsv1.2 --fail --location --silent --show-error \
-      --retry 3 --output "${output}" "${url}"
+    if [[ "${show_progress}" == true && -t 2 ]]; then
+      curl --proto '=https' --tlsv1.2 --fail --location --show-error --progress-bar \
+        --retry 3 --output "${output}" "${url}"
+    else
+      curl --proto '=https' --tlsv1.2 --fail --location --silent --show-error \
+        --retry 3 --output "${output}" "${url}"
+    fi
     return
   fi
   if command -v wget >/dev/null 2>&1; then
-    wget --https-only --secure-protocol=TLSv1_2 --quiet --output-document="${output}" "${url}"
+    if [[ "${show_progress}" == true && -t 2 ]]; then
+      wget --https-only --secure-protocol=TLSv1_2 --no-verbose --show-progress \
+        --progress=bar:force:noscroll --output-document="${output}" "${url}"
+    else
+      wget --https-only --secure-protocol=TLSv1_2 --quiet --output-document="${output}" "${url}"
+    fi
     return
   fi
   die "需要 curl 或 wget 才能下载发布文件"
@@ -289,7 +300,7 @@ main() {
   fi
 
   info "正在下载 ${selected_asset}"
-  download "${release_base}/${selected_asset}" "${temporary_dir}/${selected_asset}"
+  download "${release_base}/${selected_asset}" "${temporary_dir}/${selected_asset}" true
   printf '%s  %s\n' "${selected_checksum}" "${selected_asset}" |
     (cd "${temporary_dir}" && sha256sum --check --status -) || die "SHA-256 校验失败"
   info "SHA-256 校验通过"
