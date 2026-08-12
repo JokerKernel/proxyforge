@@ -52,17 +52,17 @@ sudo proxyforge update --yes
 
 ## 卸载 ProxyForge 自身
 
-安装脚本的 `--uninstall` 参数只删除 `/usr/local/sbin/proxyforge`，不会卸载 sing-box、Xray，也不会删除节点配置、ProxyForge 状态、信任记录或备份：
+安装脚本的 `uninstall` 参数只删除 `/usr/local/sbin/proxyforge`，不会卸载 sing-box、Xray，也不会删除节点配置、ProxyForge 状态、信任记录或备份；同时兼容 `--uninstall` 写法：
 
 ```bash
-sudo bash scripts/install.sh --uninstall
+sudo bash scripts/install.sh uninstall
 ```
 
 通过在线脚本卸载时，将参数传递给 `bash`：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | \
-  sudo bash -s -- --uninstall
+  sudo bash -s -- uninstall
 ```
 
 ## 卸载

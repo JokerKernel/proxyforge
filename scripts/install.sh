@@ -170,7 +170,7 @@ parse_arguments() {
       --yes | -y)
         shift
         ;;
-      --uninstall)
+      uninstall | --uninstall)
         requested_action="uninstall"
         shift
         ;;

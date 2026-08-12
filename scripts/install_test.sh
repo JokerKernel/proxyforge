@@ -89,7 +89,7 @@ test_uninstall_removes_only_proxyforge_binary() (
   remove_proxyforge_binary() { installed=false; }
 
   local output
-  output=$(main --uninstall)
+  output=$(main uninstall)
   [[ "${output}" == *"自身卸载"* ]] || fail "missing uninstall header"
   [[ "${output}" == *"ProxyForge 自身已卸载"* ]] || fail "missing uninstall result"
   [[ "${output}" == *"sing-box、Xray、节点配置和 ProxyForge 数据均已保留"* ]] || fail "missing retained data notice"
@@ -104,6 +104,17 @@ test_uninstall_is_idempotent() (
   local output
   output=$(main --uninstall --yes)
   [[ "${output}" == *"当前未安装，无需卸载"* ]] || fail "missing already-uninstalled result"
+)
+
+test_uninstall_aliases_are_equivalent() (
+  source "${script_dir}/install.sh"
+  require_root() { return; }
+  proxyforge_binary_exists() { return 1; }
+
+  local positional_output flag_output
+  positional_output=$(main uninstall)
+  flag_output=$(main --uninstall)
+  [[ "${positional_output}" == "${flag_output}" ]] || fail "uninstall aliases produced different output"
 )
 
 test_version_file_fallback() (
@@ -138,5 +149,6 @@ test_version_comparison_and_classification
 test_update_argument_is_removed
 test_uninstall_removes_only_proxyforge_binary
 test_uninstall_is_idempotent
+test_uninstall_aliases_are_equivalent
 test_version_file_fallback
 printf 'install_test: ok\n'

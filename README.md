@@ -22,6 +22,15 @@ sudo /usr/local/sbin/proxyforge
 
 安装脚本会校验 Release 的 `SHA256SUMS`，并将 ProxyForge 原子安装到 `/usr/local/sbin/proxyforge`。安装固定版本、审阅脚本、代理环境和卸载说明见[安装文档](docs/installation.md)。
 
+卸载 ProxyForge 自身：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | \
+  sudo bash -s -- uninstall
+```
+
+也可以对已下载的脚本执行 `sudo bash scripts/install.sh uninstall`；同时兼容 `--uninstall`。该参数只删除 `/usr/local/sbin/proxyforge`，不会卸载 sing-box、Xray，也不会删除节点配置、状态或备份。
+
 ## 快速使用
 
 无参数运行进入中文交互菜单：
