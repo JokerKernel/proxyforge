@@ -5,6 +5,8 @@ readonly repository="JokerKernel/proxyforge"
 readonly install_dir="/usr/local/sbin"
 readonly install_path="${install_dir}/proxyforge"
 readonly max_version_size=256
+readonly max_release_api_size=$((1024 * 1024))
+readonly latest_release_api="https://api.github.com/repos/${repository}/releases/latest"
 
 operation="install"
 current_version=""
@@ -128,6 +130,51 @@ download() {
   die "需要 curl 或 wget 才能下载发布文件"
 }
 
+read_api_version() {
+  local api_file=$1
+  local api_size
+  api_size=$(wc -c < "${api_file}")
+  [[ ${api_size} -le ${max_release_api_size} ]] || return 1
+
+  local versions=()
+  mapfile -t versions < <(
+    sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${api_file}"
+  )
+  [[ ${#versions[@]} -eq 1 ]] || return 1
+  [[ "${versions[0]}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || return 1
+  resolved_version=${versions[0]}
+}
+
+read_version_file() {
+  local version_file=$1
+  local version_size
+  version_size=$(wc -c < "${version_file}")
+  [[ ${version_size} -le ${max_version_size} ]] || return 1
+
+  local version_lines=()
+  mapfile -t version_lines < "${version_file}"
+  [[ ${#version_lines[@]} -eq 1 ]] || return 1
+  [[ "${version_lines[0]}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || return 1
+  resolved_version=${version_lines[0]}
+}
+
+resolve_latest_version() {
+  local release_base=$1
+  local api_file="${temporary_dir}/latest-release.json"
+  local version_file="${temporary_dir}/version"
+
+  if download "${latest_release_api}" "${api_file}" && read_api_version "${api_file}"; then
+    info "通过 GitHub Releases API 获取最新正式版本：${resolved_version}"
+    return
+  fi
+  info "GitHub Releases API 不可用，尝试读取 Release version 文件"
+  if download "${release_base}/version" "${version_file}" && read_version_file "${version_file}"; then
+    info "通过 version 文件获取最新正式版本：${resolved_version}"
+    return
+  fi
+  return 1
+}
+
 select_asset() {
   local manifest=$1
   local architecture=$2
@@ -175,6 +222,7 @@ main() {
   require_command mktemp
   require_command sha256sum
   require_command wc
+  require_command sed
   require_command install
   require_command mv
 
@@ -207,24 +255,13 @@ main() {
   trap 'exit 143' TERM
 
   if [[ "${requested_version}" == "latest" ]]; then
-    local version_lines=()
-    if download "${release_base}/version" "${temporary_dir}/version"; then
-      local version_size
-      version_size=$(wc -c < "${temporary_dir}/version")
-      [[ ${version_size} -le ${max_version_size} ]] || \
-        die "version 文件超过 ${max_version_size} bytes"
-      mapfile -t version_lines < "${temporary_dir}/version"
-      [[ ${#version_lines[@]} -eq 1 ]] || die "最新 Release 的 version 文件格式无效"
-      resolved_version=${version_lines[0]}
-      [[ "${resolved_version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || \
-        die "最新 Release 的 version 内容无效：${resolved_version}"
+    if resolve_latest_version "${release_base}"; then
       release_base="https://github.com/${repository}/releases/download/${resolved_version}"
-      info "最新正式版本：${resolved_version}"
     else
       if [[ "${operation}" == "update" ]]; then
-        die "无法读取最新正式版本"
+        die "无法通过 GitHub Releases API 或 version 文件读取最新正式版本"
       fi
-      info "最新 Release 尚未提供 version，使用 latest/download 兼容方式"
+      info "无法读取最新版本元数据，使用 latest/download 兼容方式"
     fi
   fi
 
