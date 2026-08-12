@@ -75,4 +75,6 @@ SHA256SUMS
 
 `version` 只包含发布标签和换行，并与二进制一起纳入 `SHA256SUMS`。安装脚本支持当前的 `proxyforge_linux_amd64_v1.0.0` 格式，也兼容早期的 `proxyforge_v1.0.0_linux_amd64`。
 
+发布说明采用组合生成：工作流自动查找当前版本之前的相邻版本标签，用 `git log --no-merges` 生成带提交链接的 Markdown 列表，再由 GitHub 原生 Release Notes 补充合并的 Pull Request、贡献者和完整变更链接。即使采用个人仓库直接推送模式，Release 页面也会包含具体改动；`--notes-start-tag` 保证原生说明使用同一个版本范围。
+
 可以在 GitHub Actions 的 Release 工作流中手动重新发布已有标签。发布任务只在最后阶段获得 `contents: write` 权限，普通 CI 和构建任务保持只读。

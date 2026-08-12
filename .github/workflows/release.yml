@@ -125,17 +125,58 @@ jobs:
           printf '%s\n' "${RELEASE_TAG}" > version
           sha256sum proxyforge_linux_*_"${RELEASE_TAG}" version > SHA256SUMS
 
+      - name: Generate direct commit notes
+        id: release_notes
+        shell: bash
+        run: |
+          previous_tag=""
+          while IFS= read -r tag; do
+            if [[ "${tag}" != "${RELEASE_TAG}" && "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+              previous_tag=${tag}
+              break
+            fi
+          done < <(git tag --merged "${RELEASE_TAG}" --sort=-version:refname)
+
+          if [[ -n "${previous_tag}" ]]; then
+            commit_range="${previous_tag}..${RELEASE_TAG}"
+          else
+            commit_range="${RELEASE_TAG}"
+          fi
+
+          notes_file="${RUNNER_TEMP}/proxyforge-direct-commits.md"
+          commit_count=$(git rev-list --no-merges --count "${commit_range}")
+          {
+            printf '## Direct commits\n\n'
+            if [[ ${commit_count} -gt 0 ]]; then
+              git log --no-merges --format="- %s ([\`%h\`](https://github.com/${GITHUB_REPOSITORY}/commit/%H))" "${commit_range}"
+            else
+              printf -- '- No direct commits.\n'
+            fi
+          } > "${notes_file}"
+
+          printf 'previous_tag=%s\n' "${previous_tag}" >> "${GITHUB_OUTPUT}"
+          printf 'notes_file=%s\n' "${notes_file}" >> "${GITHUB_OUTPUT}"
+
       - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          PREVIOUS_TAG: ${{ steps.release_notes.outputs.previous_tag }}
+          NOTES_FILE: ${{ steps.release_notes.outputs.notes_file }}
         run: |
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
             gh release upload "${RELEASE_TAG}" dist/proxyforge_linux_*_"${RELEASE_TAG}" dist/version dist/SHA256SUMS --clobber
           else
+            release_args=(
+              --verify-tag
+              --generate-notes
+              --title "ProxyForge ${RELEASE_TAG}"
+              --notes "$(<"${NOTES_FILE}")"
+            )
+            if [[ -n "${PREVIOUS_TAG}" ]]; then
+              release_args+=(--notes-start-tag "${PREVIOUS_TAG}")
+            fi
             gh release create "${RELEASE_TAG}" \
               dist/proxyforge_linux_*_"${RELEASE_TAG}" dist/version dist/SHA256SUMS \
-              --verify-tag \
-              --generate-notes \
-              --title "ProxyForge ${RELEASE_TAG}"
+              "${release_args[@]}"
           fi
