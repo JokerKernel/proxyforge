@@ -157,6 +157,7 @@ func (*Provider) CleanupPaths() []string {
 		"/usr/local/etc/xray",
 		"/var/log/xray",
 		"/etc/systemd/system/xray.service.d/20-proxyforge-user.conf",
+		"/etc/sysusers.d/proxyforge-xray.conf",
 	}
 }
 

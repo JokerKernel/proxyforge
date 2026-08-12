@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"proxyforge/internal/domain"
@@ -16,6 +15,9 @@ import (
 const XrayDedicatedServiceUser = "xray"
 
 const xrayServiceUserDropIn = "/etc/systemd/system/xray.service.d/20-proxyforge-user.conf"
+const xraySysusersConfig = "/etc/sysusers.d/proxyforge-xray.conf"
+
+var xraySysusersContent = []byte("# Managed by ProxyForge.\nu xray - \"Xray Service\" /nonexistent -\n")
 
 var xraySystemdUnits = []string{
 	"/etc/systemd/system/xray.service",
@@ -68,23 +70,11 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 		return change, fmt.Errorf("读取 %s 运行用户: %w", p.ServiceName(), err)
 	}
 
-	a.progressf("创建或检查 Xray 专用系统用户 %s", XrayDedicatedServiceUser)
-	created, err := a.ensureXrayServiceAccount(ctx)
-	if err != nil {
-		return change, err
-	}
-	change.UserCreated = created
-
 	status, _ := a.Services.IsActive(ctx, p.ServiceName())
 	snapshots, changedUnits, err := a.prepareXrayServiceUserFiles()
 	if err != nil {
 		return change, err
 	}
-	if !changedUnits && change.Previous == XrayDedicatedServiceUser {
-		change.Current = change.Previous
-		return change, nil
-	}
-
 	configSnapshots, err := captureExistingMetadata(
 		a.Layout.Resolve(filepath.Dir(p.ConfigPath())),
 		a.Layout.Resolve(p.ConfigPath()),
@@ -111,6 +101,9 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 		if rollbackErr != nil {
 			return fmt.Errorf("%v；且恢复旧设置失败: %w", cause, rollbackErr)
 		}
+		if change.UserCreated {
+			return fmt.Errorf("%v；已恢复旧 systemd 设置；新创建的 xray 专用账号已安全保留", cause)
+		}
 		return fmt.Errorf("%v；已恢复旧 systemd 设置", cause)
 	}
 
@@ -118,12 +111,24 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 	if err := writePreparedSnapshots(snapshots); err != nil {
 		return change, rollback(err)
 	}
+	a.progressf("通过 systemd-sysusers 创建或检查 Xray 专用系统用户 %s", XrayDedicatedServiceUser)
+	created, err := a.ensureXrayServiceAccount(ctx)
+	change.UserCreated = created
+	if err != nil {
+		return change, rollback(err)
+	}
 	if err := a.secureXrayFilesForDedicatedUser(ctx, p.ConfigPath()); err != nil {
 		return change, rollback(err)
 	}
-	a.progressf("刷新 systemd unit 缓存")
-	if err := a.Services.DaemonReload(ctx); err != nil {
-		return change, rollback(fmt.Errorf("刷新 systemd unit 失败: %w", err))
+	a.progressf("以 Xray 专用用户校验配置和引用文件权限")
+	if err := a.validateXrayConfigAsDedicatedUser(ctx, p.ConfigPath()); err != nil {
+		return change, rollback(err)
+	}
+	if changedUnits {
+		a.progressf("刷新 systemd unit 缓存")
+		if err := a.Services.DaemonReload(ctx); err != nil {
+			return change, rollback(fmt.Errorf("刷新 systemd unit 失败: %w", err))
+		}
 	}
 	change.Current, err = a.Services.UserState(ctx, p.ServiceName())
 	if err != nil {
@@ -132,7 +137,7 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 	if change.Current != XrayDedicatedServiceUser {
 		return change, rollback(fmt.Errorf("Xray 有其他 systemd 配置覆盖了运行用户，当前仍为 %s", change.Current))
 	}
-	if status.Active {
+	if status.Active && (changedUnits || change.Previous != XrayDedicatedServiceUser) {
 		a.progressf("重启 Xray 使专用运行用户立即生效")
 		if err := a.Services.Restart(ctx, p.ServiceName()); err != nil {
 			return change, rollback(fmt.Errorf("重启 %s 失败: %w", p.ServiceName(), err))
@@ -143,30 +148,51 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 		}
 		change.Restarted = true
 	}
-	change.Changed = true
+	change.Changed = changedUnits || change.UserCreated || change.Previous != XrayDedicatedServiceUser
 	return change, nil
 }
 
 func (a *App) ensureXrayServiceAccount(ctx context.Context) (bool, error) {
-	if _, err := a.Runner.Run(ctx, "groupadd", "-r", "-f", XrayDedicatedServiceUser); err != nil {
-		return false, fmt.Errorf("创建或检查系统组 %s: %w", XrayDedicatedServiceUser, err)
+	_, lookupErr := a.Runner.Run(ctx, "getent", "passwd", XrayDedicatedServiceUser)
+	existed := lookupErr == nil
+	if _, err := a.Runner.Run(ctx, "systemd-sysusers", filepath.Base(xraySysusersConfig)); err != nil {
+		return !existed, fmt.Errorf("创建或检查系统用户 %s: %w", XrayDedicatedServiceUser, err)
 	}
-	if output, err := a.Runner.Run(ctx, "id", "-u", XrayDedicatedServiceUser); err == nil {
-		uid, parseErr := strconv.Atoi(strings.TrimSpace(string(output)))
-		if parseErr != nil {
-			return false, fmt.Errorf("读取系统用户 %s 的 UID: %w", XrayDedicatedServiceUser, parseErr)
-		}
-		if uid == 0 {
-			return false, fmt.Errorf("拒绝使用 UID 0 的 %s 用户运行 Xray", XrayDedicatedServiceUser)
-		}
-		return false, nil
+	if err := a.validateXrayServiceAccount(ctx); err != nil {
+		return !existed, err
 	}
-	_, err := a.Runner.Run(ctx, "useradd", "-r", "-g", XrayDedicatedServiceUser,
-		"-d", "/nonexistent", "-s", "/usr/sbin/nologin", "-M", XrayDedicatedServiceUser)
+	return !existed, nil
+}
+
+func (a *App) validateXrayServiceAccount(ctx context.Context) error {
+	passwdOutput, err := a.Runner.Run(ctx, "getent", "passwd", XrayDedicatedServiceUser)
 	if err != nil {
-		return false, fmt.Errorf("创建系统用户 %s: %w", XrayDedicatedServiceUser, err)
+		return fmt.Errorf("systemd-sysusers 未创建系统用户 %s: %w", XrayDedicatedServiceUser, err)
 	}
-	return true, nil
+	fields := strings.Split(strings.TrimSpace(string(passwdOutput)), ":")
+	if len(fields) != 7 || fields[0] != XrayDedicatedServiceUser {
+		return fmt.Errorf("系统用户 %s 的 passwd 记录格式无效", XrayDedicatedServiceUser)
+	}
+	if fields[2] == "0" {
+		return fmt.Errorf("拒绝使用 UID 0 的 %s 用户运行 Xray", XrayDedicatedServiceUser)
+	}
+	home := filepath.Clean(fields[5])
+	if home != "/nonexistent" {
+		return fmt.Errorf("已存在的 %s 用户不是 ProxyForge 专用服务账号：home=%s，要求 /nonexistent", XrayDedicatedServiceUser, fields[5])
+	}
+	shellBase := filepath.Base(strings.TrimSpace(fields[6]))
+	if shellBase != "nologin" && shellBase != "false" {
+		return fmt.Errorf("已存在的 %s 用户允许登录：shell=%s", XrayDedicatedServiceUser, fields[6])
+	}
+	groupOutput, err := a.Runner.Run(ctx, "getent", "group", XrayDedicatedServiceUser)
+	if err != nil {
+		return fmt.Errorf("未找到系统组 %s: %w", XrayDedicatedServiceUser, err)
+	}
+	groupFields := strings.Split(strings.TrimSpace(string(groupOutput)), ":")
+	if len(groupFields) < 3 || groupFields[0] != XrayDedicatedServiceUser || groupFields[2] != fields[3] {
+		return fmt.Errorf("系统用户 %s 的主组不是同名专用组", XrayDedicatedServiceUser)
+	}
+	return nil
 }
 
 type fileSnapshot struct {
@@ -216,6 +242,21 @@ func (a *App) prepareXrayServiceUserFiles() ([]fileSnapshot, bool, error) {
 		path: dropInPath, old: dropInOld, prepared: dropIn, metadata: dropInMetadata, existed: dropInExisted,
 	})
 	changed = changed || !bytes.Equal(dropInOld, dropIn)
+
+	sysusersPath := a.Layout.Resolve(xraySysusersConfig)
+	sysusersOld, readErr := os.ReadFile(sysusersPath)
+	sysusersExisted := readErr == nil
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return nil, false, readErr
+	}
+	sysusersMetadata, err := readMetadata(sysusersPath, sysusersExisted)
+	if err != nil {
+		return nil, false, err
+	}
+	snapshots = append(snapshots, fileSnapshot{
+		path: sysusersPath, old: sysusersOld, prepared: xraySysusersContent, metadata: sysusersMetadata, existed: sysusersExisted,
+	})
+	changed = changed || !bytes.Equal(sysusersOld, xraySysusersContent)
 	return snapshots, changed, nil
 }
 
@@ -358,6 +399,25 @@ func (a *App) secureXrayFilesForDedicatedUser(ctx context.Context, configPath st
 		if _, err := a.Runner.Run(ctx, "chmod", "0600", resolved); err != nil {
 			return fmt.Errorf("设置 Xray 日志权限: %w", err)
 		}
+	}
+	return nil
+}
+
+func (a *App) validateXrayConfigAsDedicatedUser(ctx context.Context, configPath string) error {
+	resolvedConfig := a.Layout.Resolve(configPath)
+	if _, err := os.Stat(resolvedConfig); os.IsNotExist(err) {
+		return fmt.Errorf("未找到 Xray 配置 %s，无法验证专用用户权限", resolvedConfig)
+	} else if err != nil {
+		return err
+	}
+	binary := a.Layout.Resolve("/usr/local/bin/xray")
+	if a.Layout.Root == "" || a.Layout.Root == "/" {
+		binary = "/usr/local/bin/xray"
+	}
+	if _, err := a.Runner.Run(ctx, "runuser", "-u", XrayDedicatedServiceUser, "--",
+		binary, "run", "-test", "-config", resolvedConfig); err != nil {
+		return fmt.Errorf("以 %s 用户校验 Xray 配置失败，请检查配置引用的证书、密钥和数据文件权限: %w",
+			XrayDedicatedServiceUser, err)
 	}
 	return nil
 }

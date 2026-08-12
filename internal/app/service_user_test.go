@@ -20,6 +20,9 @@ type serviceUserRunner struct {
 	unitPath        string
 	user            string
 	accountExists   bool
+	invalidAccount  bool
+	failUserCheck   bool
+	failRunuser     bool
 	active          bool
 	failNextRestart bool
 	calls           []string
@@ -55,14 +58,25 @@ func (r *serviceUserRunner) Run(_ context.Context, name string, args ...string) 
 			return nil, nil
 		}
 	}
-	if name == "id" {
-		if !r.accountExists {
+	if name == "getent" && len(args) == 2 {
+		if !r.accountExists || r.failUserCheck {
 			return nil, errors.New("unknown user")
 		}
-		return []byte("999\n"), nil
+		if args[0] == "passwd" {
+			if r.invalidAccount {
+				return []byte("xray:x:1000:1000:Xray User:/home/xray:/bin/bash\n"), nil
+			}
+			return []byte("xray:x:999:999:Xray Service:/nonexistent:/usr/sbin/nologin\n"), nil
+		}
+		if args[0] == "group" {
+			return []byte("xray:x:999:\n"), nil
+		}
 	}
-	if name == "useradd" {
+	if name == "systemd-sysusers" {
 		r.accountExists = true
+	}
+	if name == "runuser" && r.failRunuser {
+		return nil, errors.New("injected permission failure")
 	}
 	return nil, nil
 }
@@ -142,14 +156,35 @@ func TestUseDedicatedXrayServiceUserMigratesOfficialUnits(t *testing.T) {
 	}
 	calls := strings.Join(runner.calls, "\n")
 	for _, want := range []string{
-		"groupadd -r -f xray",
-		"useradd -r -g xray -d /nonexistent -s /usr/sbin/nologin -M xray",
+		"systemd-sysusers proxyforge-xray.conf",
+		"getent passwd xray",
+		"getent group xray",
+		"runuser -u xray --",
 		"systemctl daemon-reload",
 		"systemctl restart xray.service",
 	} {
 		if !strings.Contains(calls, want) {
 			t.Fatalf("calls missing %q:\n%s", want, calls)
 		}
+	}
+	sysusers, err := os.ReadFile(filepath.Join(root, "etc/sysusers.d/proxyforge-xray.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(sysusers) != string(xraySysusersContent) {
+		t.Fatalf("sysusers config=%q", sysusers)
+	}
+	restartsBefore := strings.Count(strings.Join(runner.calls, "\n"), "systemctl restart xray.service")
+	second, err := a.UseDedicatedXrayServiceUser(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Changed || second.Restarted || second.UserCreated || second.Current != "xray" {
+		t.Fatalf("idempotent change=%#v", second)
+	}
+	restartsAfter := strings.Count(strings.Join(runner.calls, "\n"), "systemctl restart xray.service")
+	if restartsAfter != restartsBefore {
+		t.Fatalf("idempotent verification restarted service: before=%d after=%d", restartsBefore, restartsAfter)
 	}
 }
 
@@ -169,8 +204,48 @@ func TestUseDedicatedXrayServiceUserRollsBackWhenRestartFails(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(root, "etc/systemd/system/xray.service.d/20-proxyforge-user.conf")); !os.IsNotExist(statErr) {
 		t.Fatalf("drop-in should be removed on rollback: %v", statErr)
 	}
+	if _, statErr := os.Stat(filepath.Join(root, "etc/sysusers.d/proxyforge-xray.conf")); !os.IsNotExist(statErr) {
+		t.Fatalf("sysusers config should be removed on rollback: %v", statErr)
+	}
 	if runner.user != "nobody" || !runner.active {
 		t.Fatalf("service state user=%q active=%v", runner.user, runner.active)
+	}
+}
+
+func TestUseDedicatedXrayServiceUserRejectsExistingLoginAccount(t *testing.T) {
+	a, runner, root := newServiceUserTestApp(t, false)
+	runner.accountExists = true
+	runner.invalidAccount = true
+	_, err := a.UseDedicatedXrayServiceUser(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "不是 ProxyForge 专用服务账号") {
+		t.Fatalf("error=%v", err)
+	}
+	data, readErr := os.ReadFile(filepath.Join(root, "etc/systemd/system/xray.service"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !strings.Contains(string(data), "User=nobody") {
+		t.Fatalf("unit was not restored: %s", data)
+	}
+}
+
+func TestUseDedicatedXrayServiceUserRollsBackWhenUserPreflightFails(t *testing.T) {
+	a, runner, root := newServiceUserTestApp(t, false)
+	runner.failRunuser = true
+	_, err := a.UseDedicatedXrayServiceUser(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "证书、密钥和数据文件权限") ||
+		!strings.Contains(err.Error(), "专用账号已安全保留") {
+		t.Fatalf("error=%v", err)
+	}
+	data, readErr := os.ReadFile(filepath.Join(root, "etc/systemd/system/xray.service"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !strings.Contains(string(data), "User=nobody") {
+		t.Fatalf("unit was not restored: %s", data)
+	}
+	if !runner.accountExists {
+		t.Fatal("newly created service account should be retained")
 	}
 }
 
