@@ -156,7 +156,7 @@ func TestServiceMenuLiveLogsReturnsAfterInterrupt(t *testing.T) {
 	if runner.name != "journalctl" || !reflect.DeepEqual(runner.args, wantArgs) {
 		t.Fatalf("command=%s args=%v, want journalctl %v", runner.name, runner.args, wantArgs)
 	}
-	for _, want := range []string{"实时日志查看", "live entry", "已停止实时日志", "服务管理：xray"} {
+	for _, want := range []string{"实时日志查看", "live entry", "已停止实时日志", "ProxyForge  ›  xray  ›  服务管理"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("output missing %q: %q", want, out.String())
 		}
@@ -376,7 +376,7 @@ func TestExistingServerConfigRequiresOverwriteConfirmation(t *testing.T) {
 		if err := c.serverConfigMenu(context.Background(), domain.CoreSingBox); err != nil {
 			t.Fatal(err)
 		}
-		if count := strings.Count(out.String(), "服务端配置管理：sing-box"); count != 2 {
+		if count := strings.Count(out.String(), "ProxyForge  ›  sing-box  ›  服务端配置管理"); count != 2 {
 			t.Fatalf("server config menu count=%d, want 2; output=%q", count, out.String())
 		}
 		for _, text := range []string{"Q/0=返回", "已取消生成服务端配置，返回服务端配置管理菜单"} {
@@ -451,8 +451,7 @@ func TestCoreMenusUseGlobalPageHeader(t *testing.T) {
 		c := &commandSet{out: &out, currentVersion: "v1.2.3"}
 		c.printCoreMenu(core)
 		for _, want := range []string{
-			"╭─ ProxyForge",
-			"│ " + core + " 管理菜单  [版本 v1.2.3]",
+			"╭─ ProxyForge  ›  " + core,
 			proxyForgeHeaderRule,
 		} {
 			if !strings.Contains(out.String(), want) {
@@ -763,7 +762,10 @@ func TestSelectCoreAcceptsQToExit(t *testing.T) {
 	if selected || core != "" {
 		t.Fatalf("core=%q selected=%v, want exit", core, selected)
 	}
-	if !strings.Contains(out.String(), "  0/q 退出") || !strings.Contains(out.String(), "❯ 输入选项 [1]: ") {
+	if !strings.Contains(out.String(), "  1 sing-box 管理") ||
+		!strings.Contains(out.String(), "  2 Xray-core 管理") ||
+		!strings.Contains(out.String(), "  0/q 退出") ||
+		!strings.Contains(out.String(), "❯ 输入选项 [1]: ") {
 		t.Fatalf("menu style output=%q", out.String())
 	}
 }
@@ -785,7 +787,7 @@ func TestMenuCanReturnFromCoreSelection(t *testing.T) {
 	if strings.Count(out.String(), proxyForgeHeaderRule) != 3 {
 		t.Fatalf("global page header rule count is incorrect: %q", out.String())
 	}
-	if !strings.Contains(out.String(), "sing-box 管理菜单") || !strings.Contains(out.String(), "安装/升级内核") || !strings.Contains(out.String(), "服务端配置管理") {
+	if !strings.Contains(out.String(), "ProxyForge  ›  sing-box") || !strings.Contains(out.String(), "安装/升级内核") || !strings.Contains(out.String(), "服务端配置管理") {
 		t.Fatalf("core menu missing: %q", out.String())
 	}
 	if !strings.Contains(out.String(), "已退出 ProxyForge") {

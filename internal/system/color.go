@@ -13,6 +13,7 @@ const (
 	ansiBoldGreen   = "\x1b[1;32m"
 	ansiBoldYellow  = "\x1b[1;33m"
 	ansiBoldRed     = "\x1b[1;31m"
+	ansiDim         = "\x1b[2m"
 	ansiYellow      = "\x1b[33m"
 	ansiBlue        = "\x1b[34m"
 	ansiCyan        = "\x1b[36m"
@@ -137,7 +138,7 @@ func decorateOutputFragment(fragment string, atLineStart bool) string {
 		case strings.HasPrefix(trimmed, "╭─ "), strings.HasPrefix(trimmed, "╰─"):
 			body = wrapANSI(ansiBoldCyan, body)
 		case strings.HasPrefix(trimmed, "│ ") && strings.Contains(trimmed, "[版本 "):
-			body = wrapANSI(ansiCyan, body)
+			body = decorateHomeSubtitle(body)
 		case isRepeated(trimmed, '='):
 			body = wrapANSI(ansiBoldCyan, body)
 		case isRepeated(trimmed, '-'):
@@ -163,6 +164,14 @@ func decorateOutputFragment(fragment string, atLineStart bool) string {
 	}
 	body = decorateSourceLabels(body)
 	return body + lineEnding
+}
+
+func decorateHomeSubtitle(value string) string {
+	badgeStart := strings.Index(value, "[版本 ")
+	if badgeStart < 0 {
+		return wrapANSI(ansiCyan, value)
+	}
+	return wrapANSI(ansiCyan, value[:badgeStart]) + wrapANSI(ansiBoldGreen, value[badgeStart:])
 }
 
 func decorateSourceLabels(value string) string {
@@ -262,13 +271,13 @@ func decorateNumberedChoice(value string) string {
 	trimmedRemainder := strings.TrimLeft(remainder, " \t")
 	spacing := remainder[:len(remainder)-len(trimmedRemainder)]
 	if isExitChoice(trimmedRemainder) {
-		return value[:indent] + wrapANSI(ansiBrightBlack, prefix) + spacing + trimmedRemainder
+		return value[:indent] + wrapANSI(ansiBoldYellow, prefix) + spacing + wrapANSI(ansiDim, trimmedRemainder)
 	}
 	if isDangerousChoice(trimmedRemainder) {
 		return value[:indent] + wrapANSI(ansiYellow, prefix) + spacing + trimmedRemainder
 	}
 	if isReturnChoice(trimmedRemainder) {
-		return value[:indent] + wrapANSI(ansiCyan, prefix) + spacing + trimmedRemainder
+		return value[:indent] + wrapANSI(ansiBoldYellow, prefix) + spacing + wrapANSI(ansiDim, trimmedRemainder)
 	}
 	if fields := strings.Fields(trimmedRemainder); len(fields) > 0 && strings.Contains(fields[0], ".") && !strings.ContainsAny(fields[0], "/:") {
 		domain := fields[0]
