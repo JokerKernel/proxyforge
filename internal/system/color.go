@@ -13,6 +13,7 @@ const (
 	ansiBoldGreen   = "\x1b[1;32m"
 	ansiBoldYellow  = "\x1b[1;33m"
 	ansiBoldRed     = "\x1b[1;31m"
+	ansiOrange      = "\x1b[38;5;208m"
 	ansiBlue        = "\x1b[34m"
 	ansiCyan        = "\x1b[36m"
 	ansiMagenta     = "\x1b[35m"
@@ -257,7 +258,7 @@ func decorateNumberedChoice(value string) string {
 	trimmedRemainder := strings.TrimLeft(remainder, " \t")
 	spacing := remainder[:len(remainder)-len(trimmedRemainder)]
 	if isExitChoice(trimmedRemainder) || isDangerousChoice(trimmedRemainder) {
-		return value[:indent] + wrapANSI(ansiBoldRed, prefix) + spacing + wrapANSI(ansiBoldRed, trimmedRemainder)
+		return value[:indent] + wrapANSI(ansiOrange, prefix) + spacing + trimmedRemainder
 	}
 	if isReturnChoice(trimmedRemainder) {
 		return value[:indent] + wrapANSI(ansiCyan, prefix) + spacing + wrapANSI(ansiCyan, trimmedRemainder)
