@@ -1,6 +1,6 @@
-// Package selfupdate starts ProxyForge's reviewed installation script in
-// update mode. Version discovery, confirmation, artifact verification, and
-// replacement are intentionally owned by that script.
+// Package selfupdate starts ProxyForge's reviewed installation script.
+// Version discovery, comparison, artifact verification, and replacement are
+// intentionally owned by that script.
 package selfupdate
 
 import (
@@ -42,7 +42,7 @@ func (u Updater) Run(ctx context.Context, opts Options) error {
 		return fmt.Errorf("准备自升级脚本: %w", err)
 	}
 
-	args := []string{"--update"}
+	var args []string
 	if opts.AssumeYes {
 		args = append(args, "--yes")
 	}

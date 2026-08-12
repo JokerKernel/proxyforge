@@ -8,10 +8,8 @@ readonly max_version_size=256
 readonly max_release_api_size=$((1024 * 1024))
 readonly latest_release_api="https://api.github.com/repos/${repository}/releases/latest"
 
-operation="install"
 current_version=""
 current_installed=false
-assume_yes=false
 
 selected_asset=""
 selected_checksum=""
@@ -47,12 +45,7 @@ require_root() {
 parse_arguments() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --update)
-        operation="update"
-        shift
-        ;;
       --yes | -y)
-        assume_yes=true
         shift
         ;;
       *)
@@ -152,31 +145,6 @@ classify_installation() {
     0) installation_action="current" ;;
     1) installation_action="newer" ;;
   esac
-}
-
-confirm_update() {
-  if [[ "${assume_yes}" == true ]]; then
-    return
-  fi
-  local answer
-  while true; do
-    printf '确认将 ProxyForge 从 %s 升级到 %s？请输入 yes/y，或输入 q 取消：' \
-      "${current_version}" "${resolved_version}"
-    if ! IFS= read -r answer; then
-      die "执行自升级前需要交互确认，自动化时请显式提供 --yes"
-    fi
-    case "${answer}" in
-      yes | YES | Yes | y | Y)
-        return
-        ;;
-      q | Q)
-        die "用户取消自升级"
-        ;;
-      *)
-        info "输入无效，请输入 yes、y 或 q"
-        ;;
-    esac
-  done
 }
 
 detect_architecture() {
@@ -320,9 +288,6 @@ main() {
   local requested_version=${PROXYFORGE_VERSION:-latest}
   resolved_version=""
   local release_base
-  if [[ "${operation}" == "update" ]]; then
-    requested_version="latest"
-  fi
   case "${requested_version}" in
     latest)
       release_base="https://github.com/${repository}/releases/latest/download"
@@ -347,10 +312,7 @@ main() {
     if resolve_latest_version "${release_base}"; then
       release_base="https://github.com/${repository}/releases/download/${resolved_version}"
     else
-      if [[ "${operation}" == "update" ]]; then
-        die "无法通过 GitHub Releases API 或 version 文件读取最新正式版本"
-      fi
-      info "无法读取最新版本元数据，使用 latest/download 兼容方式"
+      die "无法通过 GitHub Releases API 或 version 文件读取最新正式版本"
     fi
   fi
 
@@ -370,19 +332,11 @@ main() {
         "${current_version}" "${resolved_version}"
       return
     fi
-    if [[ "${installation_action}" == "upgrade" && "${operation}" == "install" ]]; then
+    if [[ "${installation_action}" == "upgrade" ]]; then
       printf '检测到已安装版本 %s，将升级到 %s。\n' "${current_version}" "${resolved_version}"
-    elif [[ "${installation_action}" == "replace" && "${operation}" == "install" ]]; then
+    elif [[ "${installation_action}" == "replace" ]]; then
       printf '无法识别已安装版本 %s，将重新安装目标版本 %s。\n' "${current_version}" "${resolved_version}"
     fi
-  fi
-
-  if [[ "${operation}" == "update" ]]; then
-    printf '当前版本：%s\n' "${current_version}"
-    printf '目标版本：%s\n' "${resolved_version}"
-    printf '脚本 SHA-256：%s\n' "$(sha256sum "${BASH_SOURCE[0]}" | while read -r hash _; do printf '%s' "${hash}"; done)"
-    printf '将以 root 执行脚本并替换 %s。\n' "${install_path}"
-    confirm_update
   fi
 
   info "检测到 Linux/${architecture}，正在读取发布清单"
@@ -409,15 +363,12 @@ main() {
   mv -f -- "${staged_path}" "${install_path}"
   staged_path=""
 
-  if [[ "${installation_action}" == "upgrade" || "${operation}" == "update" ]]; then
+  if [[ "${installation_action}" == "upgrade" ]]; then
     info "已升级到 ${install_path}"
   else
     info "已安装到 ${install_path}"
   fi
   "${install_path}" --version
-  if [[ "${operation}" == "update" ]]; then
-    printf 'ProxyForge 已升级到 %s。\n' "${resolved_version}"
-  fi
   printf '运行命令：sudo %s\n' "${install_path}"
 }
 

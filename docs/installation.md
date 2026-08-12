@@ -46,7 +46,7 @@ sudo proxyforge update
 sudo proxyforge update --yes
 ```
 
-`proxyforge update` 本身只从仓库 `main` 分支安全下载并检查当前安装脚本，然后以 `--update` 模式启动脚本。脚本优先读取 GitHub Releases API 的 `tag_name`，失败后读取 Release 的 `version` 文件。当前版本比较、交互确认、Release 文件选择、`SHA256SUMS` 核验和 `/usr/local/sbin/proxyforge` 的原子替换也全部由安装脚本完成；`--yes` 会原样传给脚本以跳过交互确认。
+`proxyforge update` 本身只从仓库 `main` 分支安全下载并检查当前安装脚本，然后直接启动脚本，不再传递专用更新参数。脚本会自动判断当前状态：未安装时安装、版本相同时退出、版本较低时升级、版本较高时跳过以避免降级。脚本优先读取 GitHub Releases API 的 `tag_name`，失败后读取 Release 的 `version` 文件；Release 文件选择、`SHA256SUMS` 核验和 `/usr/local/sbin/proxyforge` 的原子替换也全部由安装脚本完成。
 
 `update` 只更新 ProxyForge，不修改代理内核、节点配置或 systemd 服务。版本检查和下载会继承当前进程的标准代理环境。
 

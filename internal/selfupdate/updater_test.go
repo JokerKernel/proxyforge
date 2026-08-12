@@ -45,7 +45,7 @@ func (r *runnerStub) RunStreaming(_ context.Context, _, _ io.Writer, command str
 	return r.err
 }
 
-func TestRunOnlyStartsPreparedScriptInUpdateMode(t *testing.T) {
+func TestRunOnlyStartsPreparedScript(t *testing.T) {
 	scriptBody := "#!/usr/bin/env bash\nprintf 'updated\\n'\n"
 	requests := 0
 	client := testClient(func(req *http.Request) string {
@@ -64,11 +64,8 @@ func TestRunOnlyStartsPreparedScriptInUpdateMode(t *testing.T) {
 	if requests != 1 || !runner.called {
 		t.Fatalf("requests=%d runner.called=%v", requests, runner.called)
 	}
-	if runner.command != "bash" || len(runner.args) != 2 {
+	if runner.command != "bash" || len(runner.args) != 1 {
 		t.Fatalf("command=%q args=%v", runner.command, runner.args)
-	}
-	if got, want := runner.args[1:], []string{"--update"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("script args=%v, want %v", got, want)
 	}
 	if runner.script != scriptBody {
 		t.Fatalf("executed script=%q", runner.script)
@@ -82,7 +79,7 @@ func TestAssumeYesIsPassedToScript(t *testing.T) {
 	if err := u.Run(context.Background(), Options{AssumeYes: true}); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := runner.args[1:], []string{"--update", "--yes"}; !reflect.DeepEqual(got, want) {
+	if got, want := runner.args[1:], []string{"--yes"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("script args=%v, want %v", got, want)
 	}
 }
