@@ -181,9 +181,7 @@ func decorateSourceLabels(value string) string {
 	for _, label := range labels {
 		value = colorizeLabel(value, label.text, label.color)
 	}
-	if strings.HasPrefix(value, "Bash ") {
-		value = wrapANSI(ansiBlue, "Bash") + value[len("Bash"):]
-	}
+	value = colorizeLabel(value, "[Bash]", ansiBlue)
 	for start := strings.Index(value, "[服务日志/"); start >= 0; {
 		relativeEnd := strings.IndexByte(value[start:], ']')
 		if relativeEnd < 0 {

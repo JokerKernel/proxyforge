@@ -158,7 +158,7 @@ func (i Installer) executeScriptCommand(ctx context.Context, command string, arg
 	}
 	fmt.Fprintln(output, "[官方脚本/状态] 开始执行，以下为实时输出：")
 	capture := &scriptOutputCapture{
-		output: system.NewLinePrefixWriter(output, "Bash "),
+		output: system.NewLinePrefixWriter(output, "[Bash] "),
 		limit:  maxCapturedScriptOutput,
 	}
 	if streaming, ok := i.Runner.(provider.StreamingRunner); ok {
@@ -166,7 +166,7 @@ func (i Installer) executeScriptCommand(ctx context.Context, command string, arg
 		capture.FinishLine()
 		if runErr != nil {
 			if tail := strings.TrimSpace(capture.String()); tail != "" {
-				prefixedTail := strings.TrimSpace(string(system.PrefixLines([]byte(tail), "Bash ")))
+				prefixedTail := strings.TrimSpace(string(system.PrefixLines([]byte(tail), "[Bash] ")))
 				return fmt.Errorf("官方管理脚本执行失败（末尾输出如下）:\n%s\n%w", prefixedTail, runErr)
 			}
 			return fmt.Errorf("官方管理脚本执行失败: %w", runErr)
