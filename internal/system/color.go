@@ -165,13 +165,13 @@ func decorateSourceLabels(value string) string {
 		text  string
 		color string
 	}{
-		{"[ProxyForge/步骤]", ansiBoldCyan},
-		{"[ProxyForge/命令]", ansiBlue},
-		{"[ProxyForge/信息]", ansiCyan},
-		{"[ProxyForge/提示]", ansiCyan},
-		{"[ProxyForge/警告]", ansiBoldYellow},
-		{"[ProxyForge/结果]", ansiBoldGreen},
-		{"[ProxyForge/错误]", ansiBoldRed},
+		{"[步骤]", ansiBoldCyan},
+		{"[命令]", ansiBlue},
+		{"[信息]", ansiCyan},
+		{"[提示]", ansiCyan},
+		{"[警告]", ansiBoldYellow},
+		{"[结果]", ansiBoldGreen},
+		{"[错误]", ansiBoldRed},
 		{"[系统命令/输出]", ansiBrightBlack},
 		{"[官方脚本/信息]", ansiCyan},
 		{"[官方脚本/风险]", ansiBoldYellow},

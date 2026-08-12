@@ -18,11 +18,11 @@ temporary_dir=""
 staged_path=""
 
 info() {
-  printf '[ProxyForge/安装] %s\n' "$*"
+  printf '[安装] %s\n' "$*"
 }
 
 die() {
-  printf '[ProxyForge/错误] %s\n' "$*" >&2
+  printf '[错误] %s\n' "$*" >&2
   exit 1
 }
 
@@ -268,13 +268,13 @@ main() {
   if [[ "${operation}" == "update" ]]; then
     detect_current_version
     if [[ "${current_version}" == "${resolved_version}" ]]; then
-      printf '[ProxyForge/结果] 当前版本 %s 已是最新正式版本。\n' "${current_version}"
+      printf '[结果] 当前版本 %s 已是最新正式版本。\n' "${current_version}"
       return
     fi
-    printf '[ProxyForge/更新] 当前版本：%s\n' "${current_version}"
-    printf '[ProxyForge/更新] 目标版本：%s\n' "${resolved_version}"
-    printf '[ProxyForge/更新] 脚本 SHA-256：%s\n' "$(sha256sum "${BASH_SOURCE[0]}" | while read -r hash _; do printf '%s' "${hash}"; done)"
-    printf '[ProxyForge/风险] 将以 root 执行脚本并替换 %s。\n' "${install_path}"
+    printf '[更新] 当前版本：%s\n' "${current_version}"
+    printf '[更新] 目标版本：%s\n' "${resolved_version}"
+    printf '[更新] 脚本 SHA-256：%s\n' "$(sha256sum "${BASH_SOURCE[0]}" | while read -r hash _; do printf '%s' "${hash}"; done)"
+    printf '[风险] 将以 root 执行脚本并替换 %s。\n' "${install_path}"
     confirm_update
   fi
 
@@ -305,7 +305,7 @@ main() {
   info "已安装到 ${install_path}"
   "${install_path}" --version
   if [[ "${operation}" == "update" ]]; then
-    printf '[ProxyForge/结果] ProxyForge 已升级到 %s。\n' "${resolved_version}"
+    printf '[结果] ProxyForge 已升级到 %s。\n' "${resolved_version}"
   fi
   printf '运行命令：sudo %s\n' "${install_path}"
 }

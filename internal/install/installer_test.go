@@ -188,8 +188,8 @@ func TestRunPassesRuntimeProxyToXrayScript(t *testing.T) {
 		t.Fatalf("proxy notice missing or proxy URL leaked: %s", output.String())
 	}
 	for _, want := range []string{
-		"[ProxyForge/信息] 检测到运行时代理",
-		"[ProxyForge/命令] 执行命令：bash -n",
+		"[信息] 检测到运行时代理",
+		"[命令] 执行命令：bash -n",
 		"[官方脚本/信息] 来源：",
 		"[官方脚本/信息] SHA-256：",
 		"[官方脚本/风险]",

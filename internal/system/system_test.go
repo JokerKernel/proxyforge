@@ -156,9 +156,9 @@ func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
 	for _, line := range []string{
 		"========================================\n",
 		"1) 安装/升级内核\n",
-		"[ProxyForge/步骤] 检查环境\n",
-		"[ProxyForge/警告] 谨慎操作\n",
-		"[ProxyForge/结果] 操作成功\n",
+		"[步骤] 检查环境\n",
+		"[警告] 谨慎操作\n",
+		"[结果] 操作成功\n",
 		"[系统命令/输出] system output\n",
 		"[官方脚本/风险] 将以 root 执行\n",
 		"[服务日志/xray] accepted connection\n",
@@ -174,9 +174,9 @@ func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
 	for _, want := range []string{
 		"\x1b[1;36m========================================\x1b[0m",
 		"\x1b[1;32m1)\x1b[0m 安装/升级内核",
-		"\x1b[1;36m[ProxyForge/步骤]\x1b[0m",
-		"\x1b[1;33m[ProxyForge/警告]\x1b[0m",
-		"\x1b[1;32m[ProxyForge/结果]\x1b[0m",
+		"\x1b[1;36m[步骤]\x1b[0m",
+		"\x1b[1;33m[警告]\x1b[0m",
+		"\x1b[1;32m[结果]\x1b[0m",
 		"\x1b[90m[系统命令/输出]\x1b[0m",
 		"\x1b[1;33m[官方脚本/风险]\x1b[0m",
 		"\x1b[35m[服务日志/xray]\x1b[0m",
@@ -192,7 +192,7 @@ func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
 func TestColorWriterDisabledKeepsPlainOutput(t *testing.T) {
 	var output bytes.Buffer
 	w := NewColorWriter(&output, false)
-	want := "[ProxyForge/错误] 操作失败\n1) 返回\n"
+	want := "[错误] 操作失败\n1) 返回\n"
 	if _, err := io.WriteString(w, want); err != nil {
 		t.Fatal(err)
 	}
@@ -208,10 +208,10 @@ func TestTerminalColorWriterHonorsColorModeOverride(t *testing.T) {
 	t.Run("always", func(t *testing.T) {
 		t.Setenv("PROXYFORGE_COLOR", "always")
 		var output bytes.Buffer
-		if _, err := io.WriteString(NewTerminalColorWriter(&output), "[ProxyForge/结果] 完成\n"); err != nil {
+		if _, err := io.WriteString(NewTerminalColorWriter(&output), "[结果] 完成\n"); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(output.String(), "\x1b[1;32m[ProxyForge/结果]\x1b[0m") {
+		if !strings.Contains(output.String(), "\x1b[1;32m[结果]\x1b[0m") {
 			t.Fatalf("forced color output=%q", output.String())
 		}
 	})
@@ -219,7 +219,7 @@ func TestTerminalColorWriterHonorsColorModeOverride(t *testing.T) {
 	t.Run("never", func(t *testing.T) {
 		t.Setenv("PROXYFORGE_COLOR", "never")
 		var output bytes.Buffer
-		want := "[ProxyForge/结果] 完成\n"
+		want := "[结果] 完成\n"
 		if _, err := io.WriteString(NewTerminalColorWriter(&output), want); err != nil {
 			t.Fatal(err)
 		}
@@ -278,7 +278,7 @@ func TestLoggingRunnerReportsCommandWithoutLeakingBufferedOutput(t *testing.T) {
 	if string(b) != "private-key-output" {
 		t.Fatalf("output=%q", b)
 	}
-	for _, want := range []string{"[ProxyForge/命令] 执行命令：sing-box generate reality-keypair", "[ProxyForge/命令] 命令完成：sing-box"} {
+	for _, want := range []string{"[命令] 执行命令：sing-box generate reality-keypair", "[命令] 命令完成：sing-box"} {
 		if !strings.Contains(log.String(), want) {
 			t.Fatalf("log missing %q: %s", want, log.String())
 		}
@@ -296,7 +296,7 @@ func TestLoggingRunnerReportsCanceledStreamingCommandAsStopped(t *testing.T) {
 	if err := runner.RunStreaming(ctx, io.Discard, io.Discard, "journalctl", "-f"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("error=%v, want context cancellation", err)
 	}
-	if !strings.Contains(log.String(), "[ProxyForge/命令] 命令已停止：journalctl") || strings.Contains(log.String(), "命令失败") {
+	if !strings.Contains(log.String(), "[命令] 命令已停止：journalctl") || strings.Contains(log.String(), "命令失败") {
 		t.Fatalf("unexpected cancellation log: %s", log.String())
 	}
 }

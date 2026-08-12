@@ -82,7 +82,7 @@ func (a *App) progressf(format string, args ...any) {
 	if a.Progress == nil {
 		return
 	}
-	fmt.Fprintf(a.Progress, "[ProxyForge/步骤] "+format+"\n", args...)
+	fmt.Fprintf(a.Progress, "[步骤] "+format+"\n", args...)
 }
 
 func RequireRoot() error {
@@ -171,7 +171,7 @@ func (a *App) Install(ctx context.Context, core string, opts install.Options) er
 		return nil
 	}
 	printInstallSuccess(a.Out, core, resultAction, previousVersion, version, false)
-	fmt.Fprintln(a.Out, "[ProxyForge/提示] 服务当前为 inactive；这是尚未生成服务端配置时的正常状态。请继续选择“生成服务端配置”，配置成功后服务会自动启动。")
+	fmt.Fprintln(a.Out, "[提示] 服务当前为 inactive；这是尚未生成服务端配置时的正常状态。请继续选择“生成服务端配置”，配置成功后服务会自动启动。")
 	return nil
 }
 
@@ -183,7 +183,7 @@ func printInstallSuccess(w io.Writer, core, action, previousVersion, version str
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, border)
-	fmt.Fprintf(w, "  [ProxyForge/结果] %s %s成功\n", core, action)
+	fmt.Fprintf(w, "  [结果] %s %s成功\n", core, action)
 	fmt.Fprintln(w, border)
 	if action == "升级" && previousVersion != "" {
 		fmt.Fprintf(w, "版本：%s  ->  %s\n", previousVersion, version)
@@ -255,7 +255,7 @@ func (a *App) Uninstall(ctx context.Context, core string, opts install.Options) 
 	if err := a.Cleanup(ctx, core); err != nil {
 		return fmt.Errorf("内核已卸载，但自动清理失败: %w", err)
 	}
-	fmt.Fprintf(a.Out, "[ProxyForge/结果] %s 已卸载并完成残留清理。\n", core)
+	fmt.Fprintf(a.Out, "[结果] %s 已卸载并完成残留清理。\n", core)
 	return nil
 }
 
@@ -411,7 +411,7 @@ func (a *App) Cleanup(ctx context.Context, target string) error {
 	if len(cleanupErrors) != 0 {
 		return fmt.Errorf("清理未完全完成: %w", errors.Join(cleanupErrors...))
 	}
-	fmt.Fprintf(a.Out, "[ProxyForge/结果] %s 的卸载残留已清理。\n", target)
+	fmt.Fprintf(a.Out, "[结果] %s 的卸载残留已清理。\n", target)
 	return nil
 }
 
@@ -525,7 +525,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		return domain.NodeSpec{}, err
 	}
 	for _, warning := range warnings {
-		fmt.Fprintln(a.Out, "[ProxyForge/警告] "+warning)
+		fmt.Fprintln(a.Out, "[警告] "+warning)
 	}
 	old, loadErr := a.Store.Load(core)
 	hasOld := loadErr == nil
@@ -586,7 +586,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		CoreVersion: version, UpdatedAt: a.Now().UTC(),
 	}
 	if n.SimplifiedConfig {
-		fmt.Fprintln(a.Out, "[ProxyForge/警告] 已选择 sing-box 简化配置；域名将在出站连接阶段由系统 DNS 解析，域名解析到私网地址时可能绕过路由私网拦截。")
+		fmt.Fprintln(a.Out, "[警告] 已选择 sing-box 简化配置；域名将在出站连接阶段由系统 DNS 解析，域名解析到私网地址时可能绕过路由私网拦截。")
 	}
 	if hasOld && !opts.RotateCredentials {
 		a.progressf("保留现有 UUID、REALITY 密钥和 short ID")
@@ -794,7 +794,7 @@ func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.Res
 			return domain.NodeSpec{}, err
 		}
 		for _, warning := range warnings {
-			fmt.Fprintln(a.Out, "[ProxyForge/警告] "+warning)
+			fmt.Fprintln(a.Out, "[警告] "+warning)
 		}
 	}
 	a.progressf("检测 %s 版本并生成新的 UUID、REALITY 密钥和 short ID", core)
@@ -837,7 +837,7 @@ func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.Res
 	}
 	managedConfig := current.ConfigSHA256 != "" && system.SHA256(currentConfig) == current.ConfigSHA256
 	if !managedConfig {
-		fmt.Fprintln(a.Out, "[ProxyForge/提示] 检测到配置包含手动修改；本次只更新受管节点字段，其他内容和外部配置属性将保留。")
+		fmt.Fprintln(a.Out, "[提示] 检测到配置包含手动修改；本次只更新受管节点字段，其他内容和外部配置属性将保留。")
 	}
 	a.progressf("仅更新现有配置中的受管节点字段，保留其他手动配置")
 	patched, err := p.PatchServer(currentConfig, current, n, updateEndpoint)
@@ -1464,7 +1464,7 @@ func versionMatches(actual, requested string) bool {
 func (a *App) firewallHint(port int) {
 	for _, name := range []string{"ufw", "firewall-cmd"} {
 		if _, err := a.Runner.Run(context.Background(), "sh", "-c", "command -v "+name); err == nil {
-			fmt.Fprintf(a.Out, "[ProxyForge/提示] 检测到 %s，请确认已放行 TCP/%d；ProxyForge 不会自动修改防火墙。\n", name, port)
+			fmt.Fprintf(a.Out, "[提示] 检测到 %s，请确认已放行 TCP/%d；ProxyForge 不会自动修改防火墙。\n", name, port)
 			return
 		}
 	}

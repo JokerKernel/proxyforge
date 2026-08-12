@@ -73,7 +73,7 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 		Use: "proxyforge", Short: "Linux 双内核 VLESS + REALITY + Vision 管理器", Version: version,
 		SilenceUsage: true, SilenceErrors: true,
 		PersistentPreRunE: func(*cobra.Command, []string) error {
-			fmt.Fprintln(c.errOut, "[ProxyForge/步骤] 验证 root 运行权限")
+			fmt.Fprintln(c.errOut, "[步骤] 验证 root 运行权限")
 			return rootCheck()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error { return c.menu(cmd.Context()) },
@@ -610,7 +610,7 @@ func printGenerateSuccess(w io.Writer, n domain.NodeSpec) {
 	const border = "========================================================"
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, border)
-	fmt.Fprintf(w, "  [ProxyForge/结果] %s 服务端配置生成成功\n", n.Core)
+	fmt.Fprintf(w, "  [结果] %s 服务端配置生成成功\n", n.Core)
 	fmt.Fprintln(w, border)
 	fmt.Fprintf(w, "服务状态：active（运行中）\n")
 	fmt.Fprintf(w, "开机启动：enabled（已启用）\n")
@@ -820,7 +820,7 @@ func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
 	}
 	selected := settings.Profiles[choice-1]
 	if selected == settings.Current {
-		fmt.Fprintf(c.out, "[ProxyForge/提示] DNS 已经是 %s，无需修改。\n", dnsProfileDisplay(core, selected))
+		fmt.Fprintf(c.out, "[提示] DNS 已经是 %s，无需修改。\n", dnsProfileDisplay(core, selected))
 		return nil
 	}
 
@@ -877,14 +877,14 @@ func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
 		return err
 	}
 	if !change.Changed {
-		fmt.Fprintf(c.out, "[ProxyForge/提示] DNS 已经是 %s，无需修改。\n", dnsProfileDisplay(core, change.Current))
+		fmt.Fprintf(c.out, "[提示] DNS 已经是 %s，无需修改。\n", dnsProfileDisplay(core, change.Current))
 		return nil
 	}
 	effect := "服务当前未运行，将在下次启动时生效"
 	if change.Restarted {
 		effect = "服务已重启，设置已生效"
 	}
-	fmt.Fprintf(c.out, "[ProxyForge/结果] %s DNS 已从 %s 修改为 %s；%s。\n",
+	fmt.Fprintf(c.out, "[结果] %s DNS 已从 %s 修改为 %s；%s。\n",
 		core, dnsProfileDisplay(core, change.Previous), dnsProfileDisplay(core, change.Current), effect)
 	return nil
 }
@@ -1275,7 +1275,7 @@ func (c *commandSet) logLevelMenu(ctx context.Context, core string) error {
 	}
 	selected := settings.Levels[choice-1]
 	if selected == settings.Current {
-		fmt.Fprintf(c.out, "[ProxyForge/提示] 日志级别已经是 %s，无需修改。\n", logLevelDisplay(core, selected))
+		fmt.Fprintf(c.out, "[提示] 日志级别已经是 %s，无需修改。\n", logLevelDisplay(core, selected))
 		return nil
 	}
 
@@ -1312,14 +1312,14 @@ func (c *commandSet) logLevelMenu(ctx context.Context, core string) error {
 		return err
 	}
 	if !change.Changed {
-		fmt.Fprintf(c.out, "[ProxyForge/提示] 日志级别已经是 %s，无需修改。\n", logLevelDisplay(core, change.Current))
+		fmt.Fprintf(c.out, "[提示] 日志级别已经是 %s，无需修改。\n", logLevelDisplay(core, change.Current))
 		return nil
 	}
 	effect := "服务当前未运行，将在下次启动时生效"
 	if change.Restarted {
 		effect = "服务已重启，设置已生效"
 	}
-	fmt.Fprintf(c.out, "[ProxyForge/结果] %s 日志级别已从 %s 修改为 %s；%s。\n",
+	fmt.Fprintf(c.out, "[结果] %s 日志级别已从 %s 修改为 %s；%s。\n",
 		core, logLevelDisplay(core, change.Previous), logLevelDisplay(core, change.Current), effect)
 	return nil
 }
@@ -1427,7 +1427,7 @@ func eraseChoiceRetry(w io.Writer, invalidShown bool) {
 }
 
 func (c *commandSet) printMenuError(err error) {
-	fmt.Fprintf(c.errOut, "[ProxyForge/错误] 操作失败：%v\n", err)
+	fmt.Fprintf(c.errOut, "[错误] 操作失败：%v\n", err)
 }
 
 func (c *commandSet) askDefault(label, def string) string {

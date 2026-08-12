@@ -57,7 +57,7 @@ func (i Installer) Run(ctx context.Context, p provider.CoreProvider, opts Option
 			return "", fmt.Errorf("检查运行时代理: %w", err)
 		}
 		if proxyURL != "" && i.Output != nil {
-			fmt.Fprintln(i.Output, "[ProxyForge/信息] 检测到运行时代理，将传递给官方管理脚本。")
+			fmt.Fprintln(i.Output, "[信息] 检测到运行时代理，将传递给官方管理脚本。")
 		}
 		args = append(args, proxyProvider.ScriptProxyArgs(proxyURL)...)
 	}
@@ -421,17 +421,17 @@ func bashSyntaxLogged(ctx context.Context, b []byte, output io.Writer) error {
 		return err
 	}
 	if output != nil {
-		fmt.Fprintf(output, "[ProxyForge/命令] 执行命令：bash -n %s\n", path)
+		fmt.Fprintf(output, "[命令] 执行命令：bash -n %s\n", path)
 	}
 	cmd := exec.CommandContext(ctx, "bash", "-n", path)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if output != nil {
-			fmt.Fprintln(output, "[ProxyForge/命令] 命令失败：bash")
+			fmt.Fprintln(output, "[命令] 命令失败：bash")
 		}
 		return fmt.Errorf("安装脚本 bash -n 校验失败: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 	if output != nil {
-		fmt.Fprintln(output, "[ProxyForge/命令] 命令完成：bash")
+		fmt.Fprintln(output, "[命令] 命令完成：bash")
 	}
 	return nil
 }
