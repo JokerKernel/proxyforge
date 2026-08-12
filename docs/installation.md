@@ -50,6 +50,21 @@ sudo proxyforge update --yes
 
 `update` 只更新 ProxyForge，不修改代理内核、节点配置或 systemd 服务。版本检查和下载会继承当前进程的标准代理环境。
 
+## 卸载 ProxyForge 自身
+
+安装脚本的 `--uninstall` 参数只删除 `/usr/local/sbin/proxyforge`，不会卸载 sing-box、Xray，也不会删除节点配置、ProxyForge 状态、信任记录或备份：
+
+```bash
+sudo bash scripts/install.sh --uninstall
+```
+
+通过在线脚本卸载时，将参数传递给 `bash`：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | \
+  sudo bash -s -- --uninstall
+```
+
 ## 卸载
 
 卸载必须交互确认；自动化时必须指定 `--yes`：

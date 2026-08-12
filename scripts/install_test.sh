@@ -81,6 +81,31 @@ test_update_argument_is_removed() (
   [[ "${output}" == *"未知参数：--update"* ]] || fail "missing removed argument error"
 )
 
+test_uninstall_removes_only_proxyforge_binary() (
+  source "${script_dir}/install.sh"
+  require_root() { return; }
+  local installed=true
+  proxyforge_binary_exists() { [[ "${installed}" == true ]]; }
+  remove_proxyforge_binary() { installed=false; }
+
+  local output
+  output=$(main --uninstall)
+  [[ "${output}" == *"自身卸载"* ]] || fail "missing uninstall header"
+  [[ "${output}" == *"ProxyForge 自身已卸载"* ]] || fail "missing uninstall result"
+  [[ "${output}" == *"sing-box、Xray、节点配置和 ProxyForge 数据均已保留"* ]] || fail "missing retained data notice"
+)
+
+test_uninstall_is_idempotent() (
+  source "${script_dir}/install.sh"
+  require_root() { return; }
+  proxyforge_binary_exists() { return 1; }
+  remove_proxyforge_binary() { fail "remove called for absent binary"; }
+
+  local output
+  output=$(main --uninstall --yes)
+  [[ "${output}" == *"当前未安装，无需卸载"* ]] || fail "missing already-uninstalled result"
+)
+
 test_version_file_fallback() (
   source "${script_dir}/install.sh"
   require_root() { return; }
@@ -111,5 +136,7 @@ test_color_controls
 test_no_color_is_respected
 test_version_comparison_and_classification
 test_update_argument_is_removed
+test_uninstall_removes_only_proxyforge_binary
+test_uninstall_is_idempotent
 test_version_file_fallback
 printf 'install_test: ok\n'

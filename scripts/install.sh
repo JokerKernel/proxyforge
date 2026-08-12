@@ -46,6 +46,7 @@ fi
 
 current_version=""
 current_installed=false
+requested_action="install"
 
 selected_asset=""
 selected_checksum=""
@@ -78,8 +79,9 @@ die() {
 }
 
 print_header() {
+  local subtitle=${1:-自身安装与更新}
   printf '%s\n' "$(paint "${color_bold_orange}" '╭─ ProxyForge')"
-  printf '%s\n' "$(paint "${color_orange}" '│ 自身安装与更新')"
+  printf '%s\n' "$(paint "${color_orange}" "│ ${subtitle}")"
   printf '%s\n' "$(paint "${color_bold_orange}" '╰──────────────────────────────────────────────')"
 }
 
@@ -135,10 +137,41 @@ require_root() {
   [[ ${EUID} -eq 0 ]] || die "请使用 root 运行，例如：curl ... | sudo bash"
 }
 
+proxyforge_binary_exists() {
+  [[ -e "${install_path}" || -L "${install_path}" ]]
+}
+
+remove_proxyforge_binary() {
+  [[ ! -d "${install_path}" ]] || die "卸载目标是目录，拒绝删除：${install_path}"
+  rm -f -- "${install_path}"
+}
+
+uninstall_proxyforge() {
+  print_header "自身卸载"
+  step "检查 ProxyForge 安装状态"
+  if ! proxyforge_binary_exists; then
+    result "ProxyForge 当前未安装，无需卸载。"
+    return
+  fi
+
+  info "卸载位置：${install_path}"
+  step "删除 ProxyForge 二进制"
+  remove_proxyforge_binary
+  if proxyforge_binary_exists; then
+    die "卸载后仍检测到文件：${install_path}"
+  fi
+  result "ProxyForge 自身已卸载。"
+  info "sing-box、Xray、节点配置和 ProxyForge 数据均已保留。"
+}
+
 parse_arguments() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --yes | -y)
+        shift
+        ;;
+      --uninstall)
+        requested_action="uninstall"
         shift
         ;;
       *)
@@ -364,9 +397,16 @@ select_asset() {
 }
 
 main() {
+  requested_action="install"
   parse_arguments "$@"
   [[ "$(uname -s)" == "Linux" ]] || die "该安装脚本仅支持 Linux"
   require_root
+
+  if [[ "${requested_action}" == "uninstall" ]]; then
+    require_command rm
+    uninstall_proxyforge
+    return
+  fi
 
   require_command uname
   require_command mktemp
