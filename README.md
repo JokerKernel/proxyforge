@@ -17,6 +17,9 @@ ProxyForge 是面向 Linux/systemd 的 Go 单二进制管理器，用于在同�
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | sudo bash
+```
+
+```
 sudo /usr/local/sbin/proxyforge
 ```
 
