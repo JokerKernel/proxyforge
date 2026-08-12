@@ -40,6 +40,13 @@ test_color_controls() (
   [[ "${output}" == *$'\033[1;38;5;208m╭─ ProxyForge\033[0m'* ]] || fail "orange title color was not applied"
   output=$(step "彩色步骤")
   [[ "${output}" == *$'\033[1;38;5;208m[步骤]\033[0m'* ]] || fail "orange step color was not applied"
+
+  installation_action=install
+  resolved_version=v1.2.3
+  output=$(print_completion)
+  [[ "${output}" == *$'\033[38;5;208m│ 版本：v1.2.3\033[0m'* ]] || fail "completion version line was not fully orange"
+  [[ "${output}" == *$'\033[38;5;208m│ 位置：/usr/local/sbin/proxyforge\033[0m'* ]] || fail "completion location line was not fully orange"
+  [[ "${output}" == *$'\033[38;5;208m│ 运行命令：sudo /usr/local/sbin/proxyforge\033[0m'* ]] || fail "run command was not included in the orange completion card"
 )
 
 test_no_color_is_respected() (

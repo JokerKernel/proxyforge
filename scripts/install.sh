@@ -114,9 +114,10 @@ print_completion() {
     action_label="重新安装完成"
   fi
   printf '\n%s\n' "$(paint "${color_bold_orange}" '╭─ ProxyForge')"
-  printf '│ %s\n' "$(paint "${color_bold_green}" "${action_label}")"
-  printf '│ %s：%s\n' "$(paint "${color_orange}" '版本')" "${resolved_version}"
-  printf '│ %s：%s\n' "$(paint "${color_orange}" '位置')" "${install_path}"
+  printf '%s│ %s%s%s\n' "${color_orange}" "${color_bold_green}" "${action_label}" "${color_reset}"
+  printf '%s\n' "$(paint "${color_orange}" "│ 版本：${resolved_version}")"
+  printf '%s\n' "$(paint "${color_orange}" "│ 位置：${install_path}")"
+  printf '%s\n' "$(paint "${color_orange}" "│ 运行命令：sudo ${install_path}")"
   printf '%s\n' "$(paint "${color_bold_orange}" '╰──────────────────────────────────────────────')"
 }
 
@@ -521,9 +522,8 @@ main() {
   mv -f -- "${staged_path}" "${install_path}"
   staged_path=""
 
-  print_completion
   "${install_path}" --version
-  info "运行命令：sudo ${install_path}"
+  print_completion
 }
 
 if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
