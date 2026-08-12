@@ -763,11 +763,14 @@ func TestMenuCanReturnFromCoreSelection(t *testing.T) {
 	if err := c.menu(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(out.String(), "ProxyForge 双内核代理管理器") != 2 {
+	if strings.Count(out.String(), "╭─ ProxyForge") != 2 {
 		t.Fatalf("core selector was not shown twice: %q", out.String())
 	}
-	if strings.Count(out.String(), "当前版本：v1.2.3") != 2 {
+	if strings.Count(out.String(), "│ 双内核代理管理器  [版本 v1.2.3]") != 2 {
 		t.Fatalf("current version was not shown twice: %q", out.String())
+	}
+	if strings.Count(out.String(), proxyForgeHeaderRule) != 2 {
+		t.Fatalf("server tool header rule was not shown twice: %q", out.String())
 	}
 	if !strings.Contains(out.String(), "sing-box 管理菜单") || !strings.Contains(out.String(), "安装/升级内核") || !strings.Contains(out.String(), "服务端配置管理") {
 		t.Fatalf("core menu missing: %q", out.String())

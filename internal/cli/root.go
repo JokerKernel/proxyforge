@@ -27,6 +27,7 @@ import (
 var errReturnToMenu = errors.New("返回主菜单")
 
 const menuDisplayWidth = 40
+const proxyForgeHeaderRule = "╰──────────────────────────────────────────────"
 
 type confirmationSection struct {
 	title string
@@ -1165,10 +1166,7 @@ func (c *commandSet) runCredentialReset(ctx context.Context, core string, opts d
 
 func (c *commandSet) selectCore() (string, bool, error) {
 	c.clearScreen()
-	fmt.Fprintln(c.out, "========================================")
-	fmt.Fprintln(c.out, centerDisplayText("ProxyForge 双内核代理管理器", menuDisplayWidth))
-	fmt.Fprintln(c.out, centerDisplayText("当前版本："+displayCurrentVersion(c.currentVersion), menuDisplayWidth))
-	fmt.Fprintln(c.out, "========================================")
+	c.printProxyForgeHeader()
 	fmt.Fprintln(c.out, "请选择要管理的内核")
 	fmt.Fprintln(c.out, "1) sing-box")
 	fmt.Fprintln(c.out, "2) Xray-core")
@@ -1186,6 +1184,12 @@ func (c *commandSet) selectCore() (string, bool, error) {
 	default:
 		return "", false, nil
 	}
+}
+
+func (c *commandSet) printProxyForgeHeader() {
+	fmt.Fprintln(c.out, "╭─ ProxyForge")
+	fmt.Fprintf(c.out, "│ 双内核代理管理器  [版本 %s]\n", displayCurrentVersion(c.currentVersion))
+	fmt.Fprintln(c.out, proxyForgeHeaderRule)
 }
 
 func displayCurrentVersion(version string) string {
