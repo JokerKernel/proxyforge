@@ -246,14 +246,18 @@ func decorateNumberedChoice(value string) string {
 	if digitEnd == 0 {
 		return value
 	}
-	remainderStart := digitEnd
+	prefixEnd := digitEnd
+	if strings.HasPrefix(strings.ToLower(trimmedLeft[prefixEnd:]), "/q") {
+		prefixEnd += len("/q")
+	}
+	remainderStart := prefixEnd
 	if remainderStart < len(trimmedLeft) && trimmedLeft[remainderStart] == ')' {
 		remainderStart++
 	}
 	if remainderStart >= len(trimmedLeft) || (trimmedLeft[remainderStart] != ' ' && trimmedLeft[remainderStart] != '\t') {
 		return value
 	}
-	prefix := trimmedLeft[:digitEnd]
+	prefix := trimmedLeft[:prefixEnd]
 	remainder := trimmedLeft[remainderStart:]
 	trimmedRemainder := strings.TrimLeft(remainder, " \t")
 	spacing := remainder[:len(remainder)-len(trimmedRemainder)]

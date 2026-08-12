@@ -749,6 +749,25 @@ func TestSelectCoreUsesNumericChoiceAndDefault(t *testing.T) {
 	}
 }
 
+func TestSelectCoreAcceptsQToExit(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{
+		reader:         bufio.NewReader(strings.NewReader("q\n")),
+		out:            &out,
+		currentVersion: "v1.2.6",
+	}
+	core, selected, err := c.selectCore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected || core != "" {
+		t.Fatalf("core=%q selected=%v, want exit", core, selected)
+	}
+	if !strings.Contains(out.String(), "  0/q 退出") || !strings.Contains(out.String(), "❯ 输入选项 [1]: ") {
+		t.Fatalf("menu style output=%q", out.String())
+	}
+}
+
 func TestMenuCanReturnFromCoreSelection(t *testing.T) {
 	var out, errOut bytes.Buffer
 	c := &commandSet{
