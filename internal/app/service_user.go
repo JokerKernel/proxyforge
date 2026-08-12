@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -70,7 +71,11 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 		return change, fmt.Errorf("读取 %s 运行用户: %w", p.ServiceName(), err)
 	}
 
-	status, _ := a.Services.IsActive(ctx, p.ServiceName())
+	status, statusErr := a.Services.IsActive(ctx, p.ServiceName())
+	wasRunning, err := installedServiceRunning(status, statusErr)
+	if err != nil {
+		return change, fmt.Errorf("检查迁移前 %s 运行状态: %w", p.ServiceName(), err)
+	}
 	snapshots, changedUnits, err := a.prepareXrayServiceUserFiles()
 	if err != nil {
 		return change, err
@@ -87,19 +92,23 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 
 	rollback := func(cause error) error {
 		a.progressf("运行用户迁移失败，正在恢复 systemd unit 和文件权限")
-		var rollbackErr error
+		var rollbackErrors []error
 		if err := restoreSnapshots(snapshots); err != nil {
-			rollbackErr = err
+			rollbackErrors = append(rollbackErrors, fmt.Errorf("恢复 systemd 配置文件: %w", err))
 		}
-		if err := restoreMetadataSnapshots(configSnapshots); err != nil && rollbackErr == nil {
-			rollbackErr = err
+		if err := restoreMetadataSnapshots(configSnapshots); err != nil {
+			rollbackErrors = append(rollbackErrors, fmt.Errorf("恢复配置和日志权限: %w", err))
 		}
-		_ = a.Services.DaemonReload(ctx)
-		if status.Active {
-			_ = a.Services.Restart(ctx, p.ServiceName())
+		if err := a.Services.DaemonReload(ctx); err != nil {
+			rollbackErrors = append(rollbackErrors, fmt.Errorf("恢复后刷新 systemd unit: %w", err))
 		}
-		if rollbackErr != nil {
-			return fmt.Errorf("%v；且恢复旧设置失败: %w", cause, rollbackErr)
+		if wasRunning {
+			if err := a.Services.Restart(ctx, p.ServiceName()); err != nil {
+				rollbackErrors = append(rollbackErrors, fmt.Errorf("恢复 %s 运行状态: %w", p.ServiceName(), err))
+			}
+		}
+		if len(rollbackErrors) != 0 {
+			return fmt.Errorf("%v；且回滚未完整完成: %w", cause, errors.Join(rollbackErrors...))
 		}
 		if change.UserCreated {
 			return fmt.Errorf("%v；已恢复旧 systemd 设置；新创建的 xray 专用账号已安全保留", cause)
@@ -137,7 +146,7 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 	if change.Current != XrayDedicatedServiceUser {
 		return change, rollback(fmt.Errorf("Xray 有其他 systemd 配置覆盖了运行用户，当前仍为 %s", change.Current))
 	}
-	if status.Active && (changedUnits || change.Previous != XrayDedicatedServiceUser) {
+	if wasRunning && (changedUnits || change.Previous != XrayDedicatedServiceUser) {
 		a.progressf("重启 Xray 使专用运行用户立即生效")
 		if err := a.Services.Restart(ctx, p.ServiceName()); err != nil {
 			return change, rollback(fmt.Errorf("重启 %s 失败: %w", p.ServiceName(), err))

@@ -23,8 +23,11 @@ type serviceUserRunner struct {
 	invalidAccount  bool
 	failUserCheck   bool
 	failRunuser     bool
+	failIsActive    bool
 	active          bool
-	failNextRestart bool
+	restartFailures int
+	daemonReloads   int
+	failReloadAt    int
 	calls           []string
 }
 
@@ -38,11 +41,18 @@ func (r *serviceUserRunner) Run(_ context.Context, name string, args ...string) 
 			}
 			return []byte(r.user + "\n"), nil
 		case "is-active":
+			if r.failIsActive {
+				return nil, errors.New("injected status failure")
+			}
 			if r.active {
 				return []byte("active\n"), nil
 			}
 			return []byte("inactive\n"), errors.New("inactive")
 		case "daemon-reload":
+			r.daemonReloads++
+			if r.failReloadAt == r.daemonReloads {
+				return nil, errors.New("injected daemon-reload failure")
+			}
 			data, err := os.ReadFile(r.unitPath)
 			if err != nil {
 				return nil, err
@@ -50,8 +60,9 @@ func (r *serviceUserRunner) Run(_ context.Context, name string, args ...string) 
 			r.user = serviceUserInUnit(data)
 			return nil, nil
 		case "restart":
-			if r.failNextRestart {
-				r.failNextRestart = false
+			if r.restartFailures > 0 {
+				r.restartFailures--
+				r.active = false
 				return nil, errors.New("injected restart failure")
 			}
 			r.active = true
@@ -119,7 +130,10 @@ func newServiceUserTestApp(t *testing.T, failRestart bool) (*App, *serviceUserRu
 		t.Fatal(err)
 	}
 	runner := &serviceUserRunner{
-		unitPath: mainUnit, user: "nobody", active: true, failNextRestart: failRestart,
+		unitPath: mainUnit, user: "nobody", active: true,
+	}
+	if failRestart {
+		runner.restartFailures = 1
 	}
 	a := New(provider.NewRegistry(singbox.New(), xray.New()), runner, system.Layout{Root: root}, nil)
 	a.RootCheck = func() error { return nil }
@@ -209,6 +223,68 @@ func TestUseDedicatedXrayServiceUserRollsBackWhenRestartFails(t *testing.T) {
 	}
 	if runner.user != "nobody" || !runner.active {
 		t.Fatalf("service state user=%q active=%v", runner.user, runner.active)
+	}
+}
+
+func TestUseDedicatedXrayServiceUserRejectsUnknownServiceStateBeforeWriting(t *testing.T) {
+	a, runner, root := newServiceUserTestApp(t, false)
+	runner.failIsActive = true
+	_, err := a.UseDedicatedXrayServiceUser(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "检查迁移前 xray.service 运行状态") {
+		t.Fatalf("error=%v", err)
+	}
+	data, readErr := os.ReadFile(filepath.Join(root, "etc/systemd/system/xray.service"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !strings.Contains(string(data), "User=nobody") {
+		t.Fatalf("unit changed after status failure: %s", data)
+	}
+	if runner.accountExists {
+		t.Fatal("account was created after status failure")
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "etc/systemd/system/xray.service.d/20-proxyforge-user.conf")); !os.IsNotExist(statErr) {
+		t.Fatalf("drop-in was written after status failure: %v", statErr)
+	}
+}
+
+func TestUseDedicatedXrayServiceUserReportsRollbackRestartFailure(t *testing.T) {
+	a, runner, root := newServiceUserTestApp(t, false)
+	runner.restartFailures = 2
+	_, err := a.UseDedicatedXrayServiceUser(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "回滚未完整完成") ||
+		!strings.Contains(err.Error(), "恢复 xray.service 运行状态") {
+		t.Fatalf("error=%v", err)
+	}
+	data, readErr := os.ReadFile(filepath.Join(root, "etc/systemd/system/xray.service"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !strings.Contains(string(data), "User=nobody") {
+		t.Fatalf("unit was not restored: %s", data)
+	}
+	if runner.active {
+		t.Fatal("service should remain inactive when rollback restart fails")
+	}
+}
+
+func TestUseDedicatedXrayServiceUserReportsRollbackDaemonReloadFailure(t *testing.T) {
+	a, runner, root := newServiceUserTestApp(t, true)
+	runner.failReloadAt = 2
+	_, err := a.UseDedicatedXrayServiceUser(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "回滚未完整完成") ||
+		!strings.Contains(err.Error(), "恢复后刷新 systemd unit") {
+		t.Fatalf("error=%v", err)
+	}
+	data, readErr := os.ReadFile(filepath.Join(root, "etc/systemd/system/xray.service"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !strings.Contains(string(data), "User=nobody") {
+		t.Fatalf("unit was not restored on disk: %s", data)
+	}
+	if !runner.active {
+		t.Fatal("rollback should still attempt to restore the running service")
 	}
 }
 
