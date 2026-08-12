@@ -160,6 +160,35 @@ func TestExecuteScriptStreamsOutput(t *testing.T) {
 	}
 }
 
+func TestExecutePreparedScriptAttachedForwardsNativeStreams(t *testing.T) {
+	runner := &streamingRunnerStub{}
+	var stdout, stderr strings.Builder
+	i := Installer{Runner: runner, Output: io.Discard}
+	script := DownloadedScript{Content: []byte("#!/usr/bin/env bash\nexit 0\n")}
+
+	if err := i.ExecutePreparedScriptAttached(context.Background(), script, &stdout, &stderr, "uninstall"); err != nil {
+		t.Fatal(err)
+	}
+	if !runner.streamingCalled || runner.bufferedCalled {
+		t.Fatalf("streaming=%v buffered=%v", runner.streamingCalled, runner.bufferedCalled)
+	}
+	if runner.command != "bash" || len(runner.args) != 2 || runner.args[1] != "uninstall" {
+		t.Fatalf("command=%q args=%v", runner.command, runner.args)
+	}
+	if got := stdout.String(); got != "stdout step\n" {
+		t.Fatalf("stdout=%q", got)
+	}
+	if got := stderr.String(); got != "stderr step\n" {
+		t.Fatalf("stderr=%q", got)
+	}
+	if strings.Contains(stdout.String()+stderr.String(), "[Bash]") {
+		t.Fatalf("attached output was decorated: stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	if _, err := os.Stat(runner.args[0]); !os.IsNotExist(err) {
+		t.Fatalf("temporary script still exists: %v", err)
+	}
+}
+
 func TestRunPassesRuntimeProxyToXrayScript(t *testing.T) {
 	script := []byte("#!/usr/bin/env bash\nexit 0\n")
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {

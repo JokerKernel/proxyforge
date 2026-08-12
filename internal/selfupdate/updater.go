@@ -31,6 +31,8 @@ type Updater struct {
 	Installer    install.Installer
 	ScriptURL    string
 	AllowedHosts []string
+	Stdout       io.Writer
+	Stderr       io.Writer
 }
 
 func (u Updater) Run(ctx context.Context, opts Options) error {
@@ -65,7 +67,15 @@ func (u Updater) Run(ctx context.Context, opts Options) error {
 	if opts.AssumeYes {
 		args = append(args, "--yes")
 	}
-	if err := installer.ExecutePreparedScriptDirect(ctx, script, nil, args...); err != nil {
+	stdout := u.Stdout
+	if stdout == nil {
+		stdout = output
+	}
+	stderr := u.Stderr
+	if stderr == nil {
+		stderr = output
+	}
+	if err := installer.ExecutePreparedScriptAttached(ctx, script, stdout, stderr, args...); err != nil {
 		return fmt.Errorf("执行 ProxyForge %s脚本: %w", operation, err)
 	}
 	return nil

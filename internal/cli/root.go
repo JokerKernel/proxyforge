@@ -61,7 +61,9 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 	a.RootCheck = rootCheck
 	a.Progress = stderr
 	a.Installer.Output = stderr
-	updater := selfupdate.Updater{Installer: a.Installer}
+	selfInstaller := a.Installer
+	selfInstaller.Runner = system.ExecRunner{Stdin: os.Stdin}
+	updater := selfupdate.Updater{Installer: selfInstaller, Stdout: os.Stdout, Stderr: os.Stderr}
 	c := &commandSet{
 		app: a, in: os.Stdin, reader: bufio.NewReader(os.Stdin), out: stdout, errOut: stderr,
 		probeSNI:    app.ProbeSNICandidates,

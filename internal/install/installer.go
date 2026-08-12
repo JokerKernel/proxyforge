@@ -126,29 +126,46 @@ func (i Installer) ExecutePreparedScript(ctx context.Context, script DownloadedS
 	return i.executePreparedScript(ctx, script, environment, "[Bash] ", scriptArgs...)
 }
 
-// ExecutePreparedScriptDirect executes a validated first-party script without
-// adding the official-script prefix to every output line. It is used by the
-// self-updater so the installer's own structured terminal UI remains readable.
-func (i Installer) ExecutePreparedScriptDirect(ctx context.Context, script DownloadedScript, environment []string, scriptArgs ...string) error {
-	return i.executePreparedScript(ctx, script, environment, "", scriptArgs...)
+// ExecutePreparedScriptAttached executes a validated first-party script with
+// its output streams attached directly to the caller-provided streams. When
+// those streams are terminal files, the child retains TTY detection, colors,
+// progress bars, and its native interactive behavior.
+func (i Installer) ExecutePreparedScriptAttached(ctx context.Context, script DownloadedScript, stdout, stderr io.Writer, scriptArgs ...string) error {
+	path, cleanup, err := writePreparedScript(script)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	if stderr == nil {
+		stderr = stdout
+	}
+	args := append([]string{path}, scriptArgs...)
+	if streaming, ok := i.Runner.(provider.StreamingRunner); ok {
+		if err := streaming.RunStreaming(ctx, stdout, stderr, "bash", args...); err != nil {
+			return fmt.Errorf("脚本执行失败: %w", err)
+		}
+		return nil
+	}
+	b, err := i.Runner.Run(ctx, "bash", args...)
+	if len(b) > 0 {
+		_, _ = stdout.Write(b)
+	}
+	if err != nil {
+		return fmt.Errorf("脚本执行失败: %w", err)
+	}
+	return nil
 }
 
 func (i Installer) executePreparedScript(ctx context.Context, script DownloadedScript, environment []string, outputPrefix string, scriptArgs ...string) error {
-	f, err := os.CreateTemp("", "proxyforge-install-*.sh")
+	path, cleanup, err := writePreparedScript(script)
 	if err != nil {
 		return err
 	}
-	path := f.Name()
-	defer os.Remove(path)
-	if err := f.Chmod(0700); err == nil {
-		_, err = f.Write(script.Content)
-	}
-	if closeErr := f.Close(); err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return err
-	}
+	defer cleanup()
 	args := append([]string{path}, scriptArgs...)
 	if len(environment) == 0 {
 		return i.executeScriptWithPrefix(ctx, args, outputPrefix)
@@ -156,6 +173,26 @@ func (i Installer) executePreparedScript(ctx context.Context, script DownloadedS
 	envArgs := append(append([]string(nil), environment...), "bash")
 	envArgs = append(envArgs, args...)
 	return i.executeScriptCommand(ctx, "env", envArgs, outputPrefix)
+}
+
+func writePreparedScript(script DownloadedScript) (string, func(), error) {
+	f, err := os.CreateTemp("", "proxyforge-install-*.sh")
+	if err != nil {
+		return "", nil, err
+	}
+	path := f.Name()
+	cleanup := func() { _ = os.Remove(path) }
+	if err := f.Chmod(0700); err == nil {
+		_, err = f.Write(script.Content)
+	}
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		cleanup()
+		return "", nil, err
+	}
+	return path, cleanup, nil
 }
 
 func (i Installer) executeScript(ctx context.Context, args []string) error {
