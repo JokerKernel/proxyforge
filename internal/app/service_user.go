@@ -162,7 +162,7 @@ func (a *App) ensureXrayServiceAccount(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	_, err := a.Runner.Run(ctx, "useradd", "-r", "-g", XrayDedicatedServiceUser,
-		"-d", "/var/lib/xray", "-s", "/usr/sbin/nologin", "-M", XrayDedicatedServiceUser)
+		"-d", "/nonexistent", "-s", "/usr/sbin/nologin", "-M", XrayDedicatedServiceUser)
 	if err != nil {
 		return false, fmt.Errorf("创建系统用户 %s: %w", XrayDedicatedServiceUser, err)
 	}

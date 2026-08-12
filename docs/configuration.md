@@ -63,7 +63,7 @@ CDN 识别只基于 CNAME、域名和地址数量进行启发式判断，不代�
 
 XTLS 官方安装脚本首次安装时默认在 systemd unit 中写入 `User=nobody`，较新的 systemd 会报告 `Special user nobody configured, this is not safe!`。这通常不影响启动，但 `nobody` 是多个程序可共用的特殊账号，不适合作为长期服务身份。
 
-在交互菜单进入“Xray → 服务端配置 → 专用运行用户”，ProxyForge 会创建独立的 `xray` 系统用户和组、更新 `xray.service` 与 `xray@.service`、写入持久化 drop-in，并同步配置及日志权限。若服务正在运行，修改完成后会自动重启；任一步骤失败会恢复原 systemd unit 和文件权限。
+在交互菜单进入“Xray → 服务端配置 → 专用运行用户”，ProxyForge 会创建禁止登录且不创建 home 目录的独立 `xray` 系统用户和组、更新 `xray.service` 与 `xray@.service`、写入持久化 drop-in，并同步配置及日志权限。若服务正在运行，修改完成后会自动重启；任一步骤失败会恢复原 systemd unit 和文件权限。
 
 普通重新生成会保留 UUID、REALITY 密钥和 short ID。只有使用 `--rotate-credentials` 或执行凭据重置时才会轮换它们，并让旧客户端失效。
 

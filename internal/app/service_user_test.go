@@ -141,7 +141,12 @@ func TestUseDedicatedXrayServiceUserMigratesOfficialUnits(t *testing.T) {
 		}
 	}
 	calls := strings.Join(runner.calls, "\n")
-	for _, want := range []string{"groupadd -r -f xray", "useradd -r -g xray", "systemctl daemon-reload", "systemctl restart xray.service"} {
+	for _, want := range []string{
+		"groupadd -r -f xray",
+		"useradd -r -g xray -d /nonexistent -s /usr/sbin/nologin -M xray",
+		"systemctl daemon-reload",
+		"systemctl restart xray.service",
+	} {
 		if !strings.Contains(calls, want) {
 			t.Fatalf("calls missing %q:\n%s", want, calls)
 		}
