@@ -176,7 +176,7 @@ func decorateSourceLabels(value string) string {
 		{"[官方脚本/信息]", ansiCyan},
 		{"[官方脚本/风险]", ansiBoldYellow},
 		{"[官方脚本/状态]", ansiMagenta},
-		{"[官方脚本/输出]", ansiBrightBlack},
+		{"[Bash]", ansiBrightBlack},
 		{"[默认]", ansiBoldYellow},
 	}
 	for _, label := range labels {

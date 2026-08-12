@@ -20,6 +20,7 @@ test_update_skips_when_already_current() (
 
   local output
   output=$(main --update --yes)
+  [[ "${output}" != *"[安装]"* && "${output}" != *"[更新]"* && "${output}" != *"[结果]"* ]] || fail "script output still contains prefixes"
   [[ "${output}" == *"当前版本 v1.2.3 已是最新正式版本"* ]] || fail "missing up-to-date result"
   [[ "${output}" != *"SHA256SUMS"* ]] || fail "downloaded release files for current version"
 )
