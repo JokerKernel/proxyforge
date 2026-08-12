@@ -1235,18 +1235,18 @@ func (c *commandSet) runCredentialReset(ctx context.Context, core string, opts d
 func (c *commandSet) selectCore() (string, bool, error) {
 	c.clearScreen()
 	c.printProxyForgeHeader()
-	c.printMenuChoice("1", "sing-box（管理 sing-box 内核与节点配置）")
-	c.printMenuChoice("2", "Xray-core（管理 Xray-core 内核与节点配置）")
+	c.printMenuChoice("1", "Xray-core（管理 Xray-core 内核与节点配置，默认）")
+	c.printMenuChoice("2", "sing-box（管理 sing-box 内核与节点配置）")
 	c.printMenuChoice("0/q", "退出")
-	choice, err := c.chooseNumber("请选择", 0, 2, -1)
+	choice, err := c.chooseNumber("请选择", 0, 2, 1)
 	if err != nil {
 		return "", false, err
 	}
 	switch choice {
 	case 1:
-		return domain.CoreSingBox, true, nil
-	case 2:
 		return domain.CoreXray, true, nil
+	case 2:
+		return domain.CoreSingBox, true, nil
 	default:
 		return "", false, nil
 	}

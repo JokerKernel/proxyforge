@@ -871,8 +871,9 @@ func TestSelectCoreUsesNumericChoice(t *testing.T) {
 		input string
 		want  string
 	}{
-		{name: "sing-box", input: "1\n", want: "sing-box"},
-		{name: "xray", input: "2\n", want: "xray"},
+		{name: "xray", input: "1\n", want: "xray"},
+		{name: "xray default", input: "\n", want: "xray"},
+		{name: "sing-box", input: "2\n", want: "sing-box"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -903,10 +904,10 @@ func TestSelectCoreAcceptsQToExit(t *testing.T) {
 	if selected || core != "" {
 		t.Fatalf("core=%q selected=%v, want exit", core, selected)
 	}
-	if !strings.Contains(out.String(), "  1   sing-box          -- 管理 sing-box 内核与节点配置") ||
-		!strings.Contains(out.String(), "  2   Xray-core         -- 管理 Xray-core 内核与节点配置") ||
+	if !strings.Contains(out.String(), "  1   Xray-core         -- 管理 Xray-core 内核与节点配置，默认") ||
+		!strings.Contains(out.String(), "  2   sing-box          -- 管理 sing-box 内核与节点配置") ||
 		!strings.Contains(out.String(), "  0/q 退出") ||
-		!strings.Contains(out.String(), "❯ 请选择：") {
+		!strings.Contains(out.String(), "❯ 请选择 [1]：") {
 		t.Fatalf("menu style output=%q", out.String())
 	}
 }
@@ -928,7 +929,7 @@ func TestMenuCanReturnFromCoreSelection(t *testing.T) {
 	if strings.Count(out.String(), proxyForgeHeaderRule) != 3 {
 		t.Fatalf("global page header rule count is incorrect: %q", out.String())
 	}
-	if !strings.Contains(out.String(), "ProxyForge  ›  sing-box") || !strings.Contains(out.String(), "安装/升级") || !strings.Contains(out.String(), "服务端配置") {
+	if !strings.Contains(out.String(), "ProxyForge  ›  xray") || !strings.Contains(out.String(), "安装/升级") || !strings.Contains(out.String(), "服务端配置") {
 		t.Fatalf("core menu missing: %q", out.String())
 	}
 	if !strings.Contains(out.String(), "已退出 ProxyForge") {
