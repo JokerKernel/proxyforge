@@ -25,11 +25,17 @@ sudo /usr/local/sbin/proxyforge
 卸载 ProxyForge 自身：
 
 ```bash
+sudo proxyforge uninstall
+```
+
+也可以直接调用在线安装脚本：
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | \
   sudo bash -s -- uninstall
 ```
 
-也可以对已下载的脚本执行 `sudo bash scripts/install.sh uninstall`；同时兼容 `--uninstall`。该参数只删除 `/usr/local/sbin/proxyforge`，不会卸载 sing-box、Xray，也不会删除节点配置、状态或备份。
+安装脚本同时支持 `sudo bash scripts/install.sh uninstall` 和 `--uninstall`。以上方式都只删除 `/usr/local/sbin/proxyforge`，不会卸载 sing-box、Xray，也不会删除节点配置、状态或备份。
 
 ## 快速使用
 

@@ -1,4 +1,4 @@
-// Package selfupdate starts ProxyForge's reviewed installation script.
+// Package selfupdate starts ProxyForge's reviewed management script.
 // Version discovery, comparison, artifact verification, and replacement are
 // intentionally owned by that script.
 package selfupdate
@@ -23,6 +23,7 @@ var defaultHosts = []string{
 
 type Options struct {
 	AssumeYes bool
+	Uninstall bool
 }
 
 type Updater struct {
@@ -42,23 +43,30 @@ func (u Updater) Run(ctx context.Context, opts Options) error {
 	if output == nil {
 		output = io.Discard
 	}
-	fmt.Fprintln(output, "[步骤] 下载并验证安装/更新脚本")
+	operation := "安装/更新"
+	if opts.Uninstall {
+		operation = "卸载"
+	}
+	fmt.Fprintf(output, "[步骤] 下载并验证 ProxyForge %s脚本\n", operation)
 	fmt.Fprintf(output, "[信息] 来源：%s\n", scriptURL)
 	script, err := installer.PrepareScript(ctx, scriptURL, hosts)
 	if err != nil {
-		return fmt.Errorf("准备自升级脚本: %w", err)
+		return fmt.Errorf("准备 ProxyForge %s脚本: %w", operation, err)
 	}
 	fmt.Fprintf(output, "[信息] 最终地址：%s\n", script.FinalURL)
 	fmt.Fprintf(output, "[信息] 脚本大小：%d bytes\n", len(script.Content))
 	fmt.Fprintf(output, "[信息] 脚本 SHA-256：%s\n", script.SHA256)
-	fmt.Fprintln(output, "[步骤] 启动安装/更新流程")
+	fmt.Fprintf(output, "[步骤] 启动 ProxyForge %s流程\n", operation)
 
 	var args []string
+	if opts.Uninstall {
+		args = append(args, "uninstall")
+	}
 	if opts.AssumeYes {
 		args = append(args, "--yes")
 	}
 	if err := installer.ExecutePreparedScriptDirect(ctx, script, nil, args...); err != nil {
-		return fmt.Errorf("执行自升级脚本: %w", err)
+		return fmt.Errorf("执行 ProxyForge %s脚本: %w", operation, err)
 	}
 	return nil
 }

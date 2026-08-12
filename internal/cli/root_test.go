@@ -77,7 +77,7 @@ func TestUpdateCommandPassesYes(t *testing.T) {
 		yes: true,
 		selfUpdate: func(_ context.Context, opts selfupdate.Options) error {
 			called = true
-			if !opts.AssumeYes {
+			if !opts.AssumeYes || opts.Uninstall {
 				t.Fatalf("options=%+v", opts)
 			}
 			return nil
@@ -89,6 +89,36 @@ func TestUpdateCommandPassesYes(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("self updater was not called")
+	}
+}
+
+func TestUninstallCommandWithoutCoreCallsSelfUninstall(t *testing.T) {
+	called := false
+	c := &commandSet{selfUpdate: func(_ context.Context, opts selfupdate.Options) error {
+		called = true
+		if !opts.Uninstall {
+			t.Fatalf("options=%+v", opts)
+		}
+		return nil
+	}}
+	if err := c.uninstallCommand().Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Fatal("self uninstaller was not called")
+	}
+}
+
+func TestSelfUninstallRejectsCoreScriptFlags(t *testing.T) {
+	c := &commandSet{selfUpdate: func(context.Context, selfupdate.Options) error {
+		t.Fatal("self uninstaller should not be called")
+		return nil
+	}}
+	cmd := c.uninstallCommand()
+	cmd.SetArgs([]string{"--script-url", "https://example.com/install.sh"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "仅用于卸载代理内核") {
+		t.Fatalf("error=%v", err)
 	}
 }
 

@@ -75,8 +75,8 @@ func TestRunOnlyStartsPreparedScript(t *testing.T) {
 		t.Fatalf("executed script=%q", runner.script)
 	}
 	for _, expected := range []string{
-		"[步骤] 下载并验证安装/更新脚本",
-		"[信息] 脚本 SHA-256：", "[步骤] 启动安装/更新流程", "install-ui",
+		"[步骤] 下载并验证 ProxyForge 安装/更新脚本",
+		"[信息] 脚本 SHA-256：", "[步骤] 启动 ProxyForge 安装/更新流程", "install-ui",
 	} {
 		if !strings.Contains(output.String(), expected) {
 			t.Fatalf("output missing %q:\n%s", expected, output.String())
@@ -95,6 +95,18 @@ func TestAssumeYesIsPassedToScript(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got, want := runner.args[1:], []string{"--yes"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("script args=%v, want %v", got, want)
+	}
+}
+
+func TestUninstallIsPassedToScript(t *testing.T) {
+	client := updateClient()
+	runner := &runnerStub{}
+	u := testUpdater(client, runner)
+	if err := u.Run(context.Background(), Options{Uninstall: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := runner.args[1:], []string{"uninstall"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("script args=%v, want %v", got, want)
 	}
 }
@@ -120,7 +132,7 @@ func TestExecutionFailureIsReportedAndTemporaryScriptRemoved(t *testing.T) {
 	runner := &runnerStub{err: errors.New("execution failed")}
 	u := testUpdater(client, runner)
 	err := u.Run(context.Background(), Options{AssumeYes: true})
-	if err == nil || !strings.Contains(err.Error(), "执行自升级脚本") {
+	if err == nil || !strings.Contains(err.Error(), "执行 ProxyForge 安装/更新脚本") {
 		t.Fatalf("error=%v", err)
 	}
 	if _, statErr := os.Stat(runner.path); !os.IsNotExist(statErr) {

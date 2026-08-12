@@ -103,8 +103,17 @@ func (c *commandSet) updateCommand() *cobra.Command {
 func (c *commandSet) uninstallCommand() *cobra.Command {
 	var trust, scriptURL string
 	cmd := &cobra.Command{
-		Use: "uninstall <sing-box|xray>", Short: "卸载指定内核并清理数据", Args: cobra.ExactArgs(1),
+		Use: "uninstall [sing-box|xray]", Short: "卸载 ProxyForge 自身，或卸载指定内核并清理数据", Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				if trust != "" || scriptURL != "" {
+					return fmt.Errorf("--script-url 和 --trust-script-sha256 仅用于卸载代理内核")
+				}
+				if c.selfUpdate == nil {
+					return fmt.Errorf("自身卸载功能未初始化")
+				}
+				return c.selfUpdate(cmd.Context(), selfupdate.Options{AssumeYes: c.yes, Uninstall: true})
+			}
 			interactive := !c.yes && readerInteractive(c.in)
 			if !c.yes {
 				if !interactive {
