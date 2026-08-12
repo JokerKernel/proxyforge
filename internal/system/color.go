@@ -9,14 +9,14 @@ import (
 
 const (
 	ansiReset       = "\x1b[0m"
-	ansiBoldCyan    = "\x1b[1;36m"
+	ansiBoldOrange  = "\x1b[1;38;5;208m"
+	ansiOrange      = "\x1b[38;5;208m"
 	ansiBoldGreen   = "\x1b[1;32m"
 	ansiBoldYellow  = "\x1b[1;33m"
 	ansiBoldRed     = "\x1b[1;31m"
 	ansiDim         = "\x1b[2m"
 	ansiYellow      = "\x1b[33m"
 	ansiBlue        = "\x1b[34m"
-	ansiCyan        = "\x1b[36m"
 	ansiMagenta     = "\x1b[35m"
 	ansiBrightBlack = "\x1b[90m"
 )
@@ -136,28 +136,28 @@ func decorateOutputFragment(fragment string, atLineStart bool) string {
 		trimmed := strings.TrimSpace(body)
 		switch {
 		case strings.HasPrefix(trimmed, "╭─ "), strings.HasPrefix(trimmed, "╰─"):
-			body = wrapANSI(ansiBoldCyan, body)
+			body = wrapANSI(ansiBoldOrange, body)
 		case strings.HasPrefix(trimmed, "│ ") && strings.Contains(trimmed, "[版本 "):
 			body = decorateHomeSubtitle(body)
 		case isRepeated(trimmed, '='):
-			body = wrapANSI(ansiBoldCyan, body)
+			body = wrapANSI(ansiBoldOrange, body)
 		case isRepeated(trimmed, '-'):
-			body = wrapANSI(ansiBlue, body)
+			body = wrapANSI(ansiOrange, body)
 		case strings.HasPrefix(trimmed, "错误:") || strings.HasPrefix(trimmed, "错误："):
 			body = wrapANSI(ansiBoldRed, body)
 		case strings.HasPrefix(trimmed, "警告："):
 			body = wrapANSI(ansiBoldYellow, body)
 		case strings.HasPrefix(trimmed, "提示："):
-			body = wrapANSI(ansiCyan, body)
+			body = wrapANSI(ansiBlue, body)
 		case isConfirmationPrompt(trimmed):
 			body = wrapANSI(ansiBoldYellow, body)
 		case isDisplayHeading(trimmed):
-			body = wrapANSI(ansiBoldCyan, body)
+			body = wrapANSI(ansiBoldOrange, body)
 		case isInputPrompt(trimmed):
 			body = wrapANSI(ansiBlue, body)
 		case strings.HasPrefix(trimmed, "- "):
 			indent := strings.Index(body, "-")
-			body = body[:indent] + wrapANSI(ansiCyan, "-") + body[indent+1:]
+			body = body[:indent] + wrapANSI(ansiOrange, "-") + body[indent+1:]
 		default:
 			body = decorateNumberedChoice(body)
 		}
@@ -169,9 +169,9 @@ func decorateOutputFragment(fragment string, atLineStart bool) string {
 func decorateHomeSubtitle(value string) string {
 	badgeStart := strings.Index(value, "[版本 ")
 	if badgeStart < 0 {
-		return wrapANSI(ansiCyan, value)
+		return wrapANSI(ansiOrange, value)
 	}
-	return wrapANSI(ansiCyan, value[:badgeStart]) + wrapANSI(ansiBoldGreen, value[badgeStart:])
+	return wrapANSI(ansiOrange, value[:badgeStart]) + wrapANSI(ansiBoldGreen, value[badgeStart:])
 }
 
 func decorateSourceLabels(value string) string {
@@ -179,14 +179,14 @@ func decorateSourceLabels(value string) string {
 		text  string
 		color string
 	}{
-		{"[步骤]", ansiBoldCyan},
-		{"[信息]", ansiCyan},
-		{"[提示]", ansiCyan},
+		{"[步骤]", ansiBoldOrange},
+		{"[信息]", ansiBlue},
+		{"[提示]", ansiBlue},
 		{"[警告]", ansiBoldYellow},
 		{"[结果]", ansiBoldGreen},
 		{"[错误]", ansiBoldRed},
 		{"[系统命令/输出]", ansiBrightBlack},
-		{"[官方脚本/信息]", ansiCyan},
+		{"[官方脚本/信息]", ansiBlue},
 		{"[官方脚本/风险]", ansiBoldYellow},
 		{"[默认]", ansiBoldYellow},
 	}
@@ -281,7 +281,7 @@ func decorateNumberedChoice(value string) string {
 	}
 	if fields := strings.Fields(trimmedRemainder); len(fields) > 0 && strings.Contains(fields[0], ".") && !strings.ContainsAny(fields[0], "/:") {
 		domain := fields[0]
-		trimmedRemainder = wrapANSI(ansiBoldCyan, domain) + trimmedRemainder[len(domain):]
+		trimmedRemainder = wrapANSI(ansiBoldOrange, domain) + trimmedRemainder[len(domain):]
 	}
 	return value[:indent] + wrapANSI(ansiBlue, prefix) + spacing + trimmedRemainder
 }
