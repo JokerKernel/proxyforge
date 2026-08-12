@@ -27,6 +27,8 @@ var errReturnToMenu = errors.New("返回主菜单")
 
 const proxyForgeHeaderRule = "╰──────────────────────────────────────────────"
 
+const menuDescriptionColumn = 18
+
 type confirmationSection struct {
 	title string
 	items []string
@@ -680,7 +682,7 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 	for {
 		c.clearScreen()
 		c.printCoreMenu(core)
-		choice, err := c.chooseNumber("请选择", 0, 5, 0)
+		choice, err := c.chooseNumber("请选择", 0, 5, -1)
 		if err != nil {
 			return err
 		}
@@ -970,10 +972,11 @@ func (c *commandSet) clientMenu(ctx context.Context, core string) (bool, error) 
 
 func (c *commandSet) printCoreMenu(core string) {
 	c.printPageHeader(core)
-	c.printMenuChoice("1", "安装/升级")
-	c.printMenuChoice("2", "服务端配置")
-	c.printMenuChoice("3", "客户端配置")
-	c.printMenuChoice("4", "服务管理")
+	fmt.Fprintf(c.out, "当前内核：%s\n\n", core)
+	c.printMenuChoice("1", "安装/升级（安装内核或升级版本）")
+	c.printMenuChoice("2", "服务端配置（生成、查看、DNS 与节点重置）")
+	c.printMenuChoice("3", "客户端配置（导出原生 JSON 或 Clash YAML）")
+	c.printMenuChoice("4", "服务管理（启动、停止、状态与日志）")
 	c.printMenuChoice("5", "卸载内核（同时清理配置和运行数据）")
 	c.printMenuChoice("0/q", "返回")
 }
@@ -1175,10 +1178,10 @@ func (c *commandSet) runCredentialReset(ctx context.Context, core string, opts d
 func (c *commandSet) selectCore() (string, bool, error) {
 	c.clearScreen()
 	c.printProxyForgeHeader()
-	c.printMenuChoice("1", "sing-box")
-	c.printMenuChoice("2", "Xray-core")
+	c.printMenuChoice("1", "sing-box（管理 sing-box 内核与节点配置）")
+	c.printMenuChoice("2", "Xray-core（管理 Xray-core 内核与节点配置）")
 	c.printMenuChoice("0/q", "退出")
-	choice, err := c.chooseNumber("请选择", 0, 2, 1)
+	choice, err := c.chooseNumber("请选择", 0, 2, -1)
 	if err != nil {
 		return "", false, err
 	}
@@ -1214,11 +1217,42 @@ func (c *commandSet) printPageHeader(parts ...string) {
 
 func (c *commandSet) printMenuChoice(key, label string) {
 	title, description := splitMenuChoiceLabel(label)
-	fmt.Fprintf(c.out, "  %-3s  %s", key, title)
+	var line strings.Builder
+	fmt.Fprintf(&line, "  %-3s %s", key, title)
 	if description != "" {
-		fmt.Fprintf(c.out, "  -- %s", description)
+		padding := menuDescriptionColumn - menuDisplayWidth(title)
+		if padding < 2 {
+			padding = 2
+		}
+		fmt.Fprintf(&line, "%s-- %s", strings.Repeat(" ", padding), description)
 	}
-	fmt.Fprintln(c.out)
+	fmt.Fprintln(c.out, line.String())
+}
+
+func menuDisplayWidth(value string) int {
+	width := 0
+	for _, r := range value {
+		if isWideMenuRune(r) {
+			width += 2
+		} else {
+			width++
+		}
+	}
+	return width
+}
+
+func isWideMenuRune(r rune) bool {
+	return r >= 0x1100 && (r <= 0x115f ||
+		r == 0x2329 || r == 0x232a ||
+		(r >= 0x2e80 && r <= 0xa4cf && r != 0x303f) ||
+		(r >= 0xac00 && r <= 0xd7a3) ||
+		(r >= 0xf900 && r <= 0xfaff) ||
+		(r >= 0xfe10 && r <= 0xfe19) ||
+		(r >= 0xfe30 && r <= 0xfe6f) ||
+		(r >= 0xff00 && r <= 0xff60) ||
+		(r >= 0xffe0 && r <= 0xffe6) ||
+		(r >= 0x1f300 && r <= 0x1faff) ||
+		(r >= 0x20000 && r <= 0x3fffd))
 }
 
 func splitMenuChoiceLabel(label string) (string, string) {
@@ -1437,7 +1471,7 @@ func (c *commandSet) chooseNumberCancelable(label string, min, max, def int) (in
 func (c *commandSet) chooseNumberInput(label string, min, max, def int, cancelable bool) (int, error) {
 	invalidShown := false
 	firstPrompt := true
-	prompt := "❯ 输入选项"
+	prompt := "❯ 请选择"
 	if detailStart := strings.Index(label, "（"); detailStart >= 0 {
 		prompt += label[detailStart:]
 	}
@@ -1447,9 +1481,9 @@ func (c *commandSet) chooseNumberInput(label string, min, max, def int, cancelab
 			firstPrompt = false
 		}
 		if def >= min && def <= max {
-			fmt.Fprintf(c.out, "%s [%d]: ", prompt, def)
+			fmt.Fprintf(c.out, "%s [%d]：", prompt, def)
 		} else {
-			fmt.Fprintf(c.out, "%s: ", prompt)
+			fmt.Fprintf(c.out, "%s：", prompt)
 		}
 		line, err := c.reader.ReadString('\n')
 		if err != nil && len(line) == 0 {
