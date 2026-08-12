@@ -25,6 +25,38 @@ test_update_skips_when_already_current() (
   [[ "${output}" != *"SHA256SUMS"* ]] || fail "downloaded release files for current version"
 )
 
+test_install_skips_when_already_current() (
+  source "${script_dir}/install.sh"
+  require_root() { return; }
+  detect_current_version() { current_version=v1.2.3; }
+  download() {
+    local url=$1 output=$2
+    [[ "${url}" == "${latest_release_api}" ]] || fail "unexpected download: ${url}"
+    printf '{"tag_name":"v1.2.3"}\n' > "${output}"
+  }
+
+  local output
+  output=$(main)
+  [[ "${output}" == *"当前版本 v1.2.3 已是最新正式版本"* ]] || fail "install did not detect current version"
+  [[ "${output}" != *"正在读取发布清单"* ]] || fail "install downloaded an already installed version"
+)
+
+test_version_comparison_and_classification() (
+  source "${script_dir}/install.sh"
+
+  compare_versions v1.2.2 v1.2.3
+  [[ ${version_order} -eq -1 ]] || fail "older patch version was not lower"
+  compare_versions v1.2.3-dirty v1.2.3
+  [[ ${version_order} -eq -1 ]] || fail "dirty build was not lower than release"
+  compare_versions v2.0.0 v1.9.9
+  [[ ${version_order} -eq 1 ]] || fail "newer major version was not higher"
+
+  detect_current_version() { current_version=v1.2.2; }
+  resolved_version=v1.2.3
+  classify_installation
+  [[ "${installation_action}" == "upgrade" ]] || fail "older installation was not classified as upgrade"
+)
+
 test_update_requires_confirmation() (
   source "${script_dir}/install.sh"
   require_root() { return; }
@@ -78,6 +110,8 @@ test_version_file_fallback() (
 )
 
 test_update_skips_when_already_current
+test_install_skips_when_already_current
+test_version_comparison_and_classification
 test_update_requires_confirmation
 test_update_forwards_yes_to_confirmation
 test_version_file_fallback

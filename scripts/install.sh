@@ -10,6 +10,7 @@ readonly latest_release_api="https://api.github.com/repos/${repository}/releases
 
 operation="install"
 current_version=""
+current_installed=false
 assume_yes=false
 
 selected_asset=""
@@ -66,6 +67,7 @@ detect_current_version() {
     return
   fi
   if [[ -x "${install_path}" ]]; then
+    current_installed=true
     local version_output
     version_output=$("${install_path}" --version 2>/dev/null || true)
     current_version=${version_output%%$'\n'*}
@@ -74,6 +76,82 @@ detect_current_version() {
   if [[ -z "${current_version}" ]]; then
     current_version="unknown"
   fi
+}
+
+compare_versions() {
+  local left=$1
+  local right=$2
+  local version_pattern='^v([0-9]+)\.([0-9]+)\.([0-9]+)([-+][0-9A-Za-z.-]+)?$'
+  local left_major left_minor left_patch left_suffix
+  local right_major right_minor right_patch right_suffix
+
+  [[ "${left}" =~ ${version_pattern} ]] || return 1
+  left_major=$((10#${BASH_REMATCH[1]}))
+  left_minor=$((10#${BASH_REMATCH[2]}))
+  left_patch=$((10#${BASH_REMATCH[3]}))
+  left_suffix=${BASH_REMATCH[4]:-}
+  [[ "${right}" =~ ${version_pattern} ]] || return 1
+  right_major=$((10#${BASH_REMATCH[1]}))
+  right_minor=$((10#${BASH_REMATCH[2]}))
+  right_patch=$((10#${BASH_REMATCH[3]}))
+  right_suffix=${BASH_REMATCH[4]:-}
+
+  local left_parts=("${left_major}" "${left_minor}" "${left_patch}")
+  local right_parts=("${right_major}" "${right_minor}" "${right_patch}")
+  local index
+  for index in 0 1 2; do
+    if ((left_parts[index] < right_parts[index])); then
+      version_order=-1
+      return
+    fi
+    if ((left_parts[index] > right_parts[index])); then
+      version_order=1
+      return
+    fi
+  done
+
+  local left_prerelease="" right_prerelease=""
+  if [[ "${left_suffix}" == -* ]]; then
+    left_prerelease=${left_suffix#-}
+    left_prerelease=${left_prerelease%%+*}
+  fi
+  if [[ "${right_suffix}" == -* ]]; then
+    right_prerelease=${right_suffix#-}
+    right_prerelease=${right_prerelease%%+*}
+  fi
+  if [[ -z "${left_prerelease}" && -z "${right_prerelease}" ]]; then
+    version_order=0
+  elif [[ -z "${left_prerelease}" ]]; then
+    version_order=1
+  elif [[ -z "${right_prerelease}" ]]; then
+    version_order=-1
+  elif [[ "${left_prerelease}" == "${right_prerelease}" ]]; then
+    version_order=0
+  elif [[ "${left_prerelease}" < "${right_prerelease}" ]]; then
+    version_order=-1
+  else
+    version_order=1
+  fi
+}
+
+classify_installation() {
+  installation_action="install"
+  detect_current_version
+  if [[ "${current_installed}" != true && "${current_version}" != "unknown" ]]; then
+    current_installed=true
+  fi
+  if [[ "${current_installed}" != true ]]; then
+    return
+  fi
+  if ! compare_versions "${current_version}" "${resolved_version}"; then
+    installation_action="replace"
+    return
+  fi
+  case "${version_order}" in
+    -1) installation_action="upgrade" ;;
+    0) installation_action="current" ;;
+    1) installation_action="newer" ;;
+  esac
 }
 
 confirm_update() {
@@ -276,12 +354,30 @@ main() {
     fi
   fi
 
-  if [[ "${operation}" == "update" ]]; then
-    detect_current_version
-    if [[ "${current_version}" == "${resolved_version}" ]]; then
-      printf '当前版本 %s 已是最新正式版本。\n' "${current_version}"
+  installation_action="install"
+  if [[ -n "${resolved_version}" ]]; then
+    classify_installation
+    if [[ "${installation_action}" == "current" ]]; then
+      if [[ "${requested_version}" == "latest" ]]; then
+        printf '当前版本 %s 已是最新正式版本。\n' "${current_version}"
+      else
+        printf '当前版本 %s 已是指定版本。\n' "${current_version}"
+      fi
       return
     fi
+    if [[ "${installation_action}" == "newer" ]]; then
+      printf '当前版本 %s 高于目标版本 %s，已跳过安装以避免降级。\n' \
+        "${current_version}" "${resolved_version}"
+      return
+    fi
+    if [[ "${installation_action}" == "upgrade" && "${operation}" == "install" ]]; then
+      printf '检测到已安装版本 %s，将升级到 %s。\n' "${current_version}" "${resolved_version}"
+    elif [[ "${installation_action}" == "replace" && "${operation}" == "install" ]]; then
+      printf '无法识别已安装版本 %s，将重新安装目标版本 %s。\n' "${current_version}" "${resolved_version}"
+    fi
+  fi
+
+  if [[ "${operation}" == "update" ]]; then
     printf '当前版本：%s\n' "${current_version}"
     printf '目标版本：%s\n' "${resolved_version}"
     printf '脚本 SHA-256：%s\n' "$(sha256sum "${BASH_SOURCE[0]}" | while read -r hash _; do printf '%s' "${hash}"; done)"
@@ -313,7 +409,11 @@ main() {
   mv -f -- "${staged_path}" "${install_path}"
   staged_path=""
 
-  info "已安装到 ${install_path}"
+  if [[ "${installation_action}" == "upgrade" || "${operation}" == "update" ]]; then
+    info "已升级到 ${install_path}"
+  else
+    info "已安装到 ${install_path}"
+  fi
   "${install_path}" --version
   if [[ "${operation}" == "update" ]]; then
     printf 'ProxyForge 已升级到 %s。\n' "${resolved_version}"
