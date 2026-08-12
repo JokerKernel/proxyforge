@@ -123,6 +123,17 @@ func (i Installer) PrepareScript(ctx context.Context, scriptURL string, hosts []
 // ExecutePreparedScript writes a validated script to a private temporary file
 // and executes it. Environment entries are applied only to the child process.
 func (i Installer) ExecutePreparedScript(ctx context.Context, script DownloadedScript, environment []string, scriptArgs ...string) error {
+	return i.executePreparedScript(ctx, script, environment, "[Bash] ", scriptArgs...)
+}
+
+// ExecutePreparedScriptDirect executes a validated first-party script without
+// adding the official-script prefix to every output line. It is used by the
+// self-updater so the installer's own structured terminal UI remains readable.
+func (i Installer) ExecutePreparedScriptDirect(ctx context.Context, script DownloadedScript, environment []string, scriptArgs ...string) error {
+	return i.executePreparedScript(ctx, script, environment, "", scriptArgs...)
+}
+
+func (i Installer) executePreparedScript(ctx context.Context, script DownloadedScript, environment []string, outputPrefix string, scriptArgs ...string) error {
 	f, err := os.CreateTemp("", "proxyforge-install-*.sh")
 	if err != nil {
 		return err
@@ -140,25 +151,33 @@ func (i Installer) ExecutePreparedScript(ctx context.Context, script DownloadedS
 	}
 	args := append([]string{path}, scriptArgs...)
 	if len(environment) == 0 {
-		return i.executeScript(ctx, args)
+		return i.executeScriptWithPrefix(ctx, args, outputPrefix)
 	}
 	envArgs := append(append([]string(nil), environment...), "bash")
 	envArgs = append(envArgs, args...)
-	return i.executeScriptCommand(ctx, "env", envArgs)
+	return i.executeScriptCommand(ctx, "env", envArgs, outputPrefix)
 }
 
 func (i Installer) executeScript(ctx context.Context, args []string) error {
-	return i.executeScriptCommand(ctx, "bash", args)
+	return i.executeScriptWithPrefix(ctx, args, "[Bash] ")
 }
 
-func (i Installer) executeScriptCommand(ctx context.Context, command string, args []string) error {
+func (i Installer) executeScriptWithPrefix(ctx context.Context, args []string, outputPrefix string) error {
+	return i.executeScriptCommand(ctx, "bash", args, outputPrefix)
+}
+
+func (i Installer) executeScriptCommand(ctx context.Context, command string, args []string, outputPrefix string) error {
 	output := i.Output
 	if output == nil {
 		output = io.Discard
 	}
 	fmt.Fprintln(output, "[状态] 开始执行，以下为实时输出：")
+	liveOutput := output
+	if outputPrefix != "" {
+		liveOutput = system.NewLinePrefixWriter(output, outputPrefix)
+	}
 	capture := &scriptOutputCapture{
-		output: system.NewLinePrefixWriter(output, "[Bash] "),
+		output: liveOutput,
 		limit:  maxCapturedScriptOutput,
 	}
 	if streaming, ok := i.Runner.(provider.StreamingRunner); ok {
@@ -166,8 +185,10 @@ func (i Installer) executeScriptCommand(ctx context.Context, command string, arg
 		capture.FinishLine()
 		if runErr != nil {
 			if tail := strings.TrimSpace(capture.String()); tail != "" {
-				prefixedTail := strings.TrimSpace(string(system.PrefixLines([]byte(tail), "[Bash] ")))
-				return fmt.Errorf("官方管理脚本执行失败（末尾输出如下）:\n%s\n%w", prefixedTail, runErr)
+				if outputPrefix != "" {
+					tail = strings.TrimSpace(string(system.PrefixLines([]byte(tail), outputPrefix)))
+				}
+				return fmt.Errorf("官方管理脚本执行失败（末尾输出如下）:\n%s\n%w", tail, runErr)
 			}
 			return fmt.Errorf("官方管理脚本执行失败: %w", runErr)
 		}

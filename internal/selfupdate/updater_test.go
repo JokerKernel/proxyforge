@@ -24,13 +24,14 @@ type runnerStub struct {
 	script  string
 	path    string
 	err     error
+	output  string
 }
 
 func (r *runnerStub) Run(context.Context, string, ...string) ([]byte, error) {
 	return nil, errors.New("buffered execution should not be used")
 }
 
-func (r *runnerStub) RunStreaming(_ context.Context, _, _ io.Writer, command string, args ...string) error {
+func (r *runnerStub) RunStreaming(_ context.Context, stdout, _ io.Writer, command string, args ...string) error {
 	r.called = true
 	r.command = command
 	r.args = append([]string(nil), args...)
@@ -42,6 +43,7 @@ func (r *runnerStub) RunStreaming(_ context.Context, _, _ io.Writer, command str
 		}
 		r.script = string(body)
 	}
+	_, _ = io.WriteString(stdout, r.output)
 	return r.err
 }
 
@@ -55,8 +57,10 @@ func TestRunOnlyStartsPreparedScript(t *testing.T) {
 		}
 		return scriptBody
 	})
-	runner := &runnerStub{}
+	runner := &runnerStub{output: "install-ui\n"}
 	u := testUpdater(client, runner)
+	var output strings.Builder
+	u.Installer.Output = &output
 
 	if err := u.Run(context.Background(), Options{}); err != nil {
 		t.Fatal(err)
@@ -69,6 +73,17 @@ func TestRunOnlyStartsPreparedScript(t *testing.T) {
 	}
 	if runner.script != scriptBody {
 		t.Fatalf("executed script=%q", runner.script)
+	}
+	for _, expected := range []string{
+		"[步骤] 下载并验证安装/更新脚本",
+		"[信息] 脚本 SHA-256：", "[步骤] 启动安装/更新流程", "install-ui",
+	} {
+		if !strings.Contains(output.String(), expected) {
+			t.Fatalf("output missing %q:\n%s", expected, output.String())
+		}
+	}
+	if strings.Contains(output.String(), "[Bash]") {
+		t.Fatalf("self-update UI should not be prefixed as an official script:\n%s", output.String())
 	}
 }
 

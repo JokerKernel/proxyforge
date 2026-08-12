@@ -17,12 +17,65 @@ temporary_dir=""
 staged_path=""
 
 info() {
-  printf '%s\n' "$*"
+  printf '[信息] %s\n' "$*"
+}
+
+step() {
+  printf '\n[步骤] %s\n' "$*"
+}
+
+result() {
+  printf '[结果] %s\n' "$*"
+}
+
+warn() {
+  printf '[警告] %s\n' "$*"
 }
 
 die() {
-  printf '%s\n' "$*" >&2
+  printf '[错误] %s\n' "$*" >&2
   exit 1
+}
+
+print_header() {
+  printf '%s\n' '╭─ ProxyForge'
+  printf '%s\n' '│ 自身安装与更新'
+  printf '%s\n' '╰──────────────────────────────────────────────'
+}
+
+print_release_summary() {
+  local current_display="未安装"
+  local action_display="安装"
+  if [[ "${current_installed}" == true ]]; then
+    current_display=${current_version}
+  fi
+  case "${installation_action}" in
+    upgrade) action_display="更新" ;;
+    replace) action_display="重新安装" ;;
+    current) action_display="无需更新" ;;
+    newer) action_display="跳过，避免降级" ;;
+  esac
+  printf '\n发布信息\n'
+  printf '%s\n' '----------------------------------------'
+  printf '  平台：Linux/%s\n' "$1"
+  printf '  当前版本：%s\n' "${current_display}"
+  printf '  目标版本：%s\n' "${resolved_version}"
+  printf '  执行操作：%s\n' "${action_display}"
+  printf '%s\n' '----------------------------------------'
+}
+
+print_completion() {
+  local action_label="安装完成"
+  if [[ "${installation_action}" == "upgrade" ]]; then
+    action_label="更新完成"
+  elif [[ "${installation_action}" == "replace" ]]; then
+    action_label="重新安装完成"
+  fi
+  printf '\n%s\n' '╭─ ProxyForge'
+  printf '│ %s\n' "${action_label}"
+  printf '│ 版本：%s\n' "${resolved_version}"
+  printf '│ 位置：%s\n' "${install_path}"
+  printf '%s\n' '╰──────────────────────────────────────────────'
 }
 
 cleanup() {
@@ -221,12 +274,12 @@ resolve_latest_version() {
   local version_file="${temporary_dir}/version"
 
   if download "${latest_release_api}" "${api_file}" && read_api_version "${api_file}"; then
-    info "通过 GitHub Releases API 获取最新正式版本：${resolved_version}"
+    info "最新正式版本：${resolved_version}（GitHub Releases API）"
     return
   fi
-  info "GitHub Releases API 不可用，尝试读取 Release version 文件"
+  warn "GitHub Releases API 不可用，改用 Release version 文件"
   if download "${release_base}/version" "${version_file}" && read_version_file "${version_file}"; then
-    info "通过 version 文件获取最新正式版本：${resolved_version}"
+    info "最新正式版本：${resolved_version}（Release version 文件）"
     return
   fi
   return 1
@@ -308,6 +361,8 @@ main() {
   trap 'exit 130' INT
   trap 'exit 143' TERM
 
+  print_header
+  step "检查发布版本"
   if [[ "${requested_version}" == "latest" ]]; then
     if resolve_latest_version "${release_base}"; then
       release_base="https://github.com/${repository}/releases/download/${resolved_version}"
@@ -319,27 +374,28 @@ main() {
   installation_action="install"
   if [[ -n "${resolved_version}" ]]; then
     classify_installation
+    print_release_summary "${architecture}"
     if [[ "${installation_action}" == "current" ]]; then
       if [[ "${requested_version}" == "latest" ]]; then
-        printf '当前版本 %s 已是最新正式版本。\n' "${current_version}"
+        result "当前已是最新正式版本，无需更新。"
       else
-        printf '当前版本 %s 已是指定版本。\n' "${current_version}"
+        result "当前已是指定版本，无需安装。"
       fi
       return
     fi
     if [[ "${installation_action}" == "newer" ]]; then
-      printf '当前版本 %s 高于目标版本 %s，已跳过安装以避免降级。\n' \
-        "${current_version}" "${resolved_version}"
+      result "当前版本高于目标版本，已跳过以避免降级。"
       return
     fi
     if [[ "${installation_action}" == "upgrade" ]]; then
-      printf '检测到已安装版本 %s，将升级到 %s。\n' "${current_version}" "${resolved_version}"
+      info "准备从 ${current_version} 更新到 ${resolved_version}"
     elif [[ "${installation_action}" == "replace" ]]; then
-      printf '无法识别已安装版本 %s，将重新安装目标版本 %s。\n' "${current_version}" "${resolved_version}"
+      warn "无法识别当前版本 ${current_version}，将重新安装 ${resolved_version}"
     fi
   fi
 
-  info "检测到 Linux/${architecture}，正在读取发布清单"
+  step "读取并校验发布文件"
+  info "正在读取 Linux/${architecture} 发布清单"
   download "${release_base}/SHA256SUMS" "${temporary_dir}/SHA256SUMS"
   select_asset "${temporary_dir}/SHA256SUMS" "${architecture}"
   if [[ -n "${resolved_version}" ]]; then
@@ -349,12 +405,13 @@ main() {
       die "version 与校验清单中的二进制文件名不一致"
   fi
 
-  info "正在下载 ${selected_asset}"
+  info "正在下载：${selected_asset}"
   download "${release_base}/${selected_asset}" "${temporary_dir}/${selected_asset}" true
   printf '%s  %s\n' "${selected_checksum}" "${selected_asset}" |
     (cd "${temporary_dir}" && sha256sum --check --status -) || die "SHA-256 校验失败"
-  info "SHA-256 校验通过"
+  result "SHA-256 校验通过"
 
+  step "写入 ProxyForge"
   if [[ ! -d "${install_dir}" ]]; then
     install -d -m 0755 "${install_dir}"
   fi
@@ -363,13 +420,9 @@ main() {
   mv -f -- "${staged_path}" "${install_path}"
   staged_path=""
 
-  if [[ "${installation_action}" == "upgrade" ]]; then
-    info "已升级到 ${install_path}"
-  else
-    info "已安装到 ${install_path}"
-  fi
+  print_completion
   "${install_path}" --version
-  printf '运行命令：sudo %s\n' "${install_path}"
+  info "运行命令：sudo ${install_path}"
 }
 
 if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then

@@ -20,8 +20,10 @@ test_automatic_mode_skips_when_already_current() (
 
   local output
   output=$(main)
-  [[ "${output}" != *"[安装]"* && "${output}" != *"[更新]"* && "${output}" != *"[结果]"* ]] || fail "script output still contains prefixes"
-  [[ "${output}" == *"当前版本 v1.2.3 已是最新正式版本"* ]] || fail "missing up-to-date result"
+  [[ "${output}" == *"╭─ ProxyForge"* ]] || fail "missing installer header"
+  [[ "${output}" == *"当前版本：v1.2.3"* ]] || fail "missing current version summary"
+  [[ "${output}" == *"目标版本：v1.2.3"* ]] || fail "missing target version summary"
+  [[ "${output}" == *"[结果] 当前已是最新正式版本，无需更新"* ]] || fail "missing up-to-date result"
   [[ "${output}" != *"SHA256SUMS"* ]] || fail "downloaded release files for current version"
 )
 
@@ -75,8 +77,8 @@ test_version_file_fallback() (
 
   local output
   output=$(main --yes)
-  [[ "${output}" == *"API 不可用，尝试读取 Release version 文件"* ]] || fail "missing API fallback status"
-  [[ "${output}" == *"通过 version 文件获取最新正式版本：v1.2.3"* ]] || fail "version fallback failed"
+  [[ "${output}" == *"[警告] GitHub Releases API 不可用，改用 Release version 文件"* ]] || fail "missing API fallback status"
+  [[ "${output}" == *"最新正式版本：v1.2.3（Release version 文件）"* ]] || fail "version fallback failed"
 )
 
 test_automatic_mode_skips_when_already_current
