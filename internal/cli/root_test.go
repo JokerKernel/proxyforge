@@ -172,7 +172,7 @@ func TestServiceMenuOffersLogLevelSettings(t *testing.T) {
 	if err := c.serviceMenu(context.Background(), domain.CoreSingBox); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "7) 设置日志级别") {
+	if !strings.Contains(out.String(), "7 设置日志级别") {
 		t.Fatalf("service menu output=%q", out.String())
 	}
 	if got := logLevelDisplay(domain.CoreSingBox, "info"); !strings.Contains(got, "ProxyForge 默认") {
@@ -440,7 +440,7 @@ func TestCoreMenuMergesUninstallAndCleanup(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{out: &out}
 	c.printCoreMenu(domain.CoreXray)
-	if !strings.Contains(out.String(), "5) 卸载内核并清理数据") || strings.Contains(out.String(), "6)") {
+	if !strings.Contains(out.String(), "5 卸载内核并清理数据") || strings.Contains(out.String(), "6 ") {
 		t.Fatalf("menu did not merge uninstall and cleanup: %q", out.String())
 	}
 }
@@ -828,7 +828,7 @@ func TestFillGenerateRequiresExplicitFastCandidateSelection(t *testing.T) {
 	if opts.SNI != "second.example.com" || opts.Target != "second.example.com:443" || opts.UserName != domain.DefaultUserName || opts.InboundTag != domain.DefaultInboundTag(domain.CoreSingBox) {
 		t.Fatalf("generate options=%#v", opts)
 	}
-	if !strings.Contains(out.String(), "最快的候选域名（按延迟排序）") || !strings.Contains(out.String(), "2) second.example.com") ||
+	if !strings.Contains(out.String(), "最快的候选域名（按延迟排序）") || !strings.Contains(out.String(), "2 second.example.com") ||
 		!strings.Contains(out.String(), "必须输入编号") || !strings.Contains(out.String(), "TLS 1.3 / h2") ||
 		!strings.Contains(out.String(), "Akamai（CNAME）") || !strings.Contains(out.String(), "均已通过 DNS、TLS 和证书名称校验") ||
 		strings.Contains(out.String(), "[默认]") || strings.Contains(out.String(), "证书 SAN=fast.example.com") {

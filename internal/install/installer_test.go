@@ -150,8 +150,8 @@ func TestExecuteScriptStreamsOutput(t *testing.T) {
 	}
 	for _, want := range []string{
 		"[官方脚本/状态] 开始执行，以下为实时输出",
-		"[Bash] stdout step",
-		"[Bash] stderr step",
+		"Bash stdout step",
+		"Bash stderr step",
 		"[官方脚本/状态] 执行完成",
 	} {
 		if !strings.Contains(output.String(), want) {
@@ -193,7 +193,7 @@ func TestRunPassesRuntimeProxyToXrayScript(t *testing.T) {
 		"[官方脚本/信息] 来源：",
 		"[官方脚本/信息] SHA-256：",
 		"[官方脚本/风险]",
-		"[Bash] stdout step",
+		"Bash stdout step",
 		"[官方脚本/状态] 执行完成",
 	} {
 		if !strings.Contains(output.String(), want) {

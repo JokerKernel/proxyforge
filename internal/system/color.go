@@ -148,7 +148,7 @@ func decorateOutputFragment(fragment string, atLineStart bool) string {
 		case isDisplayHeading(trimmed):
 			body = wrapANSI(ansiBoldCyan, body)
 		case isInputPrompt(trimmed):
-			body = wrapANSI(ansiBoldGreen, body)
+			body = wrapANSI(ansiBlue, body)
 		case strings.HasPrefix(trimmed, "- "):
 			indent := strings.Index(body, "-")
 			body = body[:indent] + wrapANSI(ansiCyan, "-") + body[indent+1:]
@@ -166,7 +166,6 @@ func decorateSourceLabels(value string) string {
 		color string
 	}{
 		{"[步骤]", ansiBoldCyan},
-		{"[命令]", ansiBlue},
 		{"[信息]", ansiCyan},
 		{"[提示]", ansiCyan},
 		{"[警告]", ansiBoldYellow},
@@ -175,12 +174,15 @@ func decorateSourceLabels(value string) string {
 		{"[系统命令/输出]", ansiBrightBlack},
 		{"[官方脚本/信息]", ansiCyan},
 		{"[官方脚本/风险]", ansiBoldYellow},
-		{"[官方脚本/状态]", ansiMagenta},
-		{"[Bash]", ansiBrightBlack},
 		{"[默认]", ansiBoldYellow},
 	}
+	value = colorizeLabel(value, "[命令]", commandLabelColor(value))
+	value = colorizeLabel(value, "[官方脚本/状态]", scriptStatusLabelColor(value))
 	for _, label := range labels {
-		value = strings.ReplaceAll(value, label.text, wrapANSI(label.color, label.text))
+		value = colorizeLabel(value, label.text, label.color)
+	}
+	if strings.HasPrefix(value, "Bash ") {
+		value = wrapANSI(ansiBlue, "Bash") + value[len("Bash"):]
 	}
 	for start := strings.Index(value, "[服务日志/"); start >= 0; {
 		relativeEnd := strings.IndexByte(value[start:], ']')
@@ -201,27 +203,80 @@ func decorateSourceLabels(value string) string {
 	return value
 }
 
+func colorizeLabel(value, label, color string) string {
+	return strings.ReplaceAll(value, label, wrapANSI(color, label))
+}
+
+func commandLabelColor(value string) string {
+	switch {
+	case strings.Contains(value, "命令完成"):
+		return ansiBoldGreen
+	case strings.Contains(value, "命令失败"):
+		return ansiBoldRed
+	case strings.Contains(value, "命令已停止"):
+		return ansiBoldYellow
+	default:
+		return ansiBlue
+	}
+}
+
+func scriptStatusLabelColor(value string) string {
+	switch {
+	case strings.Contains(value, "执行完成"):
+		return ansiBoldGreen
+	case strings.Contains(value, "失败") || strings.Contains(value, "错误"):
+		return ansiBoldRed
+	case strings.Contains(value, "停止") || strings.Contains(value, "取消"):
+		return ansiBoldYellow
+	default:
+		return ansiMagenta
+	}
+}
+
 func decorateNumberedChoice(value string) string {
 	trimmedLeft := strings.TrimLeft(value, " \t")
 	indent := len(value) - len(trimmedLeft)
-	closing := strings.IndexByte(trimmedLeft, ')')
-	if closing <= 0 {
+	digitEnd := 0
+	for digitEnd < len(trimmedLeft) && trimmedLeft[digitEnd] >= '0' && trimmedLeft[digitEnd] <= '9' {
+		digitEnd++
+	}
+	if digitEnd == 0 {
 		return value
 	}
-	for _, char := range trimmedLeft[:closing] {
-		if char < '0' || char > '9' {
-			return value
-		}
+	remainderStart := digitEnd
+	if remainderStart < len(trimmedLeft) && trimmedLeft[remainderStart] == ')' {
+		remainderStart++
 	}
-	prefix := trimmedLeft[:closing+1]
-	remainder := trimmedLeft[closing+1:]
+	if remainderStart >= len(trimmedLeft) || (trimmedLeft[remainderStart] != ' ' && trimmedLeft[remainderStart] != '\t') {
+		return value
+	}
+	prefix := trimmedLeft[:digitEnd]
+	remainder := trimmedLeft[remainderStart:]
 	trimmedRemainder := strings.TrimLeft(remainder, " \t")
 	spacing := remainder[:len(remainder)-len(trimmedRemainder)]
+	if isExitChoice(trimmedRemainder) || isDangerousChoice(trimmedRemainder) {
+		return value[:indent] + wrapANSI(ansiBoldRed, prefix) + spacing + wrapANSI(ansiBoldRed, trimmedRemainder)
+	}
+	if isReturnChoice(trimmedRemainder) {
+		return value[:indent] + wrapANSI(ansiCyan, prefix) + spacing + wrapANSI(ansiCyan, trimmedRemainder)
+	}
 	if fields := strings.Fields(trimmedRemainder); len(fields) > 0 && strings.Contains(fields[0], ".") && !strings.ContainsAny(fields[0], "/:") {
 		domain := fields[0]
 		trimmedRemainder = wrapANSI(ansiBoldCyan, domain) + trimmedRemainder[len(domain):]
 	}
-	return value[:indent] + wrapANSI(ansiBoldGreen, prefix) + spacing + trimmedRemainder
+	return value[:indent] + wrapANSI(ansiBlue, prefix) + spacing + trimmedRemainder
+}
+
+func isExitChoice(value string) bool {
+	return value == "退出" || strings.HasPrefix(value, "退出 ")
+}
+
+func isReturnChoice(value string) bool {
+	return value == "返回" || strings.HasPrefix(value, "返回") || strings.Contains(value, "返回主菜单")
+}
+
+func isDangerousChoice(value string) bool {
+	return strings.Contains(value, "卸载") || strings.Contains(value, "删除") || strings.Contains(value, "清理数据")
 }
 
 func isRepeated(value string, expected byte) bool {

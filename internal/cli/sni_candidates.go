@@ -108,7 +108,7 @@ func (c *commandSet) selectSNICandidate(ctx context.Context, server string) (str
 	for index, candidate := range candidates {
 		c.printSNICandidateSummary(index+1, candidate, false)
 	}
-	fmt.Fprintln(c.out, " 0) 手动输入其他域名")
+	fmt.Fprintln(c.out, " 0 手动输入其他域名")
 	fmt.Fprintln(c.out)
 	fmt.Fprintln(c.out, "提示：以上候选均已通过 DNS、TLS 和证书名称校验；延迟为完整探测耗时。")
 	fmt.Fprintln(c.out, "      CDN 为启发式识别，不代表目标归属、长期可用性或使用授权。")
@@ -176,7 +176,7 @@ func (c *commandSet) printSNICandidateSummary(index int, candidate app.SNICandid
 	if selectedByDefault {
 		defaultMarker = "  [默认]"
 	}
-	fmt.Fprintf(c.out, "%2d) %s%s\n", index, candidate.Domain, defaultMarker)
+	fmt.Fprintf(c.out, "%2d %s%s\n", index, candidate.Domain, defaultMarker)
 	if cdn == "未发现明显特征" {
 		cdn = "未识别 CDN"
 	} else if cdn == "未知" {
