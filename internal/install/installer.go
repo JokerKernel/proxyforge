@@ -156,7 +156,7 @@ func (i Installer) executeScriptCommand(ctx context.Context, command string, arg
 	if output == nil {
 		output = io.Discard
 	}
-	fmt.Fprintln(output, "[官方脚本/状态] 开始执行，以下为实时输出：")
+	fmt.Fprintln(output, "[状态] 开始执行，以下为实时输出：")
 	capture := &scriptOutputCapture{
 		output: system.NewLinePrefixWriter(output, "[Bash] "),
 		limit:  maxCapturedScriptOutput,
@@ -171,7 +171,7 @@ func (i Installer) executeScriptCommand(ctx context.Context, command string, arg
 			}
 			return fmt.Errorf("官方管理脚本执行失败: %w", runErr)
 		}
-		fmt.Fprintln(output, "[官方脚本/状态] 执行完成。")
+		fmt.Fprintln(output, "[状态] 执行完成。")
 		return nil
 	}
 
@@ -185,7 +185,7 @@ func (i Installer) executeScriptCommand(ctx context.Context, command string, arg
 	if err != nil {
 		return fmt.Errorf("官方管理脚本执行失败: %w", err)
 	}
-	fmt.Fprintln(output, "[官方脚本/状态] 执行完成。")
+	fmt.Fprintln(output, "[状态] 执行完成。")
 	return nil
 }
 

@@ -177,7 +177,7 @@ func decorateSourceLabels(value string) string {
 		{"[默认]", ansiBoldYellow},
 	}
 	value = colorizeLabel(value, "[命令]", commandLabelColor(value))
-	value = colorizeLabel(value, "[官方脚本/状态]", scriptStatusLabelColor(value))
+	value = colorizeLabel(value, "[状态]", statusLabelColor(value))
 	for _, label := range labels {
 		value = colorizeLabel(value, label.text, label.color)
 	}
@@ -218,7 +218,7 @@ func commandLabelColor(value string) string {
 	}
 }
 
-func scriptStatusLabelColor(value string) string {
+func statusLabelColor(value string) string {
 	switch {
 	case strings.Contains(value, "执行完成"):
 		return ansiBoldGreen

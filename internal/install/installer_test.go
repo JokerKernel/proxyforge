@@ -149,10 +149,10 @@ func TestExecuteScriptStreamsOutput(t *testing.T) {
 		t.Fatalf("streaming=%v buffered=%v", runner.streamingCalled, runner.bufferedCalled)
 	}
 	for _, want := range []string{
-		"[官方脚本/状态] 开始执行，以下为实时输出",
+		"[状态] 开始执行，以下为实时输出",
 		"[Bash] stdout step",
 		"[Bash] stderr step",
-		"[官方脚本/状态] 执行完成",
+		"[状态] 执行完成",
 	} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("output missing %q: %s", want, output.String())
@@ -194,7 +194,7 @@ func TestRunPassesRuntimeProxyToXrayScript(t *testing.T) {
 		"[官方脚本/信息] SHA-256：",
 		"[官方脚本/风险]",
 		"[Bash] stdout step",
-		"[官方脚本/状态] 执行完成",
+		"[状态] 执行完成",
 	} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("labeled output missing %q: %s", want, output.String())
