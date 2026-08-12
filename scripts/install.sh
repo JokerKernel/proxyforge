@@ -8,6 +8,42 @@ readonly max_version_size=256
 readonly max_release_api_size=$((1024 * 1024))
 readonly latest_release_api="https://api.github.com/repos/${repository}/releases/latest"
 
+color_enabled=false
+proxyforge_color_mode=${PROXYFORGE_COLOR:-auto}
+proxyforge_color_mode=${proxyforge_color_mode,,}
+case "${proxyforge_color_mode}" in
+  always | 1 | true | yes)
+    color_enabled=true
+    ;;
+  never | 0 | false | no)
+    ;;
+  *)
+    if [[ -z "${NO_COLOR+x}" && "${TERM:-}" != "dumb" && -t 1 ]]; then
+      color_enabled=true
+    fi
+    ;;
+esac
+readonly color_enabled
+readonly proxyforge_color_mode
+
+if [[ "${color_enabled}" == true ]]; then
+  readonly color_reset=$'\033[0m'
+  readonly color_bold_orange=$'\033[1;38;5;208m'
+  readonly color_orange=$'\033[38;5;208m'
+  readonly color_blue=$'\033[34m'
+  readonly color_bold_green=$'\033[1;32m'
+  readonly color_bold_yellow=$'\033[1;33m'
+  readonly color_bold_red=$'\033[1;31m'
+else
+  readonly color_reset=""
+  readonly color_bold_orange=""
+  readonly color_orange=""
+  readonly color_blue=""
+  readonly color_bold_green=""
+  readonly color_bold_yellow=""
+  readonly color_bold_red=""
+fi
+
 current_version=""
 current_installed=false
 
@@ -16,31 +52,35 @@ selected_checksum=""
 temporary_dir=""
 staged_path=""
 
+paint() {
+  printf '%s%s%s' "$1" "$2" "${color_reset}"
+}
+
 info() {
-  printf '[信息] %s\n' "$*"
+  printf '%s %s\n' "$(paint "${color_blue}" '[信息]')" "$*"
 }
 
 step() {
-  printf '\n[步骤] %s\n' "$*"
+  printf '\n%s %s\n' "$(paint "${color_bold_orange}" '[步骤]')" "$*"
 }
 
 result() {
-  printf '[结果] %s\n' "$*"
+  printf '%s %s\n' "$(paint "${color_bold_green}" '[结果]')" "$*"
 }
 
 warn() {
-  printf '[警告] %s\n' "$*"
+  printf '%s %s\n' "$(paint "${color_bold_yellow}" '[警告]')" "$*"
 }
 
 die() {
-  printf '[错误] %s\n' "$*" >&2
+  printf '%s %s\n' "$(paint "${color_bold_red}" '[错误]')" "$*" >&2
   exit 1
 }
 
 print_header() {
-  printf '%s\n' '╭─ ProxyForge'
-  printf '%s\n' '│ 自身安装与更新'
-  printf '%s\n' '╰──────────────────────────────────────────────'
+  printf '%s\n' "$(paint "${color_bold_orange}" '╭─ ProxyForge')"
+  printf '%s\n' "$(paint "${color_orange}" '│ 自身安装与更新')"
+  printf '%s\n' "$(paint "${color_bold_orange}" '╰──────────────────────────────────────────────')"
 }
 
 print_release_summary() {
@@ -55,13 +95,13 @@ print_release_summary() {
     current) action_display="无需更新" ;;
     newer) action_display="跳过，避免降级" ;;
   esac
-  printf '\n发布信息\n'
-  printf '%s\n' '----------------------------------------'
-  printf '  平台：Linux/%s\n' "$1"
-  printf '  当前版本：%s\n' "${current_display}"
-  printf '  目标版本：%s\n' "${resolved_version}"
-  printf '  执行操作：%s\n' "${action_display}"
-  printf '%s\n' '----------------------------------------'
+  printf '\n%s\n' "$(paint "${color_bold_orange}" '发布信息')"
+  printf '%s\n' "$(paint "${color_orange}" '----------------------------------------')"
+  printf '  %s：Linux/%s\n' "$(paint "${color_orange}" '平台')" "$1"
+  printf '  %s：%s\n' "$(paint "${color_orange}" '当前版本')" "${current_display}"
+  printf '  %s：%s\n' "$(paint "${color_orange}" '目标版本')" "${resolved_version}"
+  printf '  %s：%s\n' "$(paint "${color_orange}" '执行操作')" "${action_display}"
+  printf '%s\n' "$(paint "${color_orange}" '----------------------------------------')"
 }
 
 print_completion() {
@@ -71,11 +111,11 @@ print_completion() {
   elif [[ "${installation_action}" == "replace" ]]; then
     action_label="重新安装完成"
   fi
-  printf '\n%s\n' '╭─ ProxyForge'
-  printf '│ %s\n' "${action_label}"
-  printf '│ 版本：%s\n' "${resolved_version}"
-  printf '│ 位置：%s\n' "${install_path}"
-  printf '%s\n' '╰──────────────────────────────────────────────'
+  printf '\n%s\n' "$(paint "${color_bold_orange}" '╭─ ProxyForge')"
+  printf '│ %s\n' "$(paint "${color_bold_green}" "${action_label}")"
+  printf '│ %s：%s\n' "$(paint "${color_orange}" '版本')" "${resolved_version}"
+  printf '│ %s：%s\n' "$(paint "${color_orange}" '位置')" "${install_path}"
+  printf '%s\n' "$(paint "${color_bold_orange}" '╰──────────────────────────────────────────────')"
 }
 
 cleanup() {

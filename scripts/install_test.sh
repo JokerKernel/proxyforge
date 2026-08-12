@@ -24,7 +24,32 @@ test_automatic_mode_skips_when_already_current() (
   [[ "${output}" == *"当前版本：v1.2.3"* ]] || fail "missing current version summary"
   [[ "${output}" == *"目标版本：v1.2.3"* ]] || fail "missing target version summary"
   [[ "${output}" == *"[结果] 当前已是最新正式版本，无需更新"* ]] || fail "missing up-to-date result"
+  [[ "${output}" != *$'\033['* ]] || fail "redirected output contains ANSI controls"
   [[ "${output}" != *"SHA256SUMS"* ]] || fail "downloaded release files for current version"
+)
+
+test_color_controls() (
+  PROXYFORGE_COLOR=always
+  unset NO_COLOR
+  source "${script_dir}/install.sh"
+
+  local output
+  output=$(info "彩色信息")
+  [[ "${output}" == *$'\033[34m[信息]\033[0m'* ]] || fail "blue information color was not applied"
+  output=$(print_header)
+  [[ "${output}" == *$'\033[1;38;5;208m╭─ ProxyForge\033[0m'* ]] || fail "orange title color was not applied"
+  output=$(step "彩色步骤")
+  [[ "${output}" == *$'\033[1;38;5;208m[步骤]\033[0m'* ]] || fail "orange step color was not applied"
+)
+
+test_no_color_is_respected() (
+  unset PROXYFORGE_COLOR
+  NO_COLOR=""
+  source "${script_dir}/install.sh"
+
+  local output
+  output=$(result "纯文本结果")
+  [[ "${output}" == "[结果] 纯文本结果" ]] || fail "NO_COLOR output was decorated: ${output}"
 )
 
 test_version_comparison_and_classification() (
@@ -82,6 +107,8 @@ test_version_file_fallback() (
 )
 
 test_automatic_mode_skips_when_already_current
+test_color_controls
+test_no_color_is_respected
 test_version_comparison_and_classification
 test_update_argument_is_removed
 test_version_file_fallback
