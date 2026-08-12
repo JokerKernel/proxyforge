@@ -4,7 +4,7 @@ ProxyForge 支持 Debian/Ubuntu 与 RHEL/CentOS/Rocky/AlmaLinux/Fedora 系发行
 
 ## 安装 ProxyForge
 
-安装脚本会自动识别架构，优先通过 GitHub Releases API 获取最新正式版本，API 不可用或响应无效时回退到 Release 的 `version` 文件。随后检查 `/usr/local/sbin/proxyforge`：未安装时执行安装，当前版本与目标版本相同时直接退出，当前版本较低时执行升级，当前版本较高时跳过以避免自动降级。需要安装或升级时，脚本会校验 `SHA256SUMS`，并原子写入 `/usr/local/sbin/proxyforge`：
+安装脚本会自动识别架构，优先按当前代理环境通过 GitHub Releases API 获取最新正式版本；请求失败或响应无效时会忽略代理直连重试，直连仍失败才回退到 Release 的 `version` 文件。随后检查 `/usr/local/sbin/proxyforge`：未安装时执行安装，当前版本与目标版本相同时直接退出，当前版本较低时执行升级，当前版本较高时跳过以避免自动降级。需要安装或升级时，脚本会校验 `SHA256SUMS`，并原子写入 `/usr/local/sbin/proxyforge`：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | sudo bash

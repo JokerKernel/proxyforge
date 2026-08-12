@@ -313,6 +313,22 @@ download() {
   die "需要 curl 或 wget 才能下载发布文件"
 }
 
+download_direct() {
+  local url=$1
+  local output=$2
+  if command -v curl >/dev/null 2>&1; then
+    curl --proto '=https' --tlsv1.2 --fail --location --silent --show-error \
+      --retry 3 --noproxy '*' --output "${output}" "${url}"
+    return
+  fi
+  if command -v wget >/dev/null 2>&1; then
+    wget --https-only --secure-protocol=TLSv1_2 --quiet --no-proxy \
+      --output-document="${output}" "${url}"
+    return
+  fi
+  die "需要 curl 或 wget 才能下载发布文件"
+}
+
 read_api_version() {
   local api_file=$1
   local api_size
@@ -348,6 +364,11 @@ resolve_latest_version() {
 
   if download "${latest_release_api}" "${api_file}" && read_api_version "${api_file}"; then
     info "最新正式版本：${resolved_version}（GitHub Releases API）"
+    return
+  fi
+  warn "通过当前网络或代理获取 GitHub Releases API 失败，尝试忽略代理直连"
+  if download_direct "${latest_release_api}" "${api_file}" && read_api_version "${api_file}"; then
+    info "最新正式版本：${resolved_version}（GitHub Releases API 直连）"
     return
   fi
   warn "GitHub Releases API 不可用，改用 Release version 文件"

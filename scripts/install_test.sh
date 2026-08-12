@@ -135,11 +135,49 @@ test_version_file_fallback() (
         ;;
     esac
   }
+  download_direct() { return 1; }
 
   local output
   output=$(main --yes)
   [[ "${output}" == *"[警告] GitHub Releases API 不可用，改用 Release version 文件"* ]] || fail "missing API fallback status"
   [[ "${output}" == *"最新正式版本：v1.2.3（Release version 文件）"* ]] || fail "version fallback failed"
+)
+
+test_api_failure_retries_without_proxy() (
+  source "${script_dir}/install.sh"
+  require_root() { return; }
+  detect_current_version() { current_version=v1.2.3; }
+  download() {
+    [[ "$1" == "${latest_release_api}" ]] || fail "unexpected proxied download: $1"
+    return 1
+  }
+  download_direct() {
+    local url=$1 output=$2
+    [[ "${url}" == "${latest_release_api}" ]] || fail "unexpected direct download: ${url}"
+    printf '{"tag_name":"v1.2.3"}\n' > "${output}"
+  }
+
+  local output
+  output=$(main)
+  [[ "${output}" == *"尝试忽略代理直连"* ]] || fail "missing direct retry notice"
+  [[ "${output}" == *"最新正式版本：v1.2.3（GitHub Releases API 直连）"* ]] || fail "direct API retry failed"
+  [[ "${output}" != *"改用 Release version 文件"* ]] || fail "version fallback ran after successful direct retry"
+)
+
+test_curl_direct_download_bypasses_all_proxies() (
+  source "${script_dir}/install.sh"
+  local captured=()
+  curl() { captured=("$@"); }
+
+  download_direct "${latest_release_api}" /tmp/proxyforge-install-test-api
+  local index found=false
+  for ((index = 0; index + 1 < ${#captured[@]}; index++)); do
+    if [[ "${captured[index]}" == "--noproxy" && "${captured[index + 1]}" == "*" ]]; then
+      found=true
+      break
+    fi
+  done
+  [[ "${found}" == true ]] || fail "curl direct retry did not use --noproxy '*'"
 )
 
 test_automatic_mode_skips_when_already_current
@@ -150,5 +188,7 @@ test_update_argument_is_removed
 test_uninstall_removes_only_proxyforge_binary
 test_uninstall_is_idempotent
 test_uninstall_aliases_are_equivalent
+test_api_failure_retries_without_proxy
+test_curl_direct_download_bypasses_all_proxies
 test_version_file_fallback
 printf 'install_test: ok\n'
