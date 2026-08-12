@@ -13,7 +13,9 @@ import (
 	"proxyforge/internal/provider"
 )
 
-type ExecRunner struct{}
+type ExecRunner struct {
+	Stdin io.Reader
+}
 
 type LoggingRunner struct {
 	Runner provider.Runner
@@ -110,8 +112,9 @@ func quoteCommandArg(value string) string {
 	return strconv.Quote(value)
 }
 
-func (ExecRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
+func (r ExecRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdin = r.Stdin
 	b, err := cmd.CombinedOutput()
 	if err != nil {
 		message := strings.TrimSpace(string(b))
@@ -123,8 +126,9 @@ func (ExecRunner) Run(ctx context.Context, name string, args ...string) ([]byte,
 	return b, nil
 }
 
-func (ExecRunner) RunStreaming(ctx context.Context, stdout, stderr io.Writer, name string, args ...string) error {
+func (r ExecRunner) RunStreaming(ctx context.Context, stdout, stderr io.Writer, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdin = r.Stdin
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {

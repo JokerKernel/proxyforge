@@ -37,7 +37,8 @@ jobs:
 
       - name: Validate shell scripts and installer behavior
         run: |
-          bash -n scripts/install.sh scripts/test-reality-sni.sh scripts/test-reality-sni_test.sh
+          bash -n scripts/install.sh scripts/install_test.sh scripts/test-reality-sni.sh scripts/test-reality-sni_test.sh
+          bash scripts/install_test.sh
           bash scripts/test-reality-sni_test.sh
 
           bash_path=$(command -v bash)

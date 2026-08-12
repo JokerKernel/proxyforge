@@ -71,13 +71,13 @@ func TestStableCommandTree(t *testing.T) {
 	}
 }
 
-func TestUpdateCommandPassesCurrentVersionAndYes(t *testing.T) {
+func TestUpdateCommandPassesYes(t *testing.T) {
 	called := false
 	c := &commandSet{
-		yes: true, currentVersion: "v1.2.3",
+		yes: true,
 		selfUpdate: func(_ context.Context, opts selfupdate.Options) error {
 			called = true
-			if opts.CurrentVersion != "v1.2.3" || !opts.AssumeYes || opts.Confirm != nil {
+			if !opts.AssumeYes {
 				t.Fatalf("options=%+v", opts)
 			}
 			return nil

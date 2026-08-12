@@ -250,6 +250,24 @@ func TestExecRunnerStreamsStdoutAndStderr(t *testing.T) {
 	}
 }
 
+func TestExecRunnerForwardsStdin(t *testing.T) {
+	var stdout bytes.Buffer
+	err := (ExecRunner{Stdin: strings.NewReader("confirmed\n")}).RunStreaming(
+		context.Background(),
+		&stdout,
+		io.Discard,
+		"bash",
+		"-c",
+		"IFS= read -r answer; printf '%s' \"$answer\"",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stdout.String() != "confirmed" {
+		t.Fatalf("stdout=%q", stdout.String())
+	}
+}
+
 func TestLoggingRunnerReportsCommandWithoutLeakingBufferedOutput(t *testing.T) {
 	var log bytes.Buffer
 	runner := &LoggingRunner{Runner: outputRunner{output: []byte("private-key-output")}, Out: &log}

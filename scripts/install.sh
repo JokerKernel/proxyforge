@@ -4,6 +4,11 @@ set -euo pipefail
 readonly repository="JokerKernel/proxyforge"
 readonly install_dir="/usr/local/sbin"
 readonly install_path="${install_dir}/proxyforge"
+readonly max_version_size=256
+
+operation="install"
+current_version=""
+assume_yes=false
 
 selected_asset=""
 selected_checksum=""
@@ -30,6 +35,68 @@ cleanup() {
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || die "缺少必需命令：$1"
+}
+
+require_root() {
+  [[ ${EUID} -eq 0 ]] || die "请使用 root 运行，例如：curl ... | sudo bash"
+}
+
+parse_arguments() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --update)
+        operation="update"
+        shift
+        ;;
+      --yes | -y)
+        assume_yes=true
+        shift
+        ;;
+      *)
+        die "未知参数：$1"
+        ;;
+    esac
+  done
+}
+
+detect_current_version() {
+  if [[ -n "${current_version}" ]]; then
+    return
+  fi
+  if [[ -x "${install_path}" ]]; then
+    local version_output
+    version_output=$("${install_path}" --version 2>/dev/null || true)
+    current_version=${version_output%%$'\n'*}
+    current_version=${current_version#proxyforge }
+  fi
+  if [[ -z "${current_version}" ]]; then
+    current_version="unknown"
+  fi
+}
+
+confirm_update() {
+  if [[ "${assume_yes}" == true ]]; then
+    return
+  fi
+  local answer
+  while true; do
+    printf '确认将 ProxyForge 从 %s 升级到 %s？请输入 yes/y，或输入 q 取消：' \
+      "${current_version}" "${resolved_version}"
+    if ! IFS= read -r answer; then
+      die "执行自升级前需要交互确认，自动化时请显式提供 --yes"
+    fi
+    case "${answer}" in
+      yes | YES | Yes | y | Y)
+        return
+        ;;
+      q | Q)
+        die "用户取消自升级"
+        ;;
+      *)
+        info "输入无效，请输入 yes、y 或 q"
+        ;;
+    esac
+  done
 }
 
 detect_architecture() {
@@ -100,20 +167,25 @@ select_asset() {
 }
 
 main() {
+  parse_arguments "$@"
   [[ "$(uname -s)" == "Linux" ]] || die "该安装脚本仅支持 Linux"
-  [[ ${EUID} -eq 0 ]] || die "请使用 root 运行，例如：curl ... | sudo bash"
+  require_root
 
   require_command uname
   require_command mktemp
   require_command sha256sum
+  require_command wc
   require_command install
   require_command mv
 
   local architecture
   architecture=$(detect_architecture)
   local requested_version=${PROXYFORGE_VERSION:-latest}
-  local resolved_version=""
+  resolved_version=""
   local release_base
+  if [[ "${operation}" == "update" ]]; then
+    requested_version="latest"
+  fi
   case "${requested_version}" in
     latest)
       release_base="https://github.com/${repository}/releases/latest/download"
@@ -137,6 +209,10 @@ main() {
   if [[ "${requested_version}" == "latest" ]]; then
     local version_lines=()
     if download "${release_base}/version" "${temporary_dir}/version"; then
+      local version_size
+      version_size=$(wc -c < "${temporary_dir}/version")
+      [[ ${version_size} -le ${max_version_size} ]] || \
+        die "version 文件超过 ${max_version_size} bytes"
       mapfile -t version_lines < "${temporary_dir}/version"
       [[ ${#version_lines[@]} -eq 1 ]] || die "最新 Release 的 version 文件格式无效"
       resolved_version=${version_lines[0]}
@@ -145,8 +221,24 @@ main() {
       release_base="https://github.com/${repository}/releases/download/${resolved_version}"
       info "最新正式版本：${resolved_version}"
     else
+      if [[ "${operation}" == "update" ]]; then
+        die "无法读取最新正式版本"
+      fi
       info "最新 Release 尚未提供 version，使用 latest/download 兼容方式"
     fi
+  fi
+
+  if [[ "${operation}" == "update" ]]; then
+    detect_current_version
+    if [[ "${current_version}" == "${resolved_version}" ]]; then
+      printf '[ProxyForge/结果] 当前版本 %s 已是最新正式版本。\n' "${current_version}"
+      return
+    fi
+    printf '[ProxyForge/更新] 当前版本：%s\n' "${current_version}"
+    printf '[ProxyForge/更新] 目标版本：%s\n' "${resolved_version}"
+    printf '[ProxyForge/更新] 脚本 SHA-256：%s\n' "$(sha256sum "${BASH_SOURCE[0]}" | while read -r hash _; do printf '%s' "${hash}"; done)"
+    printf '[ProxyForge/风险] 将以 root 执行脚本并替换 %s。\n' "${install_path}"
+    confirm_update
   fi
 
   info "检测到 Linux/${architecture}，正在读取发布清单"
@@ -175,6 +267,9 @@ main() {
 
   info "已安装到 ${install_path}"
   "${install_path}" --version
+  if [[ "${operation}" == "update" ]]; then
+    printf '[ProxyForge/结果] ProxyForge 已升级到 %s。\n' "${resolved_version}"
+  fi
   printf '运行命令：sudo %s\n' "${install_path}"
 }
 

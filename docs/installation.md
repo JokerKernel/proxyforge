@@ -46,7 +46,7 @@ sudo proxyforge update
 sudo proxyforge update --yes
 ```
 
-更新命令会读取最新正式 Release，从仓库 `main` 分支下载当前安装脚本，检查 HTTPS 来源、大小、文本格式、shebang 和 Bash 语法，展示 SHA-256 后再执行。安装脚本随后核对 Release 的 `SHA256SUMS` 并原子替换 `/usr/local/sbin/proxyforge`。
+`proxyforge update` 本身只从仓库 `main` 分支安全下载并检查当前安装脚本，然后以 `--update` 模式启动脚本。最新正式版本检查、当前版本比较、交互确认、Release 文件选择、`SHA256SUMS` 核验和 `/usr/local/sbin/proxyforge` 的原子替换全部由安装脚本完成；`--yes` 会原样传给脚本以跳过交互确认。
 
 `update` 只更新 ProxyForge，不修改代理内核、节点配置或 systemd 服务。版本检查和下载会继承当前进程的标准代理环境。
 

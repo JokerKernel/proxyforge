@@ -55,14 +55,14 @@ func New(version string) *cobra.Command {
 func newCommand(version string, rootCheck func() error) *cobra.Command {
 	stdout := system.NewTerminalColorWriter(os.Stdout)
 	stderr := system.NewTerminalColorWriter(os.Stderr)
-	runner := &system.LoggingRunner{Runner: system.ExecRunner{}, Out: stderr}
+	runner := &system.LoggingRunner{Runner: system.ExecRunner{Stdin: os.Stdin}, Out: stderr}
 	layout := system.Layout{Root: os.Getenv("PROXYFORGE_ROOT")}
 	reg := provider.NewRegistry(singbox.New(), xray.New())
 	a := app.New(reg, runner, layout, stdout)
 	a.RootCheck = rootCheck
 	a.Progress = stderr
 	a.Installer.Output = stderr
-	updater := selfupdate.Updater{Installer: a.Installer, Output: stdout}
+	updater := selfupdate.Updater{Installer: a.Installer}
 	c := &commandSet{
 		app: a, in: os.Stdin, reader: bufio.NewReader(os.Stdin), out: stdout, errOut: stderr,
 		probeSNI:    app.ProbeSNICandidates,
@@ -94,16 +94,8 @@ func (c *commandSet) updateCommand() *cobra.Command {
 			if c.selfUpdate == nil {
 				return fmt.Errorf("自升级功能未初始化")
 			}
-			var confirm selfupdate.ConfirmFunc
-			// 与其他确认流程保持一致：未使用 --yes 时始终要求输入有效选项。
-			// 输入无效会在 confirmInput 中循环提示，直到输入 yes/y 或 q。
-			if !c.yes {
-				confirm = c.confirm
-			}
 			return c.selfUpdate(cmd.Context(), selfupdate.Options{
-				CurrentVersion: c.currentVersion,
-				AssumeYes:      c.yes,
-				Confirm:        confirm,
+				AssumeYes: c.yes,
 			})
 		},
 	}
