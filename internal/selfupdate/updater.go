@@ -48,12 +48,12 @@ func (u Updater) Run(ctx context.Context, opts Options) error {
 		operation = "卸载"
 	}
 	fmt.Fprintf(output, "[步骤] 下载并验证 ProxyForge %s脚本\n", operation)
-	fmt.Fprintf(output, "[信息] 来源：%s\n", scriptURL)
+	fmt.Fprintf(output, "[信息] 安装脚本地址：%s\n", scriptURL)
 	script, err := installer.PrepareScript(ctx, scriptURL, hosts)
 	if err != nil {
 		return fmt.Errorf("准备 ProxyForge %s脚本: %w", operation, err)
 	}
-	fmt.Fprintf(output, "[信息] 最终地址：%s\n", script.FinalURL)
+	fmt.Fprintf(output, "[信息] 重定向后地址：%s\n", script.FinalURL)
 	fmt.Fprintf(output, "[信息] 脚本大小：%d bytes\n", len(script.Content))
 	fmt.Fprintf(output, "[信息] 脚本 SHA-256：%s\n", script.SHA256)
 	fmt.Fprintf(output, "[步骤] 启动 ProxyForge %s流程\n", operation)

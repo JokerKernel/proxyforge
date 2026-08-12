@@ -76,6 +76,8 @@ func TestRunOnlyStartsPreparedScript(t *testing.T) {
 	}
 	for _, expected := range []string{
 		"[步骤] 下载并验证 ProxyForge 安装/更新脚本",
+		"[信息] 安装脚本地址：https://official.example/install.sh",
+		"[信息] 重定向后地址：https://official.example/install.sh",
 		"[信息] 脚本 SHA-256：", "[步骤] 启动 ProxyForge 安装/更新流程", "install-ui",
 	} {
 		if !strings.Contains(output.String(), expected) {
