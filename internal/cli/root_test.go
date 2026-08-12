@@ -315,6 +315,24 @@ func TestServerConfigMenuShowsCurrentConfig(t *testing.T) {
 	}
 }
 
+func TestXrayServerConfigMenuOffersDedicatedServiceUser(t *testing.T) {
+	var xrayOut, singBoxOut bytes.Buffer
+	xrayMenu := &commandSet{reader: bufio.NewReader(strings.NewReader("0\n")), out: &xrayOut}
+	if err := xrayMenu.serverConfigMenu(context.Background(), domain.CoreXray); err != nil {
+		t.Fatal(err)
+	}
+	singBoxMenu := &commandSet{reader: bufio.NewReader(strings.NewReader("0\n")), out: &singBoxOut}
+	if err := singBoxMenu.serverConfigMenu(context.Background(), domain.CoreSingBox); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(xrayOut.String(), "专用运行用户") || !strings.Contains(xrayOut.String(), "nobody 安全警告") {
+		t.Fatalf("xray menu output=%q", xrayOut.String())
+	}
+	if strings.Contains(singBoxOut.String(), "专用运行用户") {
+		t.Fatalf("sing-box menu unexpectedly contains Xray option: %q", singBoxOut.String())
+	}
+}
+
 func TestDNSProfileDisplayIncludesEncryptedOptions(t *testing.T) {
 	for _, profile := range []string{provider.DNSProfileDoHCloudflare, provider.DNSProfileDoHGoogle} {
 		got := dnsProfileDisplay(domain.CoreSingBox, profile)

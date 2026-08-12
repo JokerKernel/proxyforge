@@ -70,6 +70,17 @@ func TestServiceManagerEnable(t *testing.T) {
 	}
 }
 
+func TestServiceManagerUserState(t *testing.T) {
+	user, err := (ServiceManager{Runner: outputRunner{output: []byte("xray\n")}}).UserState(context.Background(), "xray.service")
+	if err != nil || user != "xray" {
+		t.Fatalf("user=%q error=%v", user, err)
+	}
+	user, err = (ServiceManager{Runner: outputRunner{output: []byte("\n")}}).UserState(context.Background(), "xray.service")
+	if err != nil || user != "root" {
+		t.Fatalf("empty systemd user should mean root: user=%q error=%v", user, err)
+	}
+}
+
 func TestServiceManagerUninstallActions(t *testing.T) {
 	runner := &recordingRunner{}
 	manager := ServiceManager{Runner: runner}

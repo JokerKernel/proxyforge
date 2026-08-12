@@ -89,9 +89,21 @@ func (m ServiceManager) UnitLoadState(ctx context.Context, service string) (stri
 }
 
 func (m ServiceManager) User(ctx context.Context, service string) string {
-	b, err := m.Runner.Run(ctx, "systemctl", "show", service, "-p", "User", "--value")
-	if err != nil || strings.TrimSpace(string(b)) == "" {
+	user, err := m.UserState(ctx, service)
+	if err != nil {
 		return "root"
 	}
-	return strings.TrimSpace(string(b))
+	return user
+}
+
+func (m ServiceManager) UserState(ctx context.Context, service string) (string, error) {
+	b, err := m.Runner.Run(ctx, "systemctl", "show", service, "-p", "User", "--value")
+	if err != nil {
+		return "", err
+	}
+	user := strings.TrimSpace(string(b))
+	if user == "" {
+		return "root", nil
+	}
+	return user, nil
 }

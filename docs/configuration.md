@@ -57,6 +57,12 @@ CDN 识别只基于 CNAME、域名和地址数量进行启发式判断，不代�
 
 `config reset` 保留地址和端口，可修改 SNI 和 target；只指定新 SNI 时，target 默认变为 `<新 SNI>:443`。重置会同步更新 REALITY 配置、真实回落目标和已启用的路由放行域名，同时保留当前配置模式、HTTP 回落策略和内部回落端口。
 
+### Xray 专用运行用户
+
+XTLS 官方安装脚本首次安装时默认在 systemd unit 中写入 `User=nobody`，较新的 systemd 会报告 `Special user nobody configured, this is not safe!`。这通常不影响启动，但 `nobody` 是多个程序可共用的特殊账号，不适合作为长期服务身份。
+
+在交互菜单进入“Xray → 服务端配置 → 专用运行用户”，ProxyForge 会创建独立的 `xray` 系统用户和组、更新 `xray.service` 与 `xray@.service`、写入持久化 drop-in，并同步配置及日志权限。若服务正在运行，修改完成后会自动重启；任一步骤失败会恢复原 systemd unit 和文件权限。
+
 普通重新生成会保留 UUID、REALITY 密钥和 short ID。只有使用 `--rotate-credentials` 或执行凭据重置时才会轮换它们，并让旧客户端失效。
 
 定点重置会保留 DNS、路由、出站、日志、其他用户及手动配置；找不到唯一受管入站或用户时会拒绝修改。修改前会备份，失败时自动回滚。

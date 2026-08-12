@@ -1,0 +1,363 @@
+package app
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"proxyforge/internal/domain"
+	"proxyforge/internal/system"
+)
+
+const XrayDedicatedServiceUser = "xray"
+
+const xrayServiceUserDropIn = "/etc/systemd/system/xray.service.d/20-proxyforge-user.conf"
+
+var xraySystemdUnits = []string{
+	"/etc/systemd/system/xray.service",
+	"/etc/systemd/system/xray@.service",
+}
+
+type ServiceUserChange struct {
+	Previous    string
+	Current     string
+	Changed     bool
+	Restarted   bool
+	UserCreated bool
+}
+
+// XrayServiceUser returns the effective systemd user for the installed Xray
+// service. An empty User= in systemd means root and is normalized by
+// ServiceManager.UserState.
+func (a *App) XrayServiceUser(ctx context.Context) (string, error) {
+	if err := a.RootCheck(); err != nil {
+		return "", err
+	}
+	p, err := a.Registry.Get(domain.CoreXray)
+	if err != nil {
+		return "", err
+	}
+	if err := a.checkCoreInstalled(ctx, p); err != nil {
+		return "", err
+	}
+	return a.Services.UserState(ctx, p.ServiceName())
+}
+
+// UseDedicatedXrayServiceUser replaces the official installer's User=nobody
+// assignment with a dedicated system account. The main unit is updated as well
+// as a drop-in because merely overriding User= does not suppress systemd's
+// warning while it parses the original User=nobody line.
+func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChange, error) {
+	change := ServiceUserChange{}
+	if err := a.RootCheck(); err != nil {
+		return change, err
+	}
+	p, err := a.Registry.Get(domain.CoreXray)
+	if err != nil {
+		return change, err
+	}
+	if err := a.checkCoreInstalled(ctx, p); err != nil {
+		return change, err
+	}
+	change.Previous, err = a.Services.UserState(ctx, p.ServiceName())
+	if err != nil {
+		return change, fmt.Errorf("读取 %s 运行用户: %w", p.ServiceName(), err)
+	}
+
+	a.progressf("创建或检查 Xray 专用系统用户 %s", XrayDedicatedServiceUser)
+	created, err := a.ensureXrayServiceAccount(ctx)
+	if err != nil {
+		return change, err
+	}
+	change.UserCreated = created
+
+	status, _ := a.Services.IsActive(ctx, p.ServiceName())
+	snapshots, changedUnits, err := a.prepareXrayServiceUserFiles()
+	if err != nil {
+		return change, err
+	}
+	if !changedUnits && change.Previous == XrayDedicatedServiceUser {
+		change.Current = change.Previous
+		return change, nil
+	}
+
+	configSnapshots, err := captureExistingMetadata(
+		a.Layout.Resolve(filepath.Dir(p.ConfigPath())),
+		a.Layout.Resolve(p.ConfigPath()),
+		a.Layout.Resolve("/var/log/xray/access.log"),
+		a.Layout.Resolve("/var/log/xray/error.log"),
+	)
+	if err != nil {
+		return change, err
+	}
+
+	rollback := func(cause error) error {
+		a.progressf("运行用户迁移失败，正在恢复 systemd unit 和文件权限")
+		var rollbackErr error
+		if err := restoreSnapshots(snapshots); err != nil {
+			rollbackErr = err
+		}
+		if err := restoreMetadataSnapshots(configSnapshots); err != nil && rollbackErr == nil {
+			rollbackErr = err
+		}
+		_ = a.Services.DaemonReload(ctx)
+		if status.Active {
+			_ = a.Services.Restart(ctx, p.ServiceName())
+		}
+		if rollbackErr != nil {
+			return fmt.Errorf("%v；且恢复旧设置失败: %w", cause, rollbackErr)
+		}
+		return fmt.Errorf("%v；已恢复旧 systemd 设置", cause)
+	}
+
+	a.progressf("将 Xray systemd unit 的运行用户设置为 %s", XrayDedicatedServiceUser)
+	if err := writePreparedSnapshots(snapshots); err != nil {
+		return change, rollback(err)
+	}
+	if err := a.secureXrayFilesForDedicatedUser(ctx, p.ConfigPath()); err != nil {
+		return change, rollback(err)
+	}
+	a.progressf("刷新 systemd unit 缓存")
+	if err := a.Services.DaemonReload(ctx); err != nil {
+		return change, rollback(fmt.Errorf("刷新 systemd unit 失败: %w", err))
+	}
+	change.Current, err = a.Services.UserState(ctx, p.ServiceName())
+	if err != nil {
+		return change, rollback(fmt.Errorf("核验 Xray 运行用户失败: %w", err))
+	}
+	if change.Current != XrayDedicatedServiceUser {
+		return change, rollback(fmt.Errorf("Xray 有其他 systemd 配置覆盖了运行用户，当前仍为 %s", change.Current))
+	}
+	if status.Active {
+		a.progressf("重启 Xray 使专用运行用户立即生效")
+		if err := a.Services.Restart(ctx, p.ServiceName()); err != nil {
+			return change, rollback(fmt.Errorf("重启 %s 失败: %w", p.ServiceName(), err))
+		}
+		active, activeErr := a.Services.IsActive(ctx, p.ServiceName())
+		if activeErr != nil || !active.Active {
+			return change, rollback(fmt.Errorf("%s 未恢复 active 状态: %s: %w", p.ServiceName(), active.Detail, activeErr))
+		}
+		change.Restarted = true
+	}
+	change.Changed = true
+	return change, nil
+}
+
+func (a *App) ensureXrayServiceAccount(ctx context.Context) (bool, error) {
+	if _, err := a.Runner.Run(ctx, "groupadd", "-r", "-f", XrayDedicatedServiceUser); err != nil {
+		return false, fmt.Errorf("创建或检查系统组 %s: %w", XrayDedicatedServiceUser, err)
+	}
+	if output, err := a.Runner.Run(ctx, "id", "-u", XrayDedicatedServiceUser); err == nil {
+		uid, parseErr := strconv.Atoi(strings.TrimSpace(string(output)))
+		if parseErr != nil {
+			return false, fmt.Errorf("读取系统用户 %s 的 UID: %w", XrayDedicatedServiceUser, parseErr)
+		}
+		if uid == 0 {
+			return false, fmt.Errorf("拒绝使用 UID 0 的 %s 用户运行 Xray", XrayDedicatedServiceUser)
+		}
+		return false, nil
+	}
+	_, err := a.Runner.Run(ctx, "useradd", "-r", "-g", XrayDedicatedServiceUser,
+		"-d", "/var/lib/xray", "-s", "/usr/sbin/nologin", "-M", XrayDedicatedServiceUser)
+	if err != nil {
+		return false, fmt.Errorf("创建系统用户 %s: %w", XrayDedicatedServiceUser, err)
+	}
+	return true, nil
+}
+
+type fileSnapshot struct {
+	path     string
+	old      []byte
+	prepared []byte
+	metadata fileMetadata
+	existed  bool
+}
+
+func (a *App) prepareXrayServiceUserFiles() ([]fileSnapshot, bool, error) {
+	var snapshots []fileSnapshot
+	changed := false
+	for index, unit := range xraySystemdUnits {
+		path := a.Layout.Resolve(unit)
+		old, err := os.ReadFile(path)
+		if os.IsNotExist(err) && index > 0 {
+			continue
+		}
+		if err != nil {
+			return nil, false, fmt.Errorf("读取 Xray systemd unit %s: %w", path, err)
+		}
+		metadata, err := readMetadata(path, true)
+		if err != nil {
+			return nil, false, err
+		}
+		prepared, unitChanged, err := replaceSystemdServiceUser(old, XrayDedicatedServiceUser)
+		if err != nil {
+			return nil, false, fmt.Errorf("更新 %s: %w", path, err)
+		}
+		snapshots = append(snapshots, fileSnapshot{path: path, old: old, prepared: prepared, metadata: metadata, existed: true})
+		changed = changed || unitChanged
+	}
+
+	dropInPath := a.Layout.Resolve(xrayServiceUserDropIn)
+	dropInOld, readErr := os.ReadFile(dropInPath)
+	dropInExisted := readErr == nil
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return nil, false, readErr
+	}
+	dropInMetadata, err := readMetadata(dropInPath, dropInExisted)
+	if err != nil {
+		return nil, false, err
+	}
+	dropIn := []byte("# Managed by ProxyForge.\n[Service]\nUser=xray\nGroup=xray\n")
+	snapshots = append(snapshots, fileSnapshot{
+		path: dropInPath, old: dropInOld, prepared: dropIn, metadata: dropInMetadata, existed: dropInExisted,
+	})
+	changed = changed || !bytes.Equal(dropInOld, dropIn)
+	return snapshots, changed, nil
+}
+
+func replaceSystemdServiceUser(data []byte, username string) ([]byte, bool, error) {
+	lines := strings.SplitAfter(string(data), "\n")
+	section := ""
+	found := false
+	changed := false
+	for index, line := range lines {
+		body := strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
+		trimmed := strings.TrimSpace(body)
+		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+			section = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(trimmed, "["), "]"))
+			continue
+		}
+		if section != "Service" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, ";") {
+			continue
+		}
+		key, _, hasValue := strings.Cut(trimmed, "=")
+		if !hasValue || strings.TrimSpace(key) != "User" {
+			continue
+		}
+		found = true
+		ending := ""
+		if strings.HasSuffix(line, "\r\n") {
+			ending = "\r\n"
+		} else if strings.HasSuffix(line, "\n") {
+			ending = "\n"
+		}
+		indent := body[:len(body)-len(strings.TrimLeft(body, " \t"))]
+		replacement := indent + "User=" + username + ending
+		if replacement != line {
+			lines[index] = replacement
+			changed = true
+		}
+	}
+	if !found {
+		return nil, false, fmt.Errorf("[Service] 中未找到 User= 配置")
+	}
+	return []byte(strings.Join(lines, "")), changed, nil
+}
+
+func writePreparedSnapshots(snapshots []fileSnapshot) error {
+	for _, snapshot := range snapshots {
+		if bytes.Equal(snapshot.old, snapshot.prepared) {
+			continue
+		}
+		mode := snapshot.metadata.mode
+		if !snapshot.existed || mode == 0 {
+			mode = 0644
+		}
+		if err := os.MkdirAll(filepath.Dir(snapshot.path), 0755); err != nil {
+			return err
+		}
+		if err := system.AtomicWrite(snapshot.path, snapshot.prepared, mode); err != nil {
+			return err
+		}
+		if snapshot.existed {
+			if err := os.Chown(snapshot.path, snapshot.metadata.uid, snapshot.metadata.gid); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func restoreSnapshots(snapshots []fileSnapshot) error {
+	var firstErr error
+	for index := len(snapshots) - 1; index >= 0; index-- {
+		snapshot := snapshots[index]
+		if err := restoreFile(snapshot.path, snapshot.old, snapshot.existed, snapshot.metadata); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+type metadataSnapshot struct {
+	path     string
+	metadata fileMetadata
+}
+
+func captureExistingMetadata(paths ...string) ([]metadataSnapshot, error) {
+	var snapshots []metadataSnapshot
+	for _, path := range paths {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		metadata, err := readMetadata(path, true)
+		if err != nil {
+			return nil, err
+		}
+		snapshots = append(snapshots, metadataSnapshot{path: path, metadata: metadata})
+	}
+	return snapshots, nil
+}
+
+func restoreMetadataSnapshots(snapshots []metadataSnapshot) error {
+	var firstErr error
+	for _, snapshot := range snapshots {
+		if err := os.Chown(snapshot.path, snapshot.metadata.uid, snapshot.metadata.gid); err != nil && firstErr == nil {
+			firstErr = err
+		}
+		if err := os.Chmod(snapshot.path, snapshot.metadata.mode); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func (a *App) secureXrayFilesForDedicatedUser(ctx context.Context, configPath string) error {
+	config := a.Layout.Resolve(configPath)
+	if _, err := os.Stat(config); err == nil {
+		configDir := filepath.Dir(config)
+		for _, command := range [][]string{
+			{"chown", "root:xray", configDir},
+			{"chmod", "0750", configDir},
+			{"chown", "root:xray", config},
+			{"chmod", "0640", config},
+		} {
+			if _, runErr := a.Runner.Run(ctx, command[0], command[1:]...); runErr != nil {
+				return fmt.Errorf("设置 Xray 配置权限: %w", runErr)
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	for _, path := range []string{"/var/log/xray/access.log", "/var/log/xray/error.log"} {
+		resolved := a.Layout.Resolve(path)
+		if _, err := os.Stat(resolved); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return err
+		}
+		if _, err := a.Runner.Run(ctx, "chown", "xray:xray", resolved); err != nil {
+			return fmt.Errorf("设置 Xray 日志权限: %w", err)
+		}
+		if _, err := a.Runner.Run(ctx, "chmod", "0600", resolved); err != nil {
+			return fmt.Errorf("设置 Xray 日志权限: %w", err)
+		}
+	}
+	return nil
+}

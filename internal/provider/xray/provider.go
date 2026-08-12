@@ -153,7 +153,11 @@ func (*Provider) ScriptProxyArgs(proxyURL string) []string {
 func (*Provider) PackageName() string     { return "" }
 func (*Provider) UninstallArgs() []string { return []string{"remove"} }
 func (*Provider) CleanupPaths() []string {
-	return []string{"/usr/local/etc/xray", "/var/log/xray"}
+	return []string{
+		"/usr/local/etc/xray",
+		"/var/log/xray",
+		"/etc/systemd/system/xray.service.d/20-proxyforge-user.conf",
+	}
 }
 
 func (*Provider) Version(ctx context.Context, r provider.Runner) (string, error) {
