@@ -328,8 +328,58 @@ func TestXrayServerConfigMenuOffersDedicatedServiceUser(t *testing.T) {
 	if !strings.Contains(xrayOut.String(), "专用运行用户") || !strings.Contains(xrayOut.String(), "nobody 安全警告") {
 		t.Fatalf("xray menu output=%q", xrayOut.String())
 	}
+	if !strings.Contains(xrayOut.String(), "REALITY SNI 候选检测") || !strings.Contains(singBoxOut.String(), "REALITY SNI 候选检测") {
+		t.Fatalf("SNI retest option missing: xray=%q sing-box=%q", xrayOut.String(), singBoxOut.String())
+	}
 	if strings.Contains(singBoxOut.String(), "专用运行用户") {
 		t.Fatalf("sing-box menu unexpectedly contains Xray option: %q", singBoxOut.String())
+	}
+}
+
+func TestRetestSNICandidatesCanRunAgainWithoutChangingState(t *testing.T) {
+	layout := system.Layout{Root: t.TempDir()}
+	store := system.StateStore{Layout: layout}
+	wantState := domain.NodeSpec{
+		ManagedBy: "proxyforge", Core: domain.CoreXray, Server: "server.example.com",
+		SNI: "current.example.com", Target: "current.example.com:443",
+	}
+	if err := store.Save(wantState); err != nil {
+		t.Fatal(err)
+	}
+	probeCalls := 0
+	var out bytes.Buffer
+	c := &commandSet{
+		app:    &app.App{Store: store},
+		reader: bufio.NewReader(strings.NewReader("1\n0\n")),
+		out:    &out,
+		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
+			probeCalls++
+			if candidates[0] != wantState.SNI || server != wantState.Server || limit != len(candidates) {
+				t.Fatalf("candidates[0]=%q server=%q limit=%d candidates=%d", candidates[0], server, limit, len(candidates))
+			}
+			return []app.SNICandidate{
+				{Domain: "fast.example.com", Latency: 2 * time.Millisecond, TLSVersion: "1.3", ALPN: "h2"},
+				{Domain: wantState.SNI, Latency: 5 * time.Millisecond, TLSVersion: "1.3", ALPN: "h2", CertificateSANs: []string{wantState.SNI}},
+			}, nil
+		},
+	}
+	if err := c.retestSNICandidates(context.Background(), domain.CoreXray); err != nil {
+		t.Fatal(err)
+	}
+	if probeCalls != 2 {
+		t.Fatalf("probe calls=%d, want 2", probeCalls)
+	}
+	for _, want := range []string{"候选重新检测", "排名第 2", "[当前 SNI]", "重新测试", "不会修改 SNI、target 或重启服务"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("output missing %q: %q", want, out.String())
+		}
+	}
+	gotState, err := store.Load(domain.CoreXray)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(gotState, wantState) {
+		t.Fatalf("state changed:\nwant=%#v\ngot=%#v", wantState, gotState)
 	}
 }
 

@@ -105,7 +105,7 @@ func (c *commandSet) selectSNICandidate(ctx context.Context, server string) (str
 	fmt.Fprintln(c.out, "当前网络下最快的候选域名（按延迟排序）：")
 	fmt.Fprintln(c.out)
 	for index, candidate := range candidates {
-		c.printSNICandidateSummary(index+1, candidate, false)
+		c.printSNICandidateSummary(index+1, candidate, "")
 	}
 	c.printMenuChoice("0", "手动输入")
 	fmt.Fprintln(c.out)
@@ -143,6 +143,80 @@ func (c *commandSet) selectSNICandidate(ctx context.Context, server string) (str
 	}
 }
 
+func (c *commandSet) retestSNICandidates(ctx context.Context, core string) error {
+	current, err := c.app.Store.Load(core)
+	if err != nil {
+		return err
+	}
+	currentSNI := strings.TrimSpace(current.SNI)
+	server := strings.TrimSpace(current.Server)
+	if currentSNI == "" || server == "" {
+		return fmt.Errorf("当前受管节点缺少 Server 或 REALITY SNI，无法重新检测")
+	}
+
+	probe := c.probeSNI
+	if probe == nil {
+		probe = app.ProbeSNICandidates
+	}
+	probeDomains := make([]string, 0, len(defaultSNICandidates)+1)
+	probeDomains = append(probeDomains, currentSNI)
+	probeDomains = append(probeDomains, defaultSNICandidates...)
+
+	for {
+		c.clearScreen()
+		c.printPageHeader(core, "REALITY SNI 候选重新检测")
+		fmt.Fprintf(c.out, "节点地址：%s\n", server)
+		fmt.Fprintf(c.out, "当前 SNI：%s\n\n", currentSNI)
+		fmt.Fprintf(c.out, "正在并发重新测试当前 SNI 和 %d 个内置候选，请稍候……\n", len(defaultSNICandidates))
+		results, err := probe(ctx, probeDomains, server, len(probeDomains))
+		if err != nil {
+			return fmt.Errorf("重新检测 REALITY SNI 候选: %w", err)
+		}
+
+		currentRank := 0
+		var currentResult app.SNICandidate
+		for index, candidate := range results {
+			if strings.EqualFold(candidate.Domain, currentSNI) {
+				currentRank = index + 1
+				currentResult = candidate
+				break
+			}
+		}
+		if currentRank == 0 {
+			fmt.Fprintln(c.out, "\n[警告] 当前 SNI 未通过本次 DNS、TLS 或证书名称校验。")
+			fmt.Fprintln(c.out, "检测结果可能受临时网络波动影响，可立即重新测试；本次不会修改配置。")
+		} else {
+			fmt.Fprintf(c.out, "\n[结果] 当前 SNI 通过检测，在全部有效候选中排名第 %d。\n", currentRank)
+			c.printSNICandidateDetails("当前 SNI：", currentResult)
+		}
+
+		displayLimit := 10
+		if len(results) < displayLimit {
+			displayLimit = len(results)
+		}
+		fmt.Fprintf(c.out, "\n当前网络下最快的 %d 个候选域名：\n\n", displayLimit)
+		for index, candidate := range results[:displayLimit] {
+			marker := ""
+			if strings.EqualFold(candidate.Domain, currentSNI) {
+				marker = "[当前 SNI]"
+			}
+			c.printSNICandidateSummary(index+1, candidate, marker)
+		}
+		fmt.Fprintln(c.out, "\n提示：本操作只重新检测和展示结果，不会修改 SNI、target 或重启服务。")
+		fmt.Fprintln(c.out, "      如需采用新候选，请返回后选择“重置 SNI/target”。")
+		fmt.Fprintln(c.out)
+		c.printMenuChoice("1", "重新测试")
+		c.printMenuChoice("0/q", "返回服务端配置")
+		choice, err := c.chooseNumber("请选择", 0, 1, 0)
+		if err != nil {
+			return err
+		}
+		if choice == 0 {
+			return nil
+		}
+	}
+}
+
 func (c *commandSet) confirmManualSNI(ctx context.Context, domain, server string) error {
 	probe := c.probeSNI
 	if probe == nil {
@@ -169,13 +243,13 @@ func (c *commandSet) confirmManualSNI(ctx context.Context, domain, server string
 	return nil
 }
 
-func (c *commandSet) printSNICandidateSummary(index int, candidate app.SNICandidate, selectedByDefault bool) {
+func (c *commandSet) printSNICandidateSummary(index int, candidate app.SNICandidate, marker string) {
 	latency, tlsVersion, alpn, cdn := sniCandidateMetadata(candidate)
-	defaultMarker := ""
-	if selectedByDefault {
-		defaultMarker = "  [默认]"
+	displayMarker := ""
+	if marker != "" {
+		displayMarker = "  " + marker
 	}
-	fmt.Fprintf(c.out, "  %d %s%s\n", index, candidate.Domain, defaultMarker)
+	fmt.Fprintf(c.out, "  %d %s%s\n", index, candidate.Domain, displayMarker)
 	if cdn == "未发现明显特征" {
 		cdn = "未识别 CDN"
 	} else if cdn == "未知" {

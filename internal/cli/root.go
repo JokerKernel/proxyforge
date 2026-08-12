@@ -744,10 +744,11 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		c.printMenuChoice("3", "DNS 设置")
 		c.printMenuChoice("4", "重置 SNI/target（保留节点凭证）")
 		c.printMenuChoice("5", "重置节点凭证（UUID、REALITY 密钥和 short ID；保留 SNI/target）")
-		maxChoice := 5
+		c.printMenuChoice("6", "REALITY SNI 候选检测（重新测试，不修改配置）")
+		maxChoice := 6
 		if core == domain.CoreXray {
-			c.printMenuChoice("6", "专用运行用户（修复 systemd 的 nobody 安全警告）")
-			maxChoice = 6
+			c.printMenuChoice("7", "专用运行用户（修复 systemd 的 nobody 安全警告）")
+			maxChoice = 7
 		}
 		c.printMenuChoice("0/q", "返回")
 		choice, err := c.chooseNumber("请选择", 0, maxChoice, 0)
@@ -805,6 +806,8 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		case 5:
 			err = c.resetChoice(ctx, core, 2)
 		case 6:
+			err = c.retestSNICandidates(ctx, core)
+		case 7:
 			err = c.dedicatedXrayServiceUser(ctx)
 			if errors.Is(err, errReturnToMenu) {
 				continue
