@@ -740,8 +740,8 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		c.printMenuChoice("1", "生成/更新服务端配置（完整覆盖现有配置，不合并原配置）")
 		c.printMenuChoice("2", "查看当前配置")
 		c.printMenuChoice("3", "DNS 设置")
-		c.printMenuChoice("4", "仅重置 SNI/target")
-		c.printMenuChoice("5", "仅重置 UUID、REALITY 密钥和 short ID")
+		c.printMenuChoice("4", "重置 SNI/target（保留 UUID、REALITY 密钥和 short ID）")
+		c.printMenuChoice("5", "重置节点凭证（重置 UUID、REALITY 密钥和 short ID；保留 SNI/target）")
 		c.printMenuChoice("0/q", "返回内核菜单")
 		choice, err := c.chooseNumber("请选择", 0, 5, 0)
 		if err != nil {
@@ -1213,7 +1213,29 @@ func (c *commandSet) printPageHeader(parts ...string) {
 }
 
 func (c *commandSet) printMenuChoice(key, label string) {
-	fmt.Fprintf(c.out, "  %s %s\n", key, label)
+	title, description := splitMenuChoiceLabel(label)
+	fmt.Fprintf(c.out, "  %-3s  %s", key, title)
+	if description != "" {
+		fmt.Fprintf(c.out, "  -- %s", description)
+	}
+	fmt.Fprintln(c.out)
+}
+
+func splitMenuChoiceLabel(label string) (string, string) {
+	label = strings.TrimSpace(label)
+	if !strings.HasSuffix(label, "）") {
+		return label, ""
+	}
+	start := strings.LastIndex(label, "（")
+	if start <= 0 {
+		return label, ""
+	}
+	title := strings.TrimSpace(label[:start])
+	description := strings.TrimSpace(strings.TrimSuffix(label[start+len("（"):], "）"))
+	if title == "" || description == "" {
+		return label, ""
+	}
+	return title, description
 }
 
 func displayCurrentVersion(version string) string {

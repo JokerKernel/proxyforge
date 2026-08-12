@@ -274,7 +274,7 @@ func decorateNumberedChoice(value string) string {
 		return value[:indent] + wrapANSI(ansiBoldYellow, prefix) + spacing + wrapANSI(ansiDim, trimmedRemainder)
 	}
 	if isDangerousChoice(trimmedRemainder) {
-		return value[:indent] + wrapANSI(ansiYellow, prefix) + spacing + trimmedRemainder
+		return value[:indent] + wrapANSI(ansiYellow, prefix) + spacing + decorateMenuDescription(trimmedRemainder)
 	}
 	if isReturnChoice(trimmedRemainder) {
 		return value[:indent] + wrapANSI(ansiBoldYellow, prefix) + spacing + wrapANSI(ansiDim, trimmedRemainder)
@@ -283,7 +283,16 @@ func decorateNumberedChoice(value string) string {
 		domain := fields[0]
 		trimmedRemainder = wrapANSI(ansiBoldOrange, domain) + trimmedRemainder[len(domain):]
 	}
-	return value[:indent] + wrapANSI(ansiBlue, prefix) + spacing + trimmedRemainder
+	return value[:indent] + wrapANSI(ansiBlue, prefix) + spacing + decorateMenuDescription(trimmedRemainder)
+}
+
+func decorateMenuDescription(value string) string {
+	separator := "  -- "
+	start := strings.Index(value, separator)
+	if start < 0 {
+		return value
+	}
+	return value[:start] + "  " + wrapANSI(ansiBrightBlack, value[start+2:])
 }
 
 func isExitChoice(value string) bool {

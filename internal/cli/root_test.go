@@ -202,7 +202,7 @@ func TestServiceMenuOffersLogLevelSettings(t *testing.T) {
 	if err := c.serviceMenu(context.Background(), domain.CoreSingBox); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "7 设置日志级别") {
+	if !strings.Contains(out.String(), "7    设置日志级别") {
 		t.Fatalf("service menu output=%q", out.String())
 	}
 	if got := logLevelDisplay(domain.CoreSingBox, "info"); !strings.Contains(got, "ProxyForge 默认") {
@@ -470,8 +470,22 @@ func TestCoreMenuMergesUninstallAndCleanup(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{out: &out}
 	c.printCoreMenu(domain.CoreXray)
-	if !strings.Contains(out.String(), "5 卸载内核并清理数据") || strings.Contains(out.String(), "6 ") {
+	if !strings.Contains(out.String(), "5    卸载内核并清理数据") || strings.Contains(out.String(), "6    ") {
 		t.Fatalf("menu did not merge uninstall and cleanup: %q", out.String())
+	}
+}
+
+func TestMenuChoicesAlignAndSeparateDescriptions(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{out: &out}
+	c.printMenuChoice("1", "生成/更新服务端配置（完整覆盖现有配置，不合并原配置）")
+	c.printMenuChoice("2", "查看当前配置")
+	c.printMenuChoice("0/q", "返回内核菜单")
+	want := "  1    生成/更新服务端配置  -- 完整覆盖现有配置，不合并原配置\n" +
+		"  2    查看当前配置\n" +
+		"  0/q  返回内核菜单\n"
+	if got := out.String(); got != want {
+		t.Fatalf("menu output=%q, want %q", got, want)
 	}
 }
 
@@ -792,9 +806,9 @@ func TestSelectCoreAcceptsQToExit(t *testing.T) {
 	if selected || core != "" {
 		t.Fatalf("core=%q selected=%v, want exit", core, selected)
 	}
-	if !strings.Contains(out.String(), "  1 sing-box 管理") ||
-		!strings.Contains(out.String(), "  2 Xray-core 管理") ||
-		!strings.Contains(out.String(), "  0/q 退出") ||
+	if !strings.Contains(out.String(), "  1    sing-box 管理") ||
+		!strings.Contains(out.String(), "  2    Xray-core 管理") ||
+		!strings.Contains(out.String(), "  0/q  退出") ||
 		!strings.Contains(out.String(), "❯ 输入选项 [1]: ") {
 		t.Fatalf("menu style output=%q", out.String())
 	}
@@ -948,7 +962,7 @@ func TestFillGenerateSelectsSingBoxFallbackGuardConfig(t *testing.T) {
 	if !opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != domain.DefaultSingBoxFallbackPort || opts.SingBoxFallbackHTTPDomain || opts.SimplifiedConfig {
 		t.Fatalf("generate options=%#v", opts)
 	}
-	for _, want := range []string{"回落防偷跑配置", "direct 入站", "本机 direct 回落端口", "不限制 HTTP Host（默认）"} {
+	for _, want := range []string{"回落防偷跑配置", "direct 入站", "本机 direct 回落端口", "不限制 HTTP Host  -- 默认"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("output missing %q: %q", want, out.String())
 		}
@@ -1058,7 +1072,7 @@ func TestSelectPublicAddressDefaultsToPhysicalInterface(t *testing.T) {
 	if got != "198.51.100.10" || externalCalled {
 		t.Fatalf("address=%q externalCalled=%v", got, externalCalled)
 	}
-	if !strings.Contains(out.String(), "从物理网卡获取（默认）") {
+	if !strings.Contains(out.String(), "从物理网卡获取  -- 默认") {
 		t.Fatalf("method menu=%q", out.String())
 	}
 }
