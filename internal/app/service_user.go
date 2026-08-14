@@ -16,7 +16,7 @@ import (
 const XrayDedicatedServiceUser = "xray"
 
 const xrayServiceUserDropIn = "/etc/systemd/system/xray.service.d/20-proxyforge-user.conf"
-const xraySysusersConfig = "/etc/sysusers.d/proxyforge-xray.conf"
+const xraySysusersConfig = "/usr/lib/sysusers.d/proxyforge-xray.conf"
 
 var xraySysusersContent = []byte("# Managed by ProxyForge.\nu xray - \"Xray Service\" /nonexistent -\n")
 
@@ -164,7 +164,7 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 func (a *App) ensureXrayServiceAccount(ctx context.Context) (bool, error) {
 	_, lookupErr := a.Runner.Run(ctx, "getent", "passwd", XrayDedicatedServiceUser)
 	existed := lookupErr == nil
-	if _, err := a.Runner.Run(ctx, "systemd-sysusers", filepath.Base(xraySysusersConfig)); err != nil {
+	if _, err := a.Runner.Run(ctx, "systemd-sysusers", a.Layout.Resolve(xraySysusersConfig)); err != nil {
 		return !existed, fmt.Errorf("创建或检查系统用户 %s: %w", XrayDedicatedServiceUser, err)
 	}
 	if err := a.validateXrayServiceAccount(ctx); err != nil {

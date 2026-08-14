@@ -170,7 +170,7 @@ func TestUseDedicatedXrayServiceUserMigratesOfficialUnits(t *testing.T) {
 	}
 	calls := strings.Join(runner.calls, "\n")
 	for _, want := range []string{
-		"systemd-sysusers proxyforge-xray.conf",
+		"systemd-sysusers " + filepath.Join(root, "usr/lib/sysusers.d/proxyforge-xray.conf"),
 		"getent passwd xray",
 		"getent group xray",
 		"runuser -u xray --",
@@ -181,7 +181,7 @@ func TestUseDedicatedXrayServiceUserMigratesOfficialUnits(t *testing.T) {
 			t.Fatalf("calls missing %q:\n%s", want, calls)
 		}
 	}
-	sysusers, err := os.ReadFile(filepath.Join(root, "etc/sysusers.d/proxyforge-xray.conf"))
+	sysusers, err := os.ReadFile(filepath.Join(root, "usr/lib/sysusers.d/proxyforge-xray.conf"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestUseDedicatedXrayServiceUserRollsBackWhenRestartFails(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(root, "etc/systemd/system/xray.service.d/20-proxyforge-user.conf")); !os.IsNotExist(statErr) {
 		t.Fatalf("drop-in should be removed on rollback: %v", statErr)
 	}
-	if _, statErr := os.Stat(filepath.Join(root, "etc/sysusers.d/proxyforge-xray.conf")); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(filepath.Join(root, "usr/lib/sysusers.d/proxyforge-xray.conf")); !os.IsNotExist(statErr) {
 		t.Fatalf("sysusers config should be removed on rollback: %v", statErr)
 	}
 	if runner.user != "nobody" || !runner.active {

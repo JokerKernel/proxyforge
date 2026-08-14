@@ -1186,6 +1186,7 @@ func TestCleanupAllRemovesBothCoresAndProxyForgeData(t *testing.T) {
 		a.Layout.Resolve("/var/lib/sing-box/cache.db"),
 		a.Layout.Resolve("/usr/local/etc/xray/config.json"),
 		a.Layout.Resolve("/var/log/xray/access.log"),
+		a.Layout.Resolve("/usr/lib/sysusers.d/proxyforge-xray.conf"),
 		a.Layout.StatePath(domain.CoreSingBox),
 		a.Layout.TrustPath(domain.CoreXray),
 		filepath.Join(a.Layout.BackupRoot(domain.CoreXray), "old", "config.json"),
