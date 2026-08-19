@@ -12,6 +12,7 @@ import (
 
 	"proxyforge/internal/app"
 	"proxyforge/internal/domain"
+	"proxyforge/internal/system"
 )
 
 func (c *commandSet) generateCommand() *cobra.Command {
@@ -54,10 +55,10 @@ func (c *commandSet) generateCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&o.StandardConfig, "standard-config", false, "使用不带本机回落防护的原标准配置")
 	cmd.Flags().BoolVar(&o.SimplifiedConfig, "simplified-config", false, "sing-box 使用简化配置（系统 DNS、较少 DNS 日志，但私网域名拦截较弱）")
 	cmd.Flags().BoolVar(&o.SingBoxFallbackGuard, "sing-box-fallback-guard", false, "sing-box 使用 direct 入站限制 REALITY 未认证回落流量")
-	cmd.Flags().IntVar(&o.SingBoxFallbackPort, "sing-box-fallback-port", 0, "sing-box 防偷跑回落入站端口（默认 61432）")
+	cmd.Flags().IntVar(&o.SingBoxFallbackPort, "sing-box-fallback-port", 0, "sing-box 防偷跑回落入站端口（默认 30000-65000 随机；已有配置则沿用）")
 	cmd.Flags().BoolVar(&o.SingBoxFallbackHTTPDomain, "sing-box-fallback-http-domain", false, "sing-box HTTP 回落仅放行与 SNI 一致的域名（默认不限制）")
 	cmd.Flags().BoolVar(&o.XrayFallbackGuard, "xray-fallback-guard", false, "Xray 使用 dokodemo-door 限制 REALITY 未认证回落流量")
-	cmd.Flags().IntVar(&o.XrayFallbackPort, "xray-fallback-port", 0, "Xray 防偷跑回落入站端口（默认 61431）")
+	cmd.Flags().IntVar(&o.XrayFallbackPort, "xray-fallback-port", 0, "Xray 防偷跑回落入站端口（默认 30000-65000 随机；已有配置则沿用）")
 	cmd.Flags().BoolVar(&o.RotateCredentials, "rotate-credentials", false, "轮换 UUID、密钥和 short ID，使旧客户端失效")
 	cmd.Flags().Bool("take-over", false, "兼容旧版本；当前始终备份并完整覆盖现有配置")
 	_ = cmd.Flags().MarkDeprecated("take-over", "当前生成流程会自动备份并完整覆盖现有配置，无需此参数")
@@ -146,36 +147,16 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		o.Port = port
 	}
 	if o.XrayFallbackGuard && o.XrayFallbackPort == 0 {
-		defaultPort := domain.DefaultXrayFallbackPort
-		if c.app != nil {
-			if current, err := c.app.Store.Load(core); err == nil && current.XrayFallbackGuard && current.XrayFallbackPort != 0 {
-				defaultPort = current.XrayFallbackPort
-			}
-		}
-		v, err := c.askDefaultCancelable("本机 dokodemo-door 回落端口", strconv.Itoa(defaultPort))
+		port, err := c.askFallbackPort("本机 dokodemo-door 回落端口", core, o.Port)
 		if err != nil {
 			return err
-		}
-		port, err := strconv.Atoi(v)
-		if err != nil {
-			return fmt.Errorf("Xray 回落端口无效: %w", err)
 		}
 		o.XrayFallbackPort = port
 	}
 	if o.SingBoxFallbackGuard && o.SingBoxFallbackPort == 0 {
-		defaultPort := domain.DefaultSingBoxFallbackPort
-		if c.app != nil {
-			if current, err := c.app.Store.Load(core); err == nil && current.SingBoxFallbackGuard && current.SingBoxFallbackPort != 0 {
-				defaultPort = current.SingBoxFallbackPort
-			}
-		}
-		v, err := c.askDefaultCancelable("本机 direct 回落端口", strconv.Itoa(defaultPort))
+		port, err := c.askFallbackPort("本机 direct 回落端口", core, o.Port)
 		if err != nil {
 			return err
-		}
-		port, err := strconv.Atoi(v)
-		if err != nil {
-			return fmt.Errorf("sing-box 回落端口无效: %w", err)
 		}
 		o.SingBoxFallbackPort = port
 	}
@@ -284,6 +265,26 @@ func currentSNIAndTarget(a *app.App, core string) (string, string) {
 		return "", ""
 	}
 	return strings.TrimSpace(current.SNI), strings.TrimSpace(current.Target)
+}
+
+func (c *commandSet) askFallbackPort(label, core string, publicPort int) (int, error) {
+	var store system.StateStore
+	if c.app != nil {
+		store = c.app.Store
+	}
+	defaultPort, err := app.PickFallbackPort(store, core, publicPort)
+	if err != nil {
+		return 0, err
+	}
+	v, err := c.askDefaultCancelable(label, strconv.Itoa(defaultPort))
+	if err != nil {
+		return 0, err
+	}
+	port, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, fmt.Errorf("%s无效: %w", label, err)
+	}
+	return port, nil
 }
 
 func (c *commandSet) confirmServerConfigOverwrite(core string, interactive bool) error {

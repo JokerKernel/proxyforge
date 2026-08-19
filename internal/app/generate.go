@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"math/big"
 	"net"
 	"os"
 	"os/exec"
@@ -53,13 +55,21 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		}
 	}
 	if opts.SingBoxFallbackGuard && opts.SingBoxFallbackPort == 0 {
-		opts.SingBoxFallbackPort = domain.DefaultSingBoxFallbackPort
+		port, err := PickFallbackPort(a.Store, core, opts.Port)
+		if err != nil {
+			return domain.NodeSpec{}, err
+		}
+		opts.SingBoxFallbackPort = port
 	}
 	if opts.SingBoxFallbackHTTPDomain && !opts.SingBoxFallbackGuard {
 		return domain.NodeSpec{}, fmt.Errorf("sing-box HTTP 回落域名限制必须与回落防偷跑配置同时启用")
 	}
 	if opts.XrayFallbackGuard && opts.XrayFallbackPort == 0 {
-		opts.XrayFallbackPort = domain.DefaultXrayFallbackPort
+		port, err := PickFallbackPort(a.Store, core, opts.Port)
+		if err != nil {
+			return domain.NodeSpec{}, err
+		}
+		opts.XrayFallbackPort = port
 	}
 	if err := validateGenerate(opts); err != nil {
 		return domain.NodeSpec{}, err
@@ -403,6 +413,67 @@ func (a *App) firewallHint(port int) {
 			return
 		}
 	}
+}
+
+func PickFallbackPort(store system.StateStore, core string, publicPort int) (int, error) {
+	if current, err := store.Load(core); err == nil {
+		if port := nodeFallbackPort(current); port != 0 {
+			return port, nil
+		}
+	}
+	avoid := map[int]struct{}{}
+	if publicPort != 0 {
+		avoid[publicPort] = struct{}{}
+	}
+	other := domain.CoreSingBox
+	if core == domain.CoreSingBox {
+		other = domain.CoreXray
+	}
+	if otherState, err := store.Load(other); err == nil {
+		if otherState.Port != 0 {
+			avoid[otherState.Port] = struct{}{}
+		}
+		if port := nodeFallbackPort(otherState); port != 0 {
+			avoid[port] = struct{}{}
+		}
+	}
+	return pickFallbackPortInRange(domain.FallbackPortMin, domain.FallbackPortMax, avoid, func(port int) bool {
+		return checkPortFree(port) == nil
+	})
+}
+
+func pickFallbackPortInRange(min, max int, avoid map[int]struct{}, available func(int) bool) (int, error) {
+	if max < min {
+		return 0, fmt.Errorf("回落端口范围无效")
+	}
+	span := max - min + 1
+	try := func(port int) bool {
+		if _, used := avoid[port]; used {
+			return false
+		}
+		return available == nil || available(port)
+	}
+	for i := 0; i < 32; i++ {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(span)))
+		if err != nil {
+			return 0, fmt.Errorf("生成回落端口: %w", err)
+		}
+		port := min + int(n.Int64())
+		if try(port) {
+			return port, nil
+		}
+	}
+	start := min
+	if n, err := rand.Int(rand.Reader, big.NewInt(int64(span))); err == nil {
+		start = min + int(n.Int64())
+	}
+	for i := 0; i < span; i++ {
+		port := min + (start-min+i)%span
+		if try(port) {
+			return port, nil
+		}
+	}
+	return 0, fmt.Errorf("无法在 %d-%d 之间分配可用的回落端口", min, max)
 }
 
 func DefaultPort(store system.StateStore, core string) int {

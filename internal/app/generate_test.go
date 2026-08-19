@@ -248,13 +248,12 @@ func TestGenerateRejectsSimplifiedConfigForXray(t *testing.T) {
 
 func TestGenerateDefaultsToFallbackGuardAndStandardConfigOptsOut(t *testing.T) {
 	tests := []struct {
-		core         string
-		fallbackPort int
-		marker       string
-		configPath   string
+		core       string
+		marker     string
+		configPath string
 	}{
-		{domain.CoreSingBox, domain.DefaultSingBoxFallbackPort, `"tag": "singbox-fallback-in"`, singbox.New().ConfigPath()},
-		{domain.CoreXray, domain.DefaultXrayFallbackPort, `"protocol": "dokodemo-door"`, xray.New().ConfigPath()},
+		{domain.CoreSingBox, `"tag": "singbox-fallback-in"`, singbox.New().ConfigPath()},
+		{domain.CoreXray, `"protocol": "dokodemo-door"`, xray.New().ConfigPath()},
 	}
 	for _, tt := range tests {
 		t.Run(tt.core+" default", func(t *testing.T) {
@@ -266,11 +265,12 @@ func TestGenerateDefaultsToFallbackGuardAndStandardConfigOptsOut(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if optionsFallbackPort(domain.GenerateOptions{
+			port := optionsFallbackPort(domain.GenerateOptions{
 				SingBoxFallbackGuard: n.SingBoxFallbackGuard, SingBoxFallbackPort: n.SingBoxFallbackPort,
 				XrayFallbackGuard: n.XrayFallbackGuard, XrayFallbackPort: n.XrayFallbackPort,
-			}) != tt.fallbackPort {
-				t.Fatalf("node=%#v", n)
+			})
+			if port < domain.FallbackPortMin || port > domain.FallbackPortMax || port == r.port {
+				t.Fatalf("fallback port=%d node=%#v", port, n)
 			}
 			config, err := os.ReadFile(a.Layout.Resolve(tt.configPath))
 			if err != nil {
@@ -519,6 +519,36 @@ func TestGenerateRestartsServiceWhenPortRemainsOccupied(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "etc/sing-box/config.json")); !os.IsNotExist(err) {
 		t.Fatalf("config should not be written on a port conflict: %v", err)
+	}
+}
+
+func TestPickFallbackPortReusesExistingAndAvoidsBusy(t *testing.T) {
+	store := system.StateStore{Layout: system.Layout{Root: t.TempDir()}}
+	if err := store.Save(domain.NodeSpec{
+		ManagedBy: "proxyforge", Core: domain.CoreXray, Port: 443,
+		XrayFallbackGuard: true, XrayFallbackPort: 41234,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := PickFallbackPort(store, domain.CoreXray, 443)
+	if err != nil || got != 41234 {
+		t.Fatalf("reuse existing=%d error=%v", got, err)
+	}
+
+	port, err := pickFallbackPortInRange(domain.FallbackPortMin, domain.FallbackPortMax, nil, func(int) bool { return true })
+	if err != nil || port < domain.FallbackPortMin || port > domain.FallbackPortMax {
+		t.Fatalf("random port=%d error=%v", port, err)
+	}
+
+	avoid := map[int]struct{}{}
+	for p := domain.FallbackPortMin; p <= domain.FallbackPortMax; p++ {
+		if p != 42424 {
+			avoid[p] = struct{}{}
+		}
+	}
+	only, err := pickFallbackPortInRange(domain.FallbackPortMin, domain.FallbackPortMax, avoid, func(int) bool { return true })
+	if err != nil || only != 42424 {
+		t.Fatalf("only free port=%d error=%v", only, err)
 	}
 }
 
