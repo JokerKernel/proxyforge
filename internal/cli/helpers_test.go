@@ -1,0 +1,40 @@
+package cli
+
+import (
+	"context"
+	"io"
+
+	"proxyforge/internal/app"
+	"proxyforge/internal/system"
+)
+
+type liveLogRunner struct {
+	name string
+	args []string
+}
+
+type installedUnitRunner struct{}
+
+func (installedUnitRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
+	if name == "systemctl" && len(args) > 0 && args[0] == "show" {
+		return []byte("loaded\n"), nil
+	}
+	return nil, nil
+}
+
+func markCoreInstalled(a *app.App) {
+	a.LookPath = func(name string) (string, error) { return "/usr/bin/" + name, nil }
+	a.Services = system.ServiceManager{Runner: installedUnitRunner{}}
+}
+
+func (r *liveLogRunner) Run(context.Context, string, ...string) ([]byte, error) {
+	return nil, nil
+}
+
+func (r *liveLogRunner) RunStreaming(ctx context.Context, stdout, _ io.Writer, name string, args ...string) error {
+	r.name = name
+	r.args = append([]string(nil), args...)
+	_, _ = io.WriteString(stdout, "live entry\n")
+	<-ctx.Done()
+	return ctx.Err()
+}
