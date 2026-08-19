@@ -379,6 +379,17 @@ func TestLoggingRunnerDisplaysProxyAddressWithoutCredentials(t *testing.T) {
 	if !strings.Contains(log.String(), "--proxy [REDACTED]") {
 		t.Fatalf("invalid proxy URL was not redacted: %s", log.String())
 	}
+
+	log.Reset()
+	if _, err := runner.Run(context.Background(), "systemctl", "show", "xray.service", "-p", "LoadState", "--value"); err != nil {
+		t.Fatal(err)
+	}
+	if log.Len() != 0 {
+		t.Fatalf("systemctl show was logged: %s", log.String())
+	}
+	if got := strings.Join(redactCommandArgs([]string{"show", "xray.service", "-p", "LoadState", "--value"}), " "); got != "show xray.service -p LoadState --value" {
+		t.Fatalf("systemctl -p was redacted: %q", got)
+	}
 }
 
 func TestRandomCredentialFormats(t *testing.T) {

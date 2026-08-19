@@ -24,14 +24,19 @@ type LoggingRunner struct {
 }
 
 func (r *LoggingRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
-	r.log("执行命令", name, args)
+	logCommand := shouldLogCommand(name, args)
+	if logCommand {
+		r.log("执行命令", name, args)
+	}
 	b, err := r.Runner.Run(ctx, name, args...)
-	if err != nil && ctx.Err() != nil {
-		r.logResult("命令已停止", name)
-	} else if err != nil {
-		r.logResult("命令失败", name)
-	} else {
-		r.logResult("命令完成", name)
+	if logCommand {
+		if err != nil && ctx.Err() != nil {
+			r.logResult("命令已停止", name)
+		} else if err != nil {
+			r.logResult("命令失败", name)
+		} else {
+			r.logResult("命令完成", name)
+		}
 	}
 	return b, err
 }
@@ -75,7 +80,7 @@ func (r *LoggingRunner) log(label, name string, args []string) {
 func redactCommandArgs(args []string) []string {
 	redacted := append([]string(nil), args...)
 	for index, arg := range redacted {
-		if arg == "--proxy" || arg == "-p" {
+		if arg == "--proxy" {
 			if index+1 < len(redacted) {
 				redacted[index+1] = proxyAddressForLog(redacted[index+1])
 			}
@@ -86,6 +91,10 @@ func redactCommandArgs(args []string) []string {
 		}
 	}
 	return redacted
+}
+
+func shouldLogCommand(name string, args []string) bool {
+	return name != "systemctl" || len(args) == 0 || args[0] != "show"
 }
 
 func proxyAddressForLog(raw string) string {
