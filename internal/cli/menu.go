@@ -42,7 +42,7 @@ func (c *commandSet) menu(ctx context.Context) error {
 func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 	for {
 		c.clearScreen()
-		c.printCoreMenu(core)
+		c.printCoreMenu(ctx, core)
 		choice, err := c.chooseNumber("请选择", 0, 5, -1)
 		if err != nil {
 			return err
@@ -247,15 +247,57 @@ func (c *commandSet) coreInstalled(ctx context.Context, core string) bool {
 	return c.app.CheckCoreInstalled(ctx, core) == nil
 }
 
-func (c *commandSet) printCoreMenu(core string) {
+func (c *commandSet) printCoreMenu(ctx context.Context, core string) {
 	c.printPageHeader(core)
-	fmt.Fprintf(c.out, "当前内核：%s\n\n", core)
+	c.printCoreStatusCard(ctx, core)
 	c.printMenuChoice("1", "安装/升级（安装内核或升级版本）")
 	c.printMenuChoice("2", "服务端配置（生成、查看、DNS 与节点重置）")
 	c.printMenuChoice("3", "客户端配置（导出原生 JSON 或 Clash YAML）")
 	c.printMenuChoice("4", "服务管理（启动、停止、状态与日志）")
 	c.printMenuChoice("5", "卸载内核（同时清理配置和运行数据）")
 	c.printMenuChoice("0/q", "返回")
+}
+
+func (c *commandSet) printCoreStatusCard(ctx context.Context, core string) {
+	version := c.coreVersionLabel(ctx, core)
+	installed := version != "未安装"
+	status := "[未安装]"
+	if installed {
+		status = "[已安装]"
+	}
+	name := coreDisplayName(core)
+	padding := menuStatusColumn - menuDisplayWidth(name)
+	if padding < 2 {
+		padding = 2
+	}
+	fmt.Fprintln(c.out, "╭─ 当前内核")
+	fmt.Fprintf(c.out, "│ %s%s%s\n", name, strings.Repeat(" ", padding), status)
+	if installed {
+		fmt.Fprintf(c.out, "│ %s\n", version)
+	}
+	fmt.Fprintln(c.out, proxyForgeHeaderRule)
+	fmt.Fprintln(c.out)
+}
+
+func (c *commandSet) coreVersionLabel(ctx context.Context, core string) string {
+	if c.app == nil {
+		return "未安装"
+	}
+	if version := c.app.CoreVersion(ctx, core); version != "" {
+		return version
+	}
+	return "未安装"
+}
+
+func coreDisplayName(core string) string {
+	switch core {
+	case domain.CoreXray:
+		return "Xray-core"
+	case domain.CoreSingBox:
+		return "sing-box"
+	default:
+		return core
+	}
 }
 
 func (c *commandSet) printProxyForgeHeader() {

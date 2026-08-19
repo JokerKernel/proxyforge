@@ -117,17 +117,35 @@ func TestServerConfigGenerationRejectsMissingCoreBeforePrompts(t *testing.T) {
 func TestCoreMenuMergesUninstallAndCleanup(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{out: &out}
-	c.printCoreMenu(domain.CoreXray)
-	if !strings.Contains(out.String(), "当前内核：xray") ||
+	c.printCoreMenu(context.Background(), domain.CoreXray)
+	if !strings.Contains(out.String(), "╭─ 当前内核") ||
+		!strings.Contains(out.String(), "Xray-core") ||
+		!strings.Contains(out.String(), "[未安装]") ||
 		!strings.Contains(out.String(), "5   卸载内核          -- 同时清理配置和运行数据") ||
 		strings.Contains(out.String(), "6   ") {
 		t.Fatalf("menu did not merge uninstall and cleanup: %q", out.String())
 	}
 }
 
+func TestCoreMenuShowsInstalledCoreVersion(t *testing.T) {
+	a := &app.App{
+		Registry: provider.NewRegistry(singbox.New(), xray.New()),
+		Runner:   installedVersionRunner{},
+	}
+	var out bytes.Buffer
+	c := &commandSet{app: a, out: &out}
+	c.printCoreMenu(context.Background(), domain.CoreXray)
+	if !strings.Contains(out.String(), "╭─ 当前内核") ||
+		!strings.Contains(out.String(), "Xray-core") ||
+		!strings.Contains(out.String(), "[已安装]") ||
+		!strings.Contains(out.String(), "Xray 25.1.1") {
+		t.Fatalf("core menu missing version card: %q", out.String())
+	}
+}
+
 func TestCoreMenuAlignsAndDimsDescriptions(t *testing.T) {
 	var plain bytes.Buffer
-	(&commandSet{out: &plain}).printCoreMenu(domain.CoreSingBox)
+	(&commandSet{out: &plain}).printCoreMenu(context.Background(), domain.CoreSingBox)
 	wantColumn := -1
 	for _, line := range strings.Split(plain.String(), "\n") {
 		separator := strings.Index(line, "-- ")
@@ -146,7 +164,7 @@ func TestCoreMenuAlignsAndDimsDescriptions(t *testing.T) {
 	}
 
 	var colored bytes.Buffer
-	(&commandSet{out: system.NewColorWriter(&colored, true)}).printCoreMenu(domain.CoreSingBox)
+	(&commandSet{out: system.NewColorWriter(&colored, true)}).printCoreMenu(context.Background(), domain.CoreSingBox)
 	if !strings.Contains(colored.String(), "\x1b[90m-- 安装内核或升级版本\x1b[0m") {
 		t.Fatalf("menu description is not gray: %q", colored.String())
 	}
@@ -170,7 +188,7 @@ func TestCoreMenusUseGlobalPageHeader(t *testing.T) {
 	for _, core := range []string{domain.CoreXray, domain.CoreSingBox} {
 		var out bytes.Buffer
 		c := &commandSet{out: &out, currentVersion: "v1.2.3"}
-		c.printCoreMenu(core)
+		c.printCoreMenu(context.Background(), core)
 		for _, want := range []string{
 			"╭─ ProxyForge  ›  " + core,
 			proxyForgeHeaderRule,
@@ -316,7 +334,7 @@ func TestMenuCanReturnFromCoreSelection(t *testing.T) {
 	if strings.Count(out.String(), "│ 双内核代理管理器  [版本 v1.2.3]") != 2 {
 		t.Fatalf("core selector was not shown twice: %q", out.String())
 	}
-	if strings.Count(out.String(), proxyForgeHeaderRule) != 3 {
+	if strings.Count(out.String(), proxyForgeHeaderRule) != 4 {
 		t.Fatalf("global page header rule count is incorrect: %q", out.String())
 	}
 	if !strings.Contains(out.String(), "ProxyForge  ›  xray") || !strings.Contains(out.String(), "安装/升级") || !strings.Contains(out.String(), "服务端配置") {

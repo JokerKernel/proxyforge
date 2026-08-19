@@ -163,6 +163,28 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	return a.applyServerConfig(ctx, p, core, n, old, hasOld, config, true)
 }
 
+func (a *App) CoreVersion(ctx context.Context, core string) string {
+	if a == nil || a.Registry == nil {
+		return ""
+	}
+	p, err := a.Registry.Get(core)
+	if err != nil {
+		return ""
+	}
+	runner := a.Runner
+	if logging, ok := runner.(*system.LoggingRunner); ok && logging.Runner != nil {
+		runner = logging.Runner
+	}
+	if runner == nil {
+		return ""
+	}
+	version, err := p.Version(ctx, runner)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(strings.SplitN(version, "\n", 2)[0])
+}
+
 func (a *App) CheckCoreInstalled(ctx context.Context, core string) error {
 	if err := a.RootCheck(); err != nil {
 		return err
