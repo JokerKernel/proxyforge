@@ -327,6 +327,20 @@ func freedomHappyEyeballsStream() map[string]any {
 	}
 }
 
+func freedomDirectSettings() map[string]any {
+	return map[string]any{
+		"domainStrategy": "AsIs",
+		"finalRules":     []any{map[string]any{"action": "allow"}},
+	}
+}
+
+func ensureDirectAllowFinalRule(settings map[string]any) {
+	if _, exists := settings["finalRules"]; exists {
+		return
+	}
+	settings["finalRules"] = []any{map[string]any{"action": "allow"}}
+}
+
 func applyFreedomHappyEyeballs(outbound map[string]any) {
 	settings, ok := outbound["settings"].(map[string]any)
 	if !ok || settings == nil {
@@ -334,6 +348,9 @@ func applyFreedomHappyEyeballs(outbound map[string]any) {
 		outbound["settings"] = settings
 	}
 	settings["domainStrategy"] = "AsIs"
+	if tag, _ := outbound["tag"].(string); tag == "direct" {
+		ensureDirectAllowFinalRule(settings)
+	}
 	stream, _ := outbound["streamSettings"].(map[string]any)
 	if stream == nil {
 		stream = map[string]any{}

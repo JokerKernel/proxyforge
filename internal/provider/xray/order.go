@@ -140,6 +140,10 @@ func xrayFieldPriority(object map[string]any) map[string]int {
 		order = []string{"sockopt"}
 	case hasXrayKeys(object, "domainStrategy", "happyEyeballs"):
 		order = []string{"domainStrategy", "happyEyeballs"}
+	case hasXrayKeys(object, "domainStrategy", "finalRules"):
+		order = []string{"domainStrategy", "redirect", "userLevel", "fragment", "noises", "proxyProtocol", "targetStrategy", "finalRules"}
+	case object["action"] == "allow" || object["action"] == "block":
+		order = []string{"action", "network", "port", "ip", "blockDelay"}
 	case hasXrayKeys(object, "domainStrategy", "rules"):
 		order = []string{"domainStrategy", "rules"}
 	case hasXrayKeys(object, "type", "outboundTag"):

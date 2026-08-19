@@ -315,7 +315,7 @@ func blockedOutbound() xrayOutbound {
 func directOutbound() xrayOutbound {
 	return xrayOutbound{
 		Protocol:       "freedom",
-		Settings:       map[string]any{"domainStrategy": "AsIs"},
+		Settings:       freedomDirectSettings(),
 		Tag:            "direct",
 		StreamSettings: freedomHappyEyeballsStream(),
 	}

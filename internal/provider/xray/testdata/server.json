@@ -19,7 +19,7 @@
   "outbounds": [
     {
       "protocol": "freedom",
-      "settings": {"domainStrategy": "AsIs"},
+      "settings": {"domainStrategy": "AsIs", "finalRules": [{"action": "allow"}]},
       "tag": "direct",
       "streamSettings": {
         "sockopt": {
