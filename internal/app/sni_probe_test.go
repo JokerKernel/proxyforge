@@ -59,6 +59,26 @@ func TestProbeSNICandidatesRejectsNoValidTargets(t *testing.T) {
 	}
 }
 
+func TestBestFamilyLatencyPrefersFasterSuccessfulFamily(t *testing.T) {
+	got := bestFamilyLatency(
+		FamilyLatency{Present: true, OK: true, Latency: 20 * time.Millisecond},
+		FamilyLatency{Present: true, OK: true, Latency: 8 * time.Millisecond},
+	)
+	if got != 8*time.Millisecond {
+		t.Fatalf("best=%s", got)
+	}
+	ipv4Only := bestFamilyLatency(
+		FamilyLatency{Present: true, OK: true, Latency: 15 * time.Millisecond},
+		FamilyLatency{Present: true, OK: false},
+	)
+	if ipv4Only != 15*time.Millisecond {
+		t.Fatalf("ipv4 only=%s", ipv4Only)
+	}
+	if bestFamilyLatency(FamilyLatency{}, FamilyLatency{}) != 0 {
+		t.Fatal("empty families should have zero latency")
+	}
+}
+
 func TestTLSVersionLabel(t *testing.T) {
 	if got := tlsVersionLabel(0x0304); got != "1.3" {
 		t.Fatalf("TLS 1.3 label=%q", got)

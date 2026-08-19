@@ -87,6 +87,51 @@ func TestSelectSNICandidateProbesManualOtherDomain(t *testing.T) {
 	}
 }
 
+func TestFormatSNILatenciesShowsBothFamilies(t *testing.T) {
+	both := formatSNILatencies(app.SNICandidate{
+		IPv4: app.FamilyLatency{Present: true, OK: true, Latency: 12 * time.Millisecond},
+		IPv6: app.FamilyLatency{Present: true, OK: true, Latency: 28 * time.Millisecond},
+	})
+	if both != "IPv4 12ms  ·  IPv6 28ms" {
+		t.Fatalf("both families=%q", both)
+	}
+	ipv4Only := formatSNILatencies(app.SNICandidate{
+		IPv4: app.FamilyLatency{Present: true, OK: true, Latency: 9 * time.Millisecond},
+		IPv6: app.FamilyLatency{Present: false},
+	})
+	if ipv4Only != "IPv4 9ms  ·  IPv6 无" {
+		t.Fatalf("ipv4 only=%q", ipv4Only)
+	}
+	failed := formatSNILatencies(app.SNICandidate{
+		IPv4: app.FamilyLatency{Present: true, OK: false},
+		IPv6: app.FamilyLatency{Present: true, OK: true, Latency: 18 * time.Millisecond},
+	})
+	if failed != "IPv4 失败  ·  IPv6 18ms" {
+		t.Fatalf("ipv4 failed=%q", failed)
+	}
+	legacy := formatSNILatencies(app.SNICandidate{Latency: 5 * time.Millisecond})
+	if legacy != "延迟 5ms" {
+		t.Fatalf("legacy latency=%q", legacy)
+	}
+}
+
+func TestPrintSNICandidateSummaryShowsFamilyLatencies(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{out: &out}
+	c.printSNICandidateSummary(1, app.SNICandidate{
+		Domain:     "fast.example.com",
+		TLSVersion: "1.3",
+		ALPN:       "h2",
+		CDN:        "未发现明显特征",
+		IPv4:       app.FamilyLatency{Present: true, OK: true, Latency: 11 * time.Millisecond},
+		IPv6:       app.FamilyLatency{Present: true, OK: true, Latency: 22 * time.Millisecond},
+	}, "")
+	got := out.String()
+	if !strings.Contains(got, "IPv4 11ms") || !strings.Contains(got, "IPv6 22ms") || strings.Contains(got, "延迟 11ms") {
+		t.Fatalf("summary=%q", got)
+	}
+}
+
 func TestFormatCertificateSANsLimitsLongCertificates(t *testing.T) {
 	got := formatCertificateSANs([]string{"one.example", "two.example", "three.example", "four.example"}, 3)
 	if got != "one.example, two.example, three.example（另有 1 项）" {

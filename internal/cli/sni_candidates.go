@@ -102,14 +102,14 @@ func (c *commandSet) selectSNICandidate(ctx context.Context, server string) (str
 	if len(candidates) == 0 {
 		return "", fmt.Errorf("SNI 测速没有返回可用候选")
 	}
-	fmt.Fprintln(c.out, "当前网络下最快的候选域名（按延迟排序）：")
+	fmt.Fprintln(c.out, "当前网络下最快的候选域名（按较快地址族延迟排序）：")
 	fmt.Fprintln(c.out)
 	for index, candidate := range candidates {
 		c.printSNICandidateSummary(index+1, candidate, "")
 	}
 	c.printMenuChoice("0", "手动输入")
 	fmt.Fprintln(c.out)
-	fmt.Fprintln(c.out, "提示：以上候选均已通过 DNS、TLS 和证书名称校验；延迟为完整探测耗时。")
+	fmt.Fprintln(c.out, "提示：以上候选均已通过 DNS、TLS 和证书名称校验；IPv4/IPv6 延迟为各自 TCP+TLS 探测耗时。")
 	fmt.Fprintln(c.out, "      CDN 为启发式识别，不代表目标归属、长期可用性或使用授权。")
 	// 检测期间用户误按的回车会暂存在 bufio.Reader 中；清除空行，避免
 	// 检测结束后立即触发一次无效选择。保留任何非空输入，避免吞掉用户已输入的编号。
@@ -255,21 +255,17 @@ func (c *commandSet) printSNICandidateSummary(index int, candidate app.SNICandid
 	} else if cdn == "未知" {
 		cdn = "CDN 未知"
 	}
-	fmt.Fprintf(c.out, "    延迟 %s  ·  TLS %s / %s  ·  %s\n", latency, tlsVersion, alpn, cdn)
+	fmt.Fprintf(c.out, "    %s  ·  TLS %s / %s  ·  %s\n", latency, tlsVersion, alpn, cdn)
 }
 
 func (c *commandSet) printSNICandidateDetails(prefix string, candidate app.SNICandidate) {
 	latency, tlsVersion, alpn, cdn := sniCandidateMetadata(candidate)
 	fmt.Fprintf(c.out, "%s%s\n", prefix, candidate.Domain)
-	fmt.Fprintf(c.out, "   延迟=%s  TLS=%s  ALPN=%s  CDN=%s\n", latency, tlsVersion, alpn, cdn)
+	fmt.Fprintf(c.out, "   %s  TLS=%s  ALPN=%s  CDN=%s\n", latency, tlsVersion, alpn, cdn)
 	fmt.Fprintf(c.out, "   证书 SAN=%s\n", formatCertificateSANs(candidate.CertificateSANs, 3))
 }
 
-func sniCandidateMetadata(candidate app.SNICandidate) (time.Duration, string, string, string) {
-	latency := candidate.Latency.Round(time.Millisecond)
-	if latency < time.Millisecond {
-		latency = time.Millisecond
-	}
+func sniCandidateMetadata(candidate app.SNICandidate) (string, string, string, string) {
 	tlsVersion := candidate.TLSVersion
 	if tlsVersion == "" {
 		tlsVersion = "未知"
@@ -282,7 +278,32 @@ func sniCandidateMetadata(candidate app.SNICandidate) (time.Duration, string, st
 	if cdn == "" {
 		cdn = "未知"
 	}
-	return latency, tlsVersion, alpn, cdn
+	return formatSNILatencies(candidate), tlsVersion, alpn, cdn
+}
+
+func formatSNILatencies(candidate app.SNICandidate) string {
+	if !candidate.IPv4.Present && !candidate.IPv6.Present {
+		return "延迟 " + formatSNIDuration(candidate.Latency)
+	}
+	return "IPv4 " + formatFamilyLatency(candidate.IPv4) + "  ·  IPv6 " + formatFamilyLatency(candidate.IPv6)
+}
+
+func formatFamilyLatency(family app.FamilyLatency) string {
+	if !family.Present {
+		return "无"
+	}
+	if !family.OK {
+		return "失败"
+	}
+	return formatSNIDuration(family.Latency)
+}
+
+func formatSNIDuration(latency time.Duration) string {
+	rounded := latency.Round(time.Millisecond)
+	if rounded < time.Millisecond {
+		rounded = time.Millisecond
+	}
+	return rounded.String()
 }
 
 func formatCertificateSANs(sans []string, limit int) string {

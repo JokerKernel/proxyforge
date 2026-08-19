@@ -17,11 +17,20 @@ const (
 	defaultSNIProbeTimeout     = 4 * time.Second
 )
 
+// FamilyLatency is the TCP+TLS probe result for one address family.
+type FamilyLatency struct {
+	Present bool
+	OK      bool
+	Latency time.Duration
+}
+
 // SNICandidate is a REALITY target that completed DNS and TLS certificate
 // validation, together with metadata observed during that validation.
 type SNICandidate struct {
 	Domain          string
 	Latency         time.Duration
+	IPv4            FamilyLatency
+	IPv6            FamilyLatency
 	TLSVersion      string
 	ALPN            string
 	CertificateSANs []string
@@ -40,7 +49,6 @@ func ProbeSNICandidates(ctx context.Context, candidates []string, server string,
 	probe := func(ctx context.Context, domain, server string) (SNICandidate, error) {
 		probeCtx, cancel := context.WithTimeout(ctx, defaultSNIProbeTimeout)
 		defer cancel()
-		started := time.Now()
 		inspection, err := inspectNetworkTarget(
 			probeCtx,
 			net.JoinHostPort(domain, "443"),
@@ -53,7 +61,9 @@ func ProbeSNICandidates(ctx context.Context, candidates []string, server string,
 		}
 		return SNICandidate{
 			Domain:          domain,
-			Latency:         time.Since(started),
+			Latency:         bestFamilyLatency(inspection.IPv4, inspection.IPv6),
+			IPv4:            inspection.IPv4,
+			IPv6:            inspection.IPv6,
 			TLSVersion:      tlsVersionLabel(inspection.TLSVersion),
 			ALPN:            inspection.ALPN,
 			CertificateSANs: inspection.CertificateSANs,
@@ -61,6 +71,22 @@ func ProbeSNICandidates(ctx context.Context, candidates []string, server string,
 		}, nil
 	}
 	return probeSNICandidates(ctx, candidates, server, limit, defaultSNIProbeConcurrency, probe)
+}
+
+func bestFamilyLatency(ipv4, ipv6 FamilyLatency) time.Duration {
+	switch {
+	case ipv4.OK && ipv6.OK:
+		if ipv4.Latency <= ipv6.Latency {
+			return ipv4.Latency
+		}
+		return ipv6.Latency
+	case ipv4.OK:
+		return ipv4.Latency
+	case ipv6.OK:
+		return ipv6.Latency
+	default:
+		return 0
+	}
 }
 
 func probeSNICandidates(ctx context.Context, candidates []string, server string, limit, concurrency int, probe sniProbeFunc) ([]SNICandidate, error) {
