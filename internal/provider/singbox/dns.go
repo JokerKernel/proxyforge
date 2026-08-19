@@ -77,6 +77,49 @@ func (*Provider) CurrentDNSProfile(config []byte) (string, error) {
 	return profile, nil
 }
 
+func (*Provider) CurrentDNSServers(config []byte) ([]string, error) {
+	root, err := parseDNSRoot(config)
+	if err != nil {
+		return nil, err
+	}
+	dns, ok := root["dns"].(map[string]any)
+	if !ok {
+		return nil, nil
+	}
+	servers, ok := dns["servers"].([]any)
+	if !ok {
+		return nil, nil
+	}
+	var addrs []string
+	seen := make(map[string]struct{})
+	for _, raw := range servers {
+		server, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		tag, _ := server["tag"].(string)
+		serverType, _ := server["type"].(string)
+		if serverType == "local" && tag == "bootstrap" {
+			continue
+		}
+		address, _ := server["server"].(string)
+		address = strings.TrimSpace(address)
+		if address == "" {
+			if serverType == "local" {
+				address = "local"
+			} else {
+				continue
+			}
+		}
+		if _, exists := seen[address]; exists {
+			continue
+		}
+		seen[address] = struct{}{}
+		addrs = append(addrs, address)
+	}
+	return addrs, nil
+}
+
 func (*Provider) PatchDNSProfile(config []byte, profile string) ([]byte, error) {
 	profile = strings.ToLower(strings.TrimSpace(profile))
 	if !slices.Contains(supportedDNSProfiles, profile) {

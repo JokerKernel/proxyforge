@@ -29,9 +29,15 @@ func TestModifyConfigStatusReadsGeneratedXray(t *testing.T) {
 	if err := a.Store.Save(node); err != nil {
 		t.Fatal(err)
 	}
+	orig := lookupSystemResolvers
+	lookupSystemResolvers = func() []string { return []string{"9.9.9.9", "1.0.0.1"} }
+	t.Cleanup(func() { lookupSystemResolvers = orig })
 	got := a.ModifyConfigStatus(domain.CoreXray)
 	if !got.HasConfig || !got.HasFallback || got.SNI != "www.example.com" ||
 		got.DNS != provider.DNSProfileSystem || got.OutboundIP != provider.OutboundIPUnset || got.FallbackIP != provider.OutboundIPUnset {
 		t.Fatalf("status=%#v", got)
+	}
+	if len(got.DNSServers) != 2 || got.DNSServers[0] != "9.9.9.9" || got.DNSServers[1] != "1.0.0.1" {
+		t.Fatalf("dns servers=%v", got.DNSServers)
 	}
 }

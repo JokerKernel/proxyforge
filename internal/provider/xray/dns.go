@@ -73,6 +73,53 @@ func (*Provider) CurrentDNSProfile(config []byte) (string, error) {
 	return "custom", nil
 }
 
+func (*Provider) CurrentDNSServers(config []byte) ([]string, error) {
+	root, err := parseDNSRoot(config)
+	if err != nil {
+		return nil, err
+	}
+	dns, ok := root["dns"].(map[string]any)
+	if !ok {
+		if _, exists := root["dns"]; exists {
+			return nil, fmt.Errorf("现有 Xray dns 不是对象")
+		}
+		return []string{"localhost"}, nil
+	}
+	servers, ok := dns["servers"].([]any)
+	if !ok {
+		return nil, nil
+	}
+	var addrs []string
+	seen := make(map[string]struct{})
+	for _, raw := range servers {
+		address, ok := dnsServerAddress(raw)
+		if !ok {
+			continue
+		}
+		address = dnsDisplayAddress(address)
+		if address == "" {
+			continue
+		}
+		if _, exists := seen[address]; exists {
+			continue
+		}
+		seen[address] = struct{}{}
+		addrs = append(addrs, address)
+	}
+	return addrs, nil
+}
+
+func dnsDisplayAddress(address string) string {
+	address = strings.TrimSpace(address)
+	if i := strings.Index(address, "://"); i >= 0 {
+		address = address[i+3:]
+	}
+	if i := strings.IndexAny(address, "/"); i >= 0 {
+		address = address[:i]
+	}
+	return strings.TrimSpace(address)
+}
+
 func (*Provider) PatchDNSProfile(config []byte, profile string) ([]byte, error) {
 	profile = strings.ToLower(strings.TrimSpace(profile))
 	if !slices.Contains(supportedDNSProfiles, profile) {

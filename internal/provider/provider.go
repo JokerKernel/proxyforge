@@ -46,6 +46,7 @@ const (
 type DNSProfileProvider interface {
 	DNSProfiles() []string
 	CurrentDNSProfile([]byte) (string, error)
+	CurrentDNSServers([]byte) ([]string, error)
 	PatchDNSProfile([]byte, string) ([]byte, error)
 }
 

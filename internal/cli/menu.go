@@ -275,7 +275,7 @@ func (c *commandSet) printModifyConfigCard(core string) {
 		status = c.app.ModifyConfigStatus(core)
 	}
 	rows := [][2]string{
-		{"DNS 设置", modifyConfigValue(status.HasConfig, status.DNS, func() string { return dnsProfileDisplay(core, status.DNS) })},
+		{"DNS 设置", modifyConfigValue(status.HasConfig, status.DNS, func() string { return dnsCardDisplay(core, status.DNS, status.DNSServers) })},
 		{"出站 IP", modifyConfigValue(status.HasConfig, status.OutboundIP, func() string { return outboundIPCardDisplay(core, status.OutboundIP) })},
 	}
 	if status.HasFallback {
@@ -310,6 +310,14 @@ func modifyConfigValue(hasConfig bool, raw string, display func() string) string
 		return "未生成"
 	}
 	return display()
+}
+
+func dnsCardDisplay(core, profile string, servers []string) string {
+	label := dnsProfileDisplay(core, profile)
+	if len(servers) == 0 {
+		return label
+	}
+	return label + " · " + strings.Join(servers, ", ")
 }
 
 func outboundIPCardDisplay(core, strategy string) string {

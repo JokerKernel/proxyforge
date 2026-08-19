@@ -403,6 +403,9 @@ func TestPatchDNSProfilePreservesOtherDNSSettings(t *testing.T) {
 	if current, err := p.CurrentDNSProfile(config); err != nil || current != "system" {
 		t.Fatalf("current=%q error=%v", current, err)
 	}
+	if servers, err := p.CurrentDNSServers(config); err != nil || len(servers) != 1 || servers[0] != "localhost" {
+		t.Fatalf("system servers=%v error=%v", servers, err)
+	}
 	var root map[string]any
 	if err := json.Unmarshal(config, &root); err != nil {
 		t.Fatal(err)
@@ -443,6 +446,9 @@ func TestPatchDNSProfilePreservesOtherDNSSettings(t *testing.T) {
 	}
 	if current, err := p.CurrentDNSProfile(doh); err != nil || current != "doh-cloudflare" {
 		t.Fatalf("doh current=%q error=%v", current, err)
+	}
+	if servers, err := p.CurrentDNSServers(doh); err != nil || len(servers) != 2 || servers[0] != "1.1.1.1" || servers[1] != "8.8.8.8" {
+		t.Fatalf("doh display servers=%v error=%v", servers, err)
 	}
 	gotDNS["queryStrategy"] = "UseIPv4"
 	misconfigured, err := json.Marshal(got)

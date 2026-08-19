@@ -473,6 +473,9 @@ func TestPatchDNSProfileUpdatesResolverReferences(t *testing.T) {
 	if googleDoH["domain_resolver"] != "bootstrap" || googleTLS["enabled"] != true || googleTLS["server_name"] != "dns.google" {
 		t.Fatalf("google doh=%#v", googleDoH)
 	}
+	if servers, err := p.CurrentDNSServers(withDoH); err != nil || len(servers) != 1 || servers[0] != "dns.google" {
+		t.Fatalf("doh display servers=%v error=%v", servers, err)
+	}
 	if current, err := p.CurrentDNSProfile(withDoH); err != nil || current != "doh-google" {
 		t.Fatalf("doh current=%q error=%v", current, err)
 	}
