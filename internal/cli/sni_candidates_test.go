@@ -112,6 +112,37 @@ func TestParseSNIPageInputJumpsAndSelects(t *testing.T) {
 	}
 }
 
+func TestSNIPageControlLinesStayCompact(t *testing.T) {
+	first := sniPageControlLines(0, 3, true, sniPageChoiceOptions{AllowManual: true})
+	if len(first) != 2 {
+		t.Fatalf("first page lines=%d want 2: %q", len(first), first)
+	}
+	if !strings.Contains(first[0], "v IPv6排序") ||
+		!strings.Contains(first[0], "n 下一页") ||
+		!strings.Contains(first[0], "g/G 首/末页") ||
+		!strings.Contains(first[0], "pN 跳页") ||
+		strings.Contains(first[0], "上一页") {
+		t.Fatalf("first page nav=%q", first[0])
+	}
+	if first[1] != "  0 手动输入  ·  q 返回" {
+		t.Fatalf("first page actions=%q", first[1])
+	}
+
+	last := sniPageControlLines(2, 3, false, sniPageChoiceOptions{AllowManual: true})
+	if strings.Contains(last[0], "下一页") || !strings.Contains(last[0], "p 上一页") || !strings.Contains(last[0], "v IPv4排序") {
+		t.Fatalf("last page nav=%q", last[0])
+	}
+
+	retest := sniPageControlLines(0, 1, true, sniPageChoiceOptions{AllowRetest: true, AllowBack: true})
+	if len(retest) != 2 ||
+		!strings.Contains(retest[0], "1 重新测试") ||
+		!strings.Contains(retest[0], "v IPv6排序") ||
+		strings.Contains(retest[0], "下一页") ||
+		retest[1] != "  0/q 返回" {
+		t.Fatalf("retest controls=%q", retest)
+	}
+}
+
 func TestSelectSNICandidateCanSwitchIPv6Sort(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{

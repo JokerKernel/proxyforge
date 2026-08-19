@@ -114,10 +114,10 @@ func (c *commandSet) selectSNICandidate(ctx context.Context, server string) (str
 		c.printPageHeader("REALITY SNI 候选检测")
 		fmt.Fprintf(c.out, "全部有效候选（%s）：\n", sniSortLabel(sortIPv4))
 		_, _, pages := c.printSNIResultPage(candidates, page, "")
-		c.printSNIPageControls(page, pages, true, sortIPv4)
+		c.printSNIPageControls(page, pages, sortIPv4, sniPageChoiceOptions{AllowManual: true})
 		fmt.Fprintln(c.out)
 		fmt.Fprintln(c.out, "提示：以上候选均已通过 DNS、TLS 和证书名称校验；IPv4/IPv6 延迟为各自 TCP+TLS 探测耗时。")
-		fmt.Fprintln(c.out, "      只能选择本页显示的编号；n/p 翻页，g/G 首尾页，p3 跳页，v 切换排序，q 返回。")
+		fmt.Fprintln(c.out, "      只能选择本页显示的编号。")
 		action, index, err := c.readSNIPageChoice(len(candidates), page, pages, sniPageChoiceOptions{AllowManual: true})
 		if err != nil {
 			return "", err
@@ -208,12 +208,9 @@ func (c *commandSet) retestSNICandidates(ctx context.Context, core string) error
 			}
 			fmt.Fprintf(c.out, "\n全部有效候选（%s）：\n", sniSortLabel(sortIPv4))
 			_, _, pages := c.printSNIResultPage(results, page, currentSNI)
-			fmt.Fprintln(c.out)
-			c.printMenuChoice("1", "重新测试")
-			c.printSNIPageControls(page, pages, false, sortIPv4)
-			c.printMenuChoice("0/q", "返回服务端配置")
+			c.printSNIPageControls(page, pages, sortIPv4, sniPageChoiceOptions{AllowRetest: true, AllowBack: true})
 			fmt.Fprintln(c.out, "\n提示：本操作只重新检测和展示结果，不会修改 SNI、target 或重启服务。")
-			fmt.Fprintln(c.out, "      如需采用新候选，请返回后选择“重置 SNI/target”。n/p 翻页，v 切换 IPv4/IPv6 排序。")
+			fmt.Fprintln(c.out, "      如需采用新候选，请返回后选择“重置 SNI/target”。")
 			action, index, err := c.readSNIPageChoice(0, page, pages, sniPageChoiceOptions{AllowRetest: true, AllowBack: true})
 			if err != nil {
 				return err
@@ -300,39 +297,56 @@ func (c *commandSet) printSNIResultPage(candidates []app.SNICandidate, page int,
 	return start, end, pages
 }
 
-func (c *commandSet) printSNIPageControls(page, pages int, allowManual, sortIPv4 bool) {
+func (c *commandSet) printSNIPageControls(page, pages int, sortIPv4 bool, opts sniPageChoiceOptions) {
+	fmt.Fprintln(c.out)
+	for _, line := range sniPageControlLines(page, pages, sortIPv4, opts) {
+		fmt.Fprintln(c.out, line)
+	}
+}
+
+func sniPageControlLines(page, pages int, sortIPv4 bool, opts sniPageChoiceOptions) []string {
+	nav := make([]string, 0, 6)
+	if opts.AllowRetest {
+		nav = append(nav, "1 重新测试")
+	}
 	if sortIPv4 {
-		c.printMenuChoice("v", "按 IPv6 延迟排序")
+		nav = append(nav, "v IPv6排序")
 	} else {
-		c.printMenuChoice("v", "按 IPv4 延迟排序")
+		nav = append(nav, "v IPv4排序")
 	}
 	if pages > 1 {
 		if page+1 < pages {
-			c.printMenuChoice("n", "下一页")
+			nav = append(nav, "n 下一页")
 		}
 		if page > 0 {
-			c.printMenuChoice("p", "上一页")
+			nav = append(nav, "p 上一页")
 		}
-		c.printMenuChoice("g/G", "第一页 / 最后一页")
-		c.printMenuChoice("p3", "跳到第 3 页（数字可改）")
+		nav = append(nav, "g/G 首/末页", "pN 跳页")
 	}
-	if allowManual {
-		c.printMenuChoice("0", "手动输入")
-		c.printMenuChoice("q", "返回")
+	lines := []string{joinSNIControls(nav)}
+	actions := make([]string, 0, 2)
+	if opts.AllowManual {
+		actions = append(actions, "0 手动输入", "q 返回")
+	} else if opts.AllowBack {
+		actions = append(actions, "0/q 返回")
 	}
+	if len(actions) > 0 {
+		lines = append(lines, joinSNIControls(actions))
+	}
+	return lines
+}
+
+func joinSNIControls(parts []string) string {
+	return "  " + strings.Join(parts, "  ·  ")
 }
 
 func (c *commandSet) readSNIPageChoice(total, page, pages int, opts sniPageChoiceOptions) (string, int, error) {
 	prompt := "❯ 请选择"
 	switch {
-	case opts.AllowManual && pages > 1:
-		prompt += "（本页编号，n/p 翻页，v 切换排序，p3 跳页，0 手动输入，q 返回）"
 	case opts.AllowManual:
-		prompt += "（输入编号，v 切换排序，0 手动输入，q 返回）"
-	case opts.AllowRetest && pages > 1:
-		prompt += "（1 重新测试，n/p 翻页，v 切换排序，0 返回）"
+		prompt += "（本页编号或下方按键）"
 	case opts.AllowRetest:
-		prompt += "（1 重新测试，v 切换排序，0 返回）"
+		prompt += "（下方按键）"
 	}
 	fmt.Fprintln(c.out)
 	for {
