@@ -291,12 +291,13 @@ type sniPageChoiceOptions struct {
 func (c *commandSet) printSNIResultPage(candidates []app.SNICandidate, page int, currentSNI string) (start, end, pages int) {
 	start, end, pages = sniPageBounds(len(candidates), page, sniResultPageSize)
 	fmt.Fprintf(c.out, "第 %d/%d 页，共 %d 个\n\n", page+1, pages, len(candidates))
+	domainWidth := sniDomainColumnWidth(candidates[start:end])
 	for index, candidate := range candidates[start:end] {
 		marker := ""
 		if currentSNI != "" && strings.EqualFold(candidate.Domain, currentSNI) {
 			marker = "[当前 SNI]"
 		}
-		c.printSNICandidateSummary(start+index+1, candidate, marker)
+		c.printSNICandidateSummaryAligned(start+index+1, candidate, marker, domainWidth)
 	}
 	return start, end, pages
 }
@@ -431,7 +432,11 @@ func sniPageBounds(total, page, pageSize int) (start, end, pages int) {
 }
 
 func (c *commandSet) printSNICandidateSummary(index int, candidate app.SNICandidate, marker string) {
-	latency, tlsVersion, alpn, cdn := sniCandidateMetadata(candidate)
+	c.printSNICandidateSummaryAligned(index, candidate, marker, menuDisplayWidth(candidate.Domain))
+}
+
+func (c *commandSet) printSNICandidateSummaryAligned(index int, candidate app.SNICandidate, marker string, domainWidth int) {
+	_, tlsVersion, alpn, cdn := sniCandidateMetadata(candidate)
 	displayMarker := ""
 	if marker != "" {
 		displayMarker = "  " + marker
@@ -441,7 +446,73 @@ func (c *commandSet) printSNICandidateSummary(index int, candidate app.SNICandid
 	} else if cdn == "未知" {
 		cdn = "CDN 未知"
 	}
-	fmt.Fprintf(c.out, "  %d %s  %s  TLS %s / %s  ·  %s%s\n", index, candidate.Domain, latency, tlsVersion, alpn, cdn, displayMarker)
+	fmt.Fprintf(c.out, "  %2d  %s  %s  ·  %s  %s  ·  %s%s\n",
+		index,
+		fitDisplay(candidate.Domain, domainWidth),
+		formatAlignedFamily("IPv4", candidate.IPv4, candidate.Latency),
+		formatAlignedFamily("IPv6", candidate.IPv6, 0),
+		padDisplay(fmt.Sprintf("TLS %s / %s", tlsVersion, alpn), 18),
+		cdn,
+		displayMarker,
+	)
+}
+
+func sniDomainColumnWidth(candidates []app.SNICandidate) int {
+	width := 16
+	for _, candidate := range candidates {
+		if w := menuDisplayWidth(candidate.Domain); w > width {
+			width = w
+		}
+	}
+	if width > 36 {
+		return 36
+	}
+	return width
+}
+
+func formatAlignedFamily(label string, family app.FamilyLatency, fallback time.Duration) string {
+	value := formatFamilyLatency(family)
+	if !family.Present && fallback > 0 {
+		value = formatSNIDuration(fallback)
+	}
+	return label + " " + padDisplayLeft(value, 5)
+}
+
+func padDisplay(value string, width int) string {
+	padding := width - menuDisplayWidth(value)
+	if padding <= 0 {
+		return value
+	}
+	return value + strings.Repeat(" ", padding)
+}
+
+func padDisplayLeft(value string, width int) string {
+	padding := width - menuDisplayWidth(value)
+	if padding <= 0 {
+		return value
+	}
+	return strings.Repeat(" ", padding) + value
+}
+
+func fitDisplay(value string, width int) string {
+	if menuDisplayWidth(value) <= width {
+		return padDisplay(value, width)
+	}
+	var builder strings.Builder
+	used := 0
+	for _, r := range value {
+		w := 1
+		if isWideMenuRune(r) {
+			w = 2
+		}
+		if used+w >= width {
+			break
+		}
+		builder.WriteRune(r)
+		used += w
+	}
+	builder.WriteRune('…')
+	return padDisplay(builder.String(), width)
 }
 
 func (c *commandSet) printSNICandidateDetails(prefix string, candidate app.SNICandidate) {

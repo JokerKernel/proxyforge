@@ -125,7 +125,7 @@ func TestSelectSNICandidatePaginatesAllResults(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "第 1/2 页，共 25 个") ||
 		!strings.Contains(out.String(), "第 2/2 页，共 25 个") ||
-		!strings.Contains(out.String(), "  21 n21.example.com") ||
+		!strings.Contains(out.String(), "n21.example.com") ||
 		!strings.Contains(out.String(), "下一页") {
 		t.Fatalf("pagination output=%q", out.String())
 	}
@@ -197,8 +197,34 @@ func TestPrintSNICandidateSummaryShowsFamilyLatencies(t *testing.T) {
 		IPv6:       app.FamilyLatency{Present: true, OK: true, Latency: 22 * time.Millisecond},
 	}, "")
 	got := out.String()
-	if !strings.Contains(got, "IPv4 11ms") || !strings.Contains(got, "IPv6 22ms") || strings.Contains(got, "\n    IPv4") {
+	if !strings.Contains(got, "11ms") || !strings.Contains(got, "22ms") || strings.Contains(got, "\n    IPv4") {
 		t.Fatalf("summary=%q", got)
+	}
+}
+
+func TestPrintSNIResultPageAlignsColumns(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{out: &out}
+	c.printSNIResultPage([]app.SNICandidate{
+		{Domain: "is1-ssl.mzstatic.com", TLSVersion: "1.3", ALPN: "h2", CDN: "Apple CDN（CNAME）", IPv4: app.FamilyLatency{Present: true, OK: true, Latency: 26 * time.Millisecond}},
+		{Domain: "a.b.cdn.console.awsstatic.com", TLSVersion: "1.3", ALPN: "未协商", CDN: "疑似（2 个地址、资源域名）", IPv4: app.FamilyLatency{Present: true, OK: true, Latency: 219 * time.Millisecond}},
+	}, 0, "")
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	var rows []string
+	for _, line := range lines {
+		if strings.Contains(line, "IPv4") {
+			rows = append(rows, line)
+		}
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows=%q", out.String())
+	}
+	left := strings.Index(rows[0], "IPv4")
+	if left < 0 || strings.Index(rows[1], "IPv4") != left {
+		t.Fatalf("IPv4 columns not aligned:\n%s\n%s", rows[0], rows[1])
+	}
+	if strings.Index(rows[0], "TLS") != strings.Index(rows[1], "TLS") {
+		t.Fatalf("TLS columns not aligned:\n%s\n%s", rows[0], rows[1])
 	}
 }
 
