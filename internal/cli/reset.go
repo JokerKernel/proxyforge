@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -101,6 +102,9 @@ func (c *commandSet) fillReset(ctx context.Context, core string, opts *domain.Re
 		if opts.SNI == "" {
 			selected, err := c.selectSNICandidate(ctx, current.Server)
 			if err != nil {
+				if errors.Is(err, errReturnToMenu) {
+					return err
+				}
 				return fmt.Errorf("自动选择 SNI 失败: %w", err)
 			}
 			opts.SNI = selected

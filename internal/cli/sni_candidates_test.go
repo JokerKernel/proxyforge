@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -168,6 +169,24 @@ func TestSelectSNICandidatePaginatesAllResults(t *testing.T) {
 		!strings.Contains(out.String(), "n21.example.com") ||
 		!strings.Contains(out.String(), "下一页") {
 		t.Fatalf("pagination output=%q", out.String())
+	}
+}
+
+func TestSelectSNICandidateQReturnsToMenu(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{
+		reader: bufio.NewReader(strings.NewReader("q\n")),
+		out:    &out,
+		probeSNI: func(context.Context, []string, string, int) ([]app.SNICandidate, error) {
+			return []app.SNICandidate{{Domain: "fast.example.com", Latency: time.Millisecond}}, nil
+		},
+	}
+	_, err := c.selectSNICandidate(context.Background(), "server.example.com")
+	if !errors.Is(err, errReturnToMenu) {
+		t.Fatalf("error=%v", err)
+	}
+	if !strings.Contains(out.String(), "q") || !strings.Contains(out.String(), "返回") {
+		t.Fatalf("return choice missing: %q", out.String())
 	}
 }
 

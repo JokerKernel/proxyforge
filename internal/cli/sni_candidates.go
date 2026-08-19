@@ -117,7 +117,7 @@ func (c *commandSet) selectSNICandidate(ctx context.Context, server string) (str
 		c.printSNIPageControls(page, pages, true, sortIPv4)
 		fmt.Fprintln(c.out)
 		fmt.Fprintln(c.out, "提示：以上候选均已通过 DNS、TLS 和证书名称校验；IPv4/IPv6 延迟为各自 TCP+TLS 探测耗时。")
-		fmt.Fprintln(c.out, "      只能选择本页显示的编号；n/p 翻页，g/G 首尾页，p3 跳页，v 切换 IPv4/IPv6 排序。")
+		fmt.Fprintln(c.out, "      只能选择本页显示的编号；n/p 翻页，g/G 首尾页，p3 跳页，v 切换排序，q 返回。")
 		action, index, err := c.readSNIPageChoice(len(candidates), page, pages, sniPageChoiceOptions{AllowManual: true})
 		if err != nil {
 			return "", err
@@ -318,6 +318,7 @@ func (c *commandSet) printSNIPageControls(page, pages int, allowManual, sortIPv4
 	}
 	if allowManual {
 		c.printMenuChoice("0", "手动输入")
+		c.printMenuChoice("q", "返回")
 	}
 }
 
@@ -325,9 +326,9 @@ func (c *commandSet) readSNIPageChoice(total, page, pages int, opts sniPageChoic
 	prompt := "❯ 请选择"
 	switch {
 	case opts.AllowManual && pages > 1:
-		prompt += "（本页编号，n/p 翻页，v 切换排序，p3 跳页，0 手动输入）"
+		prompt += "（本页编号，n/p 翻页，v 切换排序，p3 跳页，0 手动输入，q 返回）"
 	case opts.AllowManual:
-		prompt += "（输入编号，v 切换 IPv4/IPv6 排序，0 手动输入）"
+		prompt += "（输入编号，v 切换排序，0 手动输入，q 返回）"
 	case opts.AllowRetest && pages > 1:
 		prompt += "（1 重新测试，n/p 翻页，v 切换排序，0 返回）"
 	case opts.AllowRetest:

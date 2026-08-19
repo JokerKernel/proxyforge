@@ -236,6 +236,9 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		if o.SNI == "" {
 			selected, err := c.selectSNICandidate(ctx, o.Server)
 			if err != nil {
+				if errors.Is(err, errReturnToMenu) {
+					return err
+				}
 				return fmt.Errorf("自动选择 SNI 失败: %w", err)
 			}
 			o.SNI = selected
