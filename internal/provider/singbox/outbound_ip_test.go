@@ -215,6 +215,51 @@ func TestPatchOutboundIPStrategyLeavesFallbackOnDualStack(t *testing.T) {
 	}
 }
 
+func TestPatchFallbackIPStrategyUpdatesFallbackDirectOnly(t *testing.T) {
+	p := New()
+	config, err := p.RenderServer(domain.NodeSpec{
+		InboundTag: "singbox-one", UserName: "one",
+		Server: "203.0.113.10", Port: 443, SNI: "example.com", Target: "example.com:443",
+		UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private", ShortID: "abcd",
+		SingBoxFallbackGuard: true, SingBoxFallbackPort: domain.DefaultSingBoxFallbackPort,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	userPatched, err := p.PatchOutboundIPStrategy(config, provider.OutboundIPPreferIPv6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patched, err := p.PatchFallbackIPStrategy(userPatched, provider.OutboundIPPreferIPv4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current, err := p.CurrentFallbackIPStrategy(patched); err != nil || current != provider.OutboundIPPreferIPv4 {
+		t.Fatalf("fallback current=%q error=%v", current, err)
+	}
+	if current, err := p.CurrentOutboundIPStrategy(patched); err != nil || current != provider.OutboundIPPreferIPv6 {
+		t.Fatalf("user outbound=%q error=%v", current, err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(patched, &root); err != nil {
+		t.Fatal(err)
+	}
+	fallback := singBoxOutboundByTag(t, root, fallbackDirectOutboundTag)
+	if singBoxStrategyValue(fallback["domain_resolver"]) != "prefer_ipv4" {
+		t.Fatalf("fallback-direct=%#v", fallback)
+	}
+	if _, exists := fallback["domain_strategy"]; exists {
+		t.Fatalf("deprecated domain_strategy was written: %#v", fallback)
+	}
+	restored, err := p.PatchFallbackIPStrategy(patched, provider.OutboundIPUnset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current, err := p.CurrentFallbackIPStrategy(restored); err != nil || current != provider.OutboundIPUnset {
+		t.Fatalf("restored=%q error=%v", current, err)
+	}
+}
+
 func TestPatchOutboundIPStrategyMigratesLegacyFallbackRoute(t *testing.T) {
 	p := New()
 	config := []byte(`{

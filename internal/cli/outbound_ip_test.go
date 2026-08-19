@@ -7,8 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"proxyforge/internal/app"
 	"proxyforge/internal/domain"
 	"proxyforge/internal/provider"
+	"proxyforge/internal/system"
 )
 
 func TestOutboundIPDisplayAndModifyMenu(t *testing.T) {
@@ -38,5 +40,30 @@ func TestOutboundIPDisplayAndModifyMenu(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "2   出站 IP") || !strings.Contains(out.String(), "优先或仅使用 IPv4") {
 		t.Fatalf("modify menu=%q", out.String())
+	}
+	if strings.Contains(out.String(), "回落 IP") {
+		t.Fatalf("fallback IP shown without fallback: %q", out.String())
+	}
+}
+
+func TestModifyConfigMenuShowsFallbackIPWhenEnabled(t *testing.T) {
+	store := system.StateStore{Layout: system.Layout{Root: t.TempDir()}}
+	if err := store.Save(domain.NodeSpec{
+		ManagedBy: "proxyforge", Core: domain.CoreXray, XrayFallbackGuard: true, XrayFallbackPort: domain.DefaultXrayFallbackPort,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	c := &commandSet{
+		app:    &app.App{Store: store},
+		reader: bufio.NewReader(strings.NewReader("0\n")),
+		out:    &out,
+	}
+	if err := c.modifyConfigMenu(context.Background(), domain.CoreXray); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "2   出站 IP") || !strings.Contains(out.String(), "3   回落 IP") ||
+		!strings.Contains(out.String(), "4   重置 SNI") || !strings.Contains(out.String(), "6   REALITY SNI") {
+		t.Fatalf("fallback modify menu=%q", out.String())
 	}
 }

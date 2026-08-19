@@ -63,6 +63,11 @@ type OutboundIPProvider interface {
 	PatchOutboundIPStrategy([]byte, string) ([]byte, error)
 }
 
+type FallbackIPProvider interface {
+	CurrentFallbackIPStrategy([]byte) (string, error)
+	PatchFallbackIPStrategy([]byte, string) ([]byte, error)
+}
+
 type CoreProvider interface {
 	Name() string
 	Binary() string

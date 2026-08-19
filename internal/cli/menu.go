@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"proxyforge/internal/domain"
@@ -102,7 +103,7 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		c.printPageHeader(core, "服务端配置")
 		c.printMenuChoice("1", "生成/更新配置（完整覆盖现有配置，不合并原配置）")
 		c.printMenuChoice("2", "查看配置")
-		c.printMenuChoice("3", "修改配置（DNS、出站 IP、重置节点与 SNI 检测）")
+		c.printMenuChoice("3", "修改配置（DNS、出站 IP、回落 IP、重置节点与 SNI 检测）")
 		c.printMenuChoice("4", "编辑配置（vim / nano / vi）")
 		maxChoice := 4
 		if core == domain.CoreXray {
@@ -182,11 +183,18 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 		c.printPageHeader(core, "修改配置")
 		c.printMenuChoice("1", "DNS 设置")
 		c.printMenuChoice("2", "出站 IP（优先或仅使用 IPv4 / IPv6）")
-		c.printMenuChoice("3", "重置 SNI/target（保留节点凭证）")
-		c.printMenuChoice("4", "重置节点凭证（UUID、REALITY 密钥和 short ID；保留 SNI/target）")
-		c.printMenuChoice("5", "REALITY SNI 候选检测（重新测试，不修改配置）")
+		next := 3
+		hasFallback := c.coreHasFallback(core)
+		if hasFallback {
+			c.printMenuChoice("3", "回落 IP（回落访问目标站的 IPv4 / IPv6）")
+			next = 4
+		}
+		c.printMenuChoice(strconv.Itoa(next), "重置 SNI/target（保留节点凭证）")
+		c.printMenuChoice(strconv.Itoa(next+1), "重置节点凭证（UUID、REALITY 密钥和 short ID；保留 SNI/target）")
+		c.printMenuChoice(strconv.Itoa(next+2), "REALITY SNI 候选检测（重新测试，不修改配置）")
 		c.printMenuChoice("0/q", "返回")
-		choice, err := c.chooseNumber("请选择", 0, 5, 0)
+		maxChoice := next + 2
+		choice, err := c.chooseNumber("请选择", 0, maxChoice, 0)
 		if err != nil {
 			return err
 		}
@@ -195,22 +203,27 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 		}
 
 		c.clearScreen()
-		switch choice {
-		case 1:
+		switch {
+		case choice == 1:
 			err = c.dnsSettingsMenu(ctx, core)
 			if errors.Is(err, errReturnToMenu) {
 				continue
 			}
-		case 2:
+		case choice == 2:
 			err = c.outboundIPMenu(ctx, core)
 			if errors.Is(err, errReturnToMenu) {
 				continue
 			}
-		case 3:
+		case hasFallback && choice == 3:
+			err = c.fallbackIPMenu(ctx, core)
+			if errors.Is(err, errReturnToMenu) {
+				continue
+			}
+		case choice == next:
 			err = c.resetChoice(ctx, core, 1)
-		case 4:
+		case choice == next+1:
 			err = c.resetChoice(ctx, core, 2)
-		case 5:
+		case choice == next+2:
 			err = c.retestSNICandidates(ctx, core)
 		}
 		if err != nil {

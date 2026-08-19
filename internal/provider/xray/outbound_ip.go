@@ -73,6 +73,115 @@ func (*Provider) PatchOutboundIPStrategy(config []byte, strategy string) ([]byte
 	return marshalXray(root)
 }
 
+func (*Provider) CurrentFallbackIPStrategy(config []byte) (string, error) {
+	_, outbound, err := parseFallbackFreedomOutbound(config, "读取")
+	if err != nil {
+		return "", err
+	}
+	if outbound == nil {
+		return provider.OutboundIPUnset, nil
+	}
+	settings, _ := outbound["settings"].(map[string]any)
+	strategy, _ := settings["domainStrategy"].(string)
+	switch strings.TrimSpace(strategy) {
+	case "", "AsIs", "UseIP":
+		return provider.OutboundIPUnset, nil
+	case "UseIPv4v6":
+		return provider.OutboundIPPreferIPv4, nil
+	case "UseIPv6v4":
+		return provider.OutboundIPPreferIPv6, nil
+	case "ForceIPv4":
+		return provider.OutboundIPIPv4Only, nil
+	case "ForceIPv6":
+		return provider.OutboundIPIPv6Only, nil
+	default:
+		return "custom", nil
+	}
+}
+
+func (*Provider) PatchFallbackIPStrategy(config []byte, strategy string) ([]byte, error) {
+	strategy = strings.ToLower(strings.TrimSpace(strategy))
+	if !slices.Contains(supportedOutboundIPStrategies, strategy) {
+		return nil, fmt.Errorf("Xray 回落 IP 策略 %q 无效", strategy)
+	}
+	root, _, err := parseFallbackFreedomOutbound(config, "修改")
+	if err != nil {
+		return nil, err
+	}
+	if err := ensureFallbackDirectIsolation(root); err != nil {
+		return nil, err
+	}
+	if err := ensureFallbackDirectOutbound(root); err != nil {
+		return nil, err
+	}
+	outbound, err := xrayFindTaggedOutbound(root, fallbackDirectOutboundTag)
+	if err != nil {
+		return nil, err
+	}
+	if outbound == nil {
+		return nil, fmt.Errorf("现有 Xray 配置中找不到 tag=%s 的 Freedom 出站", fallbackDirectOutboundTag)
+	}
+	settings, ok := outbound["settings"].(map[string]any)
+	if !ok || settings == nil {
+		settings = map[string]any{}
+		outbound["settings"] = settings
+	}
+	settings["domainStrategy"] = xrayOutboundIPStrategy[strategy]
+	return marshalXray(root)
+}
+
+func parseFallbackFreedomOutbound(config []byte, operation string) (map[string]any, map[string]any, error) {
+	root, err := parseXrayRoot(config, operation)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !xrayHasTaggedObject(root, "inbounds", fallbackGuardInboundTag) {
+		return nil, nil, fmt.Errorf("现有 Xray 配置未启用回落防偷跑，无法修改回落 IP")
+	}
+	outbound, err := xrayFindTaggedOutbound(root, fallbackDirectOutboundTag)
+	if err != nil {
+		return nil, nil, err
+	}
+	if outbound == nil {
+		return root, nil, nil
+	}
+	if protocol, _ := outbound["protocol"].(string); protocol != "" && protocol != "freedom" {
+		return nil, nil, fmt.Errorf("现有 Xray 配置中 tag=%s 的出站不是 freedom", fallbackDirectOutboundTag)
+	}
+	return root, outbound, nil
+}
+
+func parseXrayRoot(config []byte, operation string) (map[string]any, error) {
+	var root map[string]any
+	if err := json.Unmarshal(config, &root); err != nil {
+		return nil, fmt.Errorf("%s现有 Xray 配置: %w", operation, err)
+	}
+	if root == nil {
+		return nil, fmt.Errorf("%s现有 Xray 配置: 顶层不是 JSON 对象", operation)
+	}
+	return root, nil
+}
+
+func xrayFindTaggedOutbound(root map[string]any, tag string) (map[string]any, error) {
+	outbounds, err := xrayObjectList(root, "outbounds", "Xray outbounds")
+	if err != nil {
+		return nil, err
+	}
+	var matches []map[string]any
+	for _, outbound := range outbounds {
+		if value, _ := outbound["tag"].(string); value == tag {
+			matches = append(matches, outbound)
+		}
+	}
+	if len(matches) == 0 {
+		return nil, nil
+	}
+	if len(matches) != 1 {
+		return nil, fmt.Errorf("现有 Xray 配置中 tag=%s 的出站数量为 %d，无法安全修改", tag, len(matches))
+	}
+	return matches[0], nil
+}
+
 func parseDirectFreedomOutbound(config []byte, operation string) (map[string]any, map[string]any, error) {
 	var root map[string]any
 	if err := json.Unmarshal(config, &root); err != nil {

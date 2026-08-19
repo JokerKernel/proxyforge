@@ -137,6 +137,57 @@ func TestPatchOutboundIPStrategyMigratesLegacyFallbackRoute(t *testing.T) {
 	}
 }
 
+func TestPatchFallbackIPStrategyUpdatesFallbackDirectOnly(t *testing.T) {
+	p := New()
+	config, err := p.RenderServer(domain.NodeSpec{
+		InboundTag: "xray-one", UserName: "one", Server: "203.0.113.10", Port: 443,
+		SNI: "example.com", Target: "example.com:443",
+		UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private", ShortID: "abcd",
+		XrayFallbackGuard: true, XrayFallbackPort: domain.DefaultXrayFallbackPort,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current, err := p.CurrentFallbackIPStrategy(config); err != nil || current != provider.OutboundIPUnset {
+		t.Fatalf("current=%q error=%v", current, err)
+	}
+	patched, err := p.PatchFallbackIPStrategy(config, provider.OutboundIPPreferIPv4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current, err := p.CurrentFallbackIPStrategy(patched); err != nil || current != provider.OutboundIPPreferIPv4 {
+		t.Fatalf("patched=%q error=%v", current, err)
+	}
+	if current, err := p.CurrentOutboundIPStrategy(patched); err != nil || current != provider.OutboundIPUnset {
+		t.Fatalf("user outbound changed: %q", current)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(patched, &root); err != nil {
+		t.Fatal(err)
+	}
+	if xrayOutboundByTag(t, root, fallbackDirectOutboundTag)["settings"].(map[string]any)["domainStrategy"] != "UseIPv4v6" {
+		t.Fatalf("fallback-direct=%#v", xrayOutboundByTag(t, root, fallbackDirectOutboundTag))
+	}
+	if xrayOutboundByTag(t, root, "direct")["settings"].(map[string]any)["domainStrategy"] != "UseIP" {
+		t.Fatalf("direct=%#v", xrayOutboundByTag(t, root, "direct"))
+	}
+}
+
+func TestPatchFallbackIPStrategyRejectsStandardConfig(t *testing.T) {
+	p := New()
+	config, err := p.RenderServer(domain.NodeSpec{
+		InboundTag: "xray-one", UserName: "one", Server: "203.0.113.10", Port: 443,
+		SNI: "example.com", Target: "example.com:443",
+		UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private", ShortID: "abcd",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.PatchFallbackIPStrategy(config, provider.OutboundIPPreferIPv4); err == nil || !strings.Contains(err.Error(), "未启用回落") {
+		t.Fatalf("error=%v", err)
+	}
+}
+
 func TestCurrentOutboundIPStrategyReportsCustomUnknownValue(t *testing.T) {
 	p := New()
 	config := []byte(`{"outbounds":[{"protocol":"freedom","settings":{"domainStrategy":"UseIPv4"},"tag":"direct"}]}`)

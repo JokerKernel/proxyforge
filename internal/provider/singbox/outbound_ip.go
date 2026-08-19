@@ -108,6 +108,103 @@ func (*Provider) PatchOutboundIPStrategy(config []byte, strategy string) ([]byte
 	return marshalSingBox(root)
 }
 
+func (*Provider) CurrentFallbackIPStrategy(config []byte) (string, error) {
+	_, outbound, err := parseFallbackDirectOutbound(config, "读取")
+	if err != nil {
+		return "", err
+	}
+	if outbound == nil {
+		return provider.OutboundIPUnset, nil
+	}
+	value := singBoxStrategyValue(outbound["domain_resolver"])
+	if value == "" {
+		value, _ = outbound["domain_strategy"].(string)
+		value = strings.TrimSpace(value)
+	}
+	if value == "" {
+		return provider.OutboundIPUnset, nil
+	}
+	if mapped, ok := singBoxOutboundIPByValue[value]; ok {
+		return mapped, nil
+	}
+	return "custom", nil
+}
+
+func (*Provider) PatchFallbackIPStrategy(config []byte, strategy string) ([]byte, error) {
+	strategy = strings.ToLower(strings.TrimSpace(strategy))
+	if !slices.Contains(supportedOutboundIPStrategies, strategy) {
+		return nil, fmt.Errorf("sing-box 回落 IP 策略 %q 无效", strategy)
+	}
+	root, _, err := parseFallbackDirectOutbound(config, "修改")
+	if err != nil {
+		return nil, err
+	}
+	if err := ensureFallbackDirectIsolation(root); err != nil {
+		return nil, err
+	}
+	if err := ensureFallbackDirectOutbound(root); err != nil {
+		return nil, err
+	}
+	outbound, err := findTaggedOutbound(root, fallbackDirectOutboundTag)
+	if err != nil {
+		return nil, err
+	}
+	if outbound == nil {
+		return nil, fmt.Errorf("现有 sing-box 配置中找不到 tag=%s 的出站", fallbackDirectOutboundTag)
+	}
+	if strategy == provider.OutboundIPUnset {
+		delete(outbound, "domain_strategy")
+		delete(outbound, "domain_resolver")
+		return marshalSingBox(root)
+	}
+	ensureLocalDNSServer(root)
+	value := singBoxOutboundIPStrategy[strategy]
+	outbound["domain_resolver"] = map[string]any{"server": "local", "strategy": value}
+	delete(outbound, "domain_strategy")
+	return marshalSingBox(root)
+}
+
+func parseFallbackDirectOutbound(config []byte, _ string) (map[string]any, map[string]any, error) {
+	root, err := parseDNSRoot(config)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !hasTaggedObject(root, "inbounds", fallbackGuardInboundTag) {
+		return nil, nil, fmt.Errorf("现有 sing-box 配置未启用回落防偷跑，无法修改回落 IP")
+	}
+	outbound, err := findTaggedOutbound(root, fallbackDirectOutboundTag)
+	if err != nil {
+		return nil, nil, err
+	}
+	if outbound == nil {
+		return root, nil, nil
+	}
+	if typeName, _ := outbound["type"].(string); typeName != "" && typeName != "direct" {
+		return nil, nil, fmt.Errorf("现有 sing-box 配置中 tag=%s 的出站不是 direct", fallbackDirectOutboundTag)
+	}
+	return root, outbound, nil
+}
+
+func findTaggedOutbound(root map[string]any, tag string) (map[string]any, error) {
+	outbounds, err := objectList(root, "outbounds", "sing-box outbounds")
+	if err != nil {
+		return nil, err
+	}
+	var matches []map[string]any
+	for _, outbound := range outbounds {
+		if value, _ := outbound["tag"].(string); value == tag {
+			matches = append(matches, outbound)
+		}
+	}
+	if len(matches) == 0 {
+		return nil, nil
+	}
+	if len(matches) != 1 {
+		return nil, fmt.Errorf("现有 sing-box 配置中 tag=%s 的出站数量为 %d，无法安全修改", tag, len(matches))
+	}
+	return matches[0], nil
+}
+
 func parseDirectOutbound(config []byte, _ string) (map[string]any, map[string]any, error) {
 	root, err := parseDNSRoot(config)
 	if err != nil {
