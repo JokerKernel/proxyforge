@@ -143,6 +143,7 @@ func (c *commandSet) printConfirmationPanel(title string, details []string, sect
 
 func (c *commandSet) confirmInput(message string, cancelable, defaultYes bool) (bool, error) {
 	fmt.Fprintln(c.out, strings.TrimSpace(message))
+	invalidShown := false
 	for {
 		if defaultYes {
 			fmt.Fprint(c.out, "确认操作？[Y/1=确认，Q/0=返回，回车=确认]： ")
@@ -163,7 +164,14 @@ func (c *commandSet) confirmInput(message string, cancelable, defaultYes bool) (
 		if strings.EqualFold(value, "yes") || strings.EqualFold(value, "y") || value == "1" {
 			return true, nil
 		}
+		if c.interactiveUI() {
+			eraseChoiceRetry(c.out, false)
+		}
+		if value == "" || invalidShown {
+			continue
+		}
 		fmt.Fprintln(c.out, "输入无效，请输入 yes/y 或 1 确认，或输入 q/0 返回当前菜单。")
+		invalidShown = true
 	}
 }
 

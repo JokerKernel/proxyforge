@@ -22,10 +22,13 @@ func TestConfirmAcceptsGlobalAffirmativeForms(t *testing.T) {
 	}
 	t.Run("invalid input retries", func(t *testing.T) {
 		var out bytes.Buffer
-		c := &commandSet{reader: bufio.NewReader(strings.NewReader("n\ny\n")), out: &out}
+		c := &commandSet{reader: bufio.NewReader(strings.NewReader("n\n\nx\ny\n")), out: &out}
 		ok, err := c.confirm("confirm")
 		if err != nil || !ok || !strings.Contains(out.String(), "输入无效，请输入 yes/y") {
 			t.Fatalf("confirmed=%v error=%v output=%q", ok, err, out.String())
+		}
+		if count := strings.Count(out.String(), "输入无效"); count != 1 {
+			t.Fatalf("invalid message count=%d output=%q", count, out.String())
 		}
 	})
 	t.Run("q returns menu", func(t *testing.T) {
