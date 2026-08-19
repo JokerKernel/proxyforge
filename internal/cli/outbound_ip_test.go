@@ -74,7 +74,7 @@ func TestOutboundIPDisplayAndModifyMenu(t *testing.T) {
 func TestModifyConfigMenuShowsFallbackIPWhenEnabled(t *testing.T) {
 	store := system.StateStore{Layout: system.Layout{Root: t.TempDir()}}
 	if err := store.Save(domain.NodeSpec{
-		ManagedBy: "proxyforge", Core: domain.CoreXray, XrayFallbackGuard: true, XrayFallbackPort: domain.DefaultXrayFallbackPort,
+		ManagedBy: "proxyforge", Core: domain.CoreXray, XrayFallbackGuard: true, XrayFallbackPort: 61431,
 	}); err != nil {
 		t.Fatal(err)
 	}

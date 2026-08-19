@@ -115,7 +115,7 @@ func TestPatchOutboundIPStrategyLeavesFallbackOnDualStack(t *testing.T) {
 		InboundTag: "xray-one", UserName: "one", Server: "203.0.113.10", Port: 443,
 		SNI: "example.com", Target: "example.com:443",
 		UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private", ShortID: "abcd",
-		XrayFallbackGuard: true, XrayFallbackPort: domain.DefaultXrayFallbackPort,
+		XrayFallbackGuard: true, XrayFallbackPort: 61431,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -173,7 +173,7 @@ func TestPatchFallbackIPStrategyUpdatesFallbackDirectOnly(t *testing.T) {
 		InboundTag: "xray-one", UserName: "one", Server: "203.0.113.10", Port: 443,
 		SNI: "example.com", Target: "example.com:443",
 		UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private", ShortID: "abcd",
-		XrayFallbackGuard: true, XrayFallbackPort: domain.DefaultXrayFallbackPort,
+		XrayFallbackGuard: true, XrayFallbackPort: 61431,
 	})
 	if err != nil {
 		t.Fatal(err)

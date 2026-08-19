@@ -58,7 +58,7 @@ func TestRealStableBinariesValidateAllConfigs(t *testing.T) {
 					render func(domain.NodeSpec) ([]byte, error)
 				}{"fallback-guard-server", func(n domain.NodeSpec) ([]byte, error) {
 					n.SingBoxFallbackGuard = true
-					n.SingBoxFallbackPort = domain.DefaultSingBoxFallbackPort
+					n.SingBoxFallbackPort = 61432
 					return p.RenderServer(n)
 				}})
 			} else if p.Name() == domain.CoreXray {
@@ -67,7 +67,7 @@ func TestRealStableBinariesValidateAllConfigs(t *testing.T) {
 					render func(domain.NodeSpec) ([]byte, error)
 				}{"fallback-guard-server", func(n domain.NodeSpec) ([]byte, error) {
 					n.XrayFallbackGuard = true
-					n.XrayFallbackPort = domain.DefaultXrayFallbackPort
+					n.XrayFallbackPort = 61431
 					return p.RenderServer(n)
 				}})
 			}

@@ -3,14 +3,12 @@ package domain
 import "time"
 
 const (
-	CoreSingBox                = "sing-box"
-	CoreXray                   = "xray"
-	VisionFlow                 = "xtls-rprx-vision"
-	DefaultUserName            = "one"
-	DefaultXrayFallbackPort    = 61431
-	DefaultSingBoxFallbackPort = 61432
-	FallbackPortMin            = 30000
-	FallbackPortMax            = 65000
+	CoreSingBox     = "sing-box"
+	CoreXray        = "xray"
+	VisionFlow      = "xtls-rprx-vision"
+	DefaultUserName = "one"
+	FallbackPortMin = 30000
+	FallbackPortMax = 65000
 )
 
 type NodeSpec struct {

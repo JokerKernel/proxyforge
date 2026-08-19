@@ -47,22 +47,6 @@ func (c *commandSet) resetCommand() *cobra.Command {
 	return cmd
 }
 
-func (c *commandSet) resetMenu(ctx context.Context, core string) (bool, error) {
-	c.clearScreen()
-	c.printPageHeader(core, "重置节点")
-	c.printMenuChoice("1", "重置 SNI/target（保留节点凭证）")
-	c.printMenuChoice("2", "重置节点凭证（UUID、REALITY 密钥和 short ID；保留 SNI/target）")
-	c.printMenuChoice("0/q", "返回")
-	choice, err := c.chooseNumber("请选择", 0, 2, 1)
-	if err != nil {
-		return false, err
-	}
-	if choice == 0 {
-		return false, nil
-	}
-	return true, c.resetChoice(ctx, core, choice)
-}
-
 func (c *commandSet) resetChoice(ctx context.Context, core string, choice int) error {
 	opts := domain.ResetOptions{}
 	if choice == 1 {

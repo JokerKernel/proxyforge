@@ -171,7 +171,7 @@ func TestPatchOutboundIPStrategyLeavesFallbackOnDualStack(t *testing.T) {
 		InboundTag: "singbox-one", UserName: "one",
 		Server: "203.0.113.10", Port: 443, SNI: "example.com", Target: "example.com:443",
 		UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private", ShortID: "abcd",
-		SingBoxFallbackGuard: true, SingBoxFallbackPort: domain.DefaultSingBoxFallbackPort,
+		SingBoxFallbackGuard: true, SingBoxFallbackPort: 61432,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -221,7 +221,7 @@ func TestPatchFallbackIPStrategyUpdatesFallbackDirectOnly(t *testing.T) {
 		InboundTag: "singbox-one", UserName: "one",
 		Server: "203.0.113.10", Port: 443, SNI: "example.com", Target: "example.com:443",
 		UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private", ShortID: "abcd",
-		SingBoxFallbackGuard: true, SingBoxFallbackPort: domain.DefaultSingBoxFallbackPort,
+		SingBoxFallbackGuard: true, SingBoxFallbackPort: 61432,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -70,7 +70,7 @@ func TestRenderedRealityStreamFieldOrder(t *testing.T) {
 	n := domain.NodeSpec{
 		InboundTag: "xray-one", Server: "203.0.113.10", Port: 443, SNI: "example.com", Target: "example.com:443",
 		UserName: "one", UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private", PublicKey: "public",
-		ShortID: "0123456789abcdef", XrayFallbackPort: domain.DefaultXrayFallbackPort,
+		ShortID: "0123456789abcdef", XrayFallbackPort: 61431,
 	}
 	renders := []struct {
 		name   string
@@ -105,7 +105,7 @@ func TestFallbackGuardServerFollowsOfficialExampleFieldOrder(t *testing.T) {
 	config, err := p.RenderServer(domain.NodeSpec{
 		InboundTag: "xray-one", Server: "203.0.113.10", Port: 443, SNI: "speed.cloudflare.com", Target: "speed.cloudflare.com:443",
 		UserName: "one", UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private", ShortID: "0123456789abcdef",
-		XrayFallbackGuard: true, XrayFallbackPort: domain.DefaultXrayFallbackPort,
+		XrayFallbackGuard: true, XrayFallbackPort: 61431,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -225,7 +225,7 @@ func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 	old := domain.NodeSpec{
 		InboundTag: "xray-one", Server: "203.0.113.10", Port: 443, SNI: "speed.cloudflare.com",
 		Target: "speed.cloudflare.com:443", UserName: "one", UUID: "old-uuid", PrivateKey: "old-private",
-		PublicKey: "old-public", ShortID: "old-short", XrayFallbackGuard: true, XrayFallbackPort: domain.DefaultXrayFallbackPort,
+		PublicKey: "old-public", ShortID: "old-short", XrayFallbackGuard: true, XrayFallbackPort: 61431,
 	}
 	config, err := p.RenderServer(old)
 	if err != nil {

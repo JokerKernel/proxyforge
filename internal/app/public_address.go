@@ -26,36 +26,6 @@ type PublicInterfaceAddress struct {
 	Private   bool
 }
 
-// PhysicalPublicAddress returns a public unicast address assigned directly to
-// an active physical network interface. Private/NAT, loopback, virtual and
-// reserved addresses are deliberately ignored.
-func PhysicalPublicAddress() (string, error) {
-	addresses, err := PhysicalPublicAddresses()
-	if err != nil {
-		return "", err
-	}
-	return addresses[0].Address, nil
-}
-
-// PhysicalPublicAddresses returns every usable address, ordered with IPv4
-// before IPv6 while preserving the operating system's interface order.
-func PhysicalPublicAddresses() ([]PublicInterfaceAddress, error) {
-	addresses, err := PhysicalInterfaceAddresses()
-	if err != nil {
-		return nil, err
-	}
-	public := make([]PublicInterfaceAddress, 0, len(addresses))
-	for _, address := range addresses {
-		if !address.Private {
-			public = append(public, address)
-		}
-	}
-	if len(public) != 0 {
-		return public, nil
-	}
-	return nil, fmt.Errorf("已启用的物理网卡没有公网 IP（内网/NAT 地址不会使用）")
-}
-
 // PhysicalInterfaceAddresses returns addresses assigned to active physical
 // interfaces. Public addresses are returned first, followed by private/NAT
 // addresses; loopback, virtual and reserved addresses are omitted.
@@ -140,17 +110,6 @@ func physicalInterfaceAddresses(candidates []interfaceAddressCandidate) []Public
 		}
 	}
 	return append(append(append(publicIPv4, publicIPv6...), privateIPv4...), privateIPv6...)
-}
-
-func physicalPublicAddresses(candidates []interfaceAddressCandidate) []PublicInterfaceAddress {
-	all := physicalInterfaceAddresses(candidates)
-	public := make([]PublicInterfaceAddress, 0, len(all))
-	for _, address := range all {
-		if !address.Private {
-			public = append(public, address)
-		}
-	}
-	return public
 }
 
 func PublicAddress(ctx context.Context) (string, error) {
