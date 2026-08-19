@@ -67,6 +67,9 @@ func (*Provider) PatchOutboundIPStrategy(config []byte, strategy string) ([]byte
 		outbound["settings"] = settings
 	}
 	settings["domainStrategy"] = xrayOutboundIPStrategy[strategy]
+	if err := ensureFallbackDirectIsolation(root); err != nil {
+		return nil, err
+	}
 	return marshalXray(root)
 }
 
@@ -97,4 +100,100 @@ func parseDirectFreedomOutbound(config []byte, operation string) (map[string]any
 		return nil, nil, fmt.Errorf("现有 Xray 配置中 tag=direct 的 Freedom 出站数量为 %d，无法安全修改", len(matches))
 	}
 	return root, matches[0], nil
+}
+
+func ensureFallbackDirectIsolation(root map[string]any) error {
+	if !xrayHasTaggedObject(root, "inbounds", fallbackGuardInboundTag) {
+		return nil
+	}
+	routing, err := xrayChildObject(root, "routing", "Xray routing")
+	if err != nil {
+		return err
+	}
+	rules, err := xrayObjectList(routing, "rules", "Xray routing rules")
+	if err != nil {
+		return err
+	}
+	var toMove []map[string]any
+	for _, rule := range rules {
+		if !xrayStringListContains(rule["inboundTag"], fallbackGuardInboundTag) {
+			continue
+		}
+		if _, hasDomain := rule["domain"]; !hasDomain {
+			continue
+		}
+		if tag, _ := rule["outboundTag"].(string); tag == "direct" {
+			toMove = append(toMove, rule)
+		}
+	}
+	if len(toMove) == 0 {
+		return nil
+	}
+	if err := ensureFallbackDirectOutbound(root); err != nil {
+		return err
+	}
+	for _, rule := range toMove {
+		rule["outboundTag"] = fallbackDirectOutboundTag
+	}
+	return nil
+}
+
+func ensureFallbackDirectOutbound(root map[string]any) error {
+	outbounds, err := xrayObjectList(root, "outbounds", "Xray outbounds")
+	if err != nil {
+		return err
+	}
+	var existing []map[string]any
+	for _, outbound := range outbounds {
+		if tag, _ := outbound["tag"].(string); tag == fallbackDirectOutboundTag {
+			existing = append(existing, outbound)
+		}
+	}
+	if len(existing) > 1 {
+		return fmt.Errorf("现有 Xray 配置中 tag=%s 的出站数量为 %d，无法安全修改", fallbackDirectOutboundTag, len(existing))
+	}
+	if len(existing) == 1 {
+		if protocol, _ := existing[0]["protocol"].(string); protocol != "" && protocol != "freedom" {
+			return fmt.Errorf("现有 Xray 配置中 tag=%s 的出站不是 freedom", fallbackDirectOutboundTag)
+		}
+		return nil
+	}
+	raw, _ := root["outbounds"].([]any)
+	inserted := map[string]any{
+		"protocol": "freedom",
+		"settings": map[string]any{"domainStrategy": "UseIP"},
+		"tag":      fallbackDirectOutboundTag,
+	}
+	index := len(raw)
+	for i, item := range raw {
+		object, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if tag, _ := object["tag"].(string); tag == "direct" {
+			index = i + 1
+			break
+		}
+	}
+	root["outbounds"] = slices.Insert(raw, index, any(inserted))
+	return nil
+}
+
+func xrayHasTaggedObject(root map[string]any, key, tag string) bool {
+	objects, err := xrayObjectList(root, key, "Xray "+key)
+	if err != nil {
+		return false
+	}
+	count := 0
+	for _, object := range objects {
+		if value, _ := object["tag"].(string); value == tag {
+			count++
+		}
+	}
+	return count == 1
+}
+
+func xrayIsFallbackAllowOutbound(value any) bool {
+	tag, _ := value.(string)
+	return tag == "direct" || tag == fallbackDirectOutboundTag
 }

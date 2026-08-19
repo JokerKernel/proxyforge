@@ -224,7 +224,10 @@ func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 	return marshalXray(v)
 }
 
-const fallbackGuardInboundTag = "dokodemo-in"
+const (
+	fallbackGuardInboundTag   = "dokodemo-in"
+	fallbackDirectOutboundTag = "fallback-direct"
+)
 
 func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 	host, rawPort, err := net.SplitHostPort(n.Target)
@@ -252,14 +255,14 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 	}
 	routing := privateNetworkRouting()
 	routing.Rules = append([]routingRule{
-		{InboundTag: []string{fallbackGuardInboundTag}, Domain: []string{n.SNI}, OutboundTag: "direct"},
+		{InboundTag: []string{fallbackGuardInboundTag}, Domain: []string{n.SNI}, OutboundTag: fallbackDirectOutboundTag},
 		{InboundTag: []string{fallbackGuardInboundTag}, OutboundTag: "blocked-private"},
 	}, routing.Rules...)
 	v := xrayConfig{
 		Log:       map[string]any{"loglevel": "warning"},
 		DNS:       systemDNS(),
 		Inbounds:  []any{dokodemo, vless},
-		Outbounds: []xrayOutbound{directOutbound(), blockedOutbound()},
+		Outbounds: []xrayOutbound{directOutbound(), fallbackDirectOutbound(), blockedOutbound()},
 		Routing:   routing,
 	}
 	return marshalXray(v)
@@ -311,6 +314,10 @@ func blockedOutbound() xrayOutbound {
 
 func directOutbound() xrayOutbound {
 	return xrayOutbound{Protocol: "freedom", Settings: map[string]any{"domainStrategy": "UseIP"}, Tag: "direct"}
+}
+
+func fallbackDirectOutbound() xrayOutbound {
+	return xrayOutbound{Protocol: "freedom", Settings: map[string]any{"domainStrategy": "UseIP"}, Tag: fallbackDirectOutboundTag}
 }
 
 func (*Provider) ValidateConfig(ctx context.Context, r provider.Runner, path string) error {

@@ -97,7 +97,10 @@ func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 	return marshalSingBox(v)
 }
 
-const fallbackGuardInboundTag = "singbox-fallback-in"
+const (
+	fallbackGuardInboundTag   = "singbox-fallback-in"
+	fallbackDirectOutboundTag = "fallback-direct"
+)
 
 func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 	host, rawPort, err := net.SplitHostPort(n.Target)
@@ -124,7 +127,7 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 	rules := route["rules"].([]any)
 	route["rules"] = append([]any{
 		map[string]any{"inbound": []string{fallbackGuardInboundTag}, "action": "sniff"},
-		map[string]any{"inbound": []string{fallbackGuardInboundTag}, "protocol": []string{"tls"}, "domain": []string{n.SNI}, "action": "route", "outbound": "direct"},
+		map[string]any{"inbound": []string{fallbackGuardInboundTag}, "protocol": []string{"tls"}, "domain": []string{n.SNI}, "action": "route", "outbound": fallbackDirectOutboundTag},
 		// 明文 HTTP 也转发到同一回落目标；目标端口通常为 443，目标站点
 		// 可能返回 400（明文请求访问 HTTPS 端口），但不会在本地直接拒绝。
 		httpFallbackRule(n),
@@ -132,11 +135,14 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 		map[string]any{"inbound": []string{n.InboundTag}, "action": "sniff"},
 	}, rules...)
 	v := map[string]any{
-		"log":       map[string]any{"level": "info", "timestamp": true},
-		"dns":       map[string]any{"servers": []any{map[string]any{"type": "local", "tag": "local"}}},
-		"inbounds":  []any{fallback, vless},
-		"outbounds": []any{map[string]any{"type": "direct", "tag": "direct"}},
-		"route":     route,
+		"log":      map[string]any{"level": "info", "timestamp": true},
+		"dns":      map[string]any{"servers": []any{map[string]any{"type": "local", "tag": "local"}}},
+		"inbounds": []any{fallback, vless},
+		"outbounds": []any{
+			map[string]any{"type": "direct", "tag": "direct"},
+			map[string]any{"type": "direct", "tag": fallbackDirectOutboundTag},
+		},
+		"route": route,
 	}
 	return marshalSingBox(v)
 }
@@ -144,7 +150,7 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 func httpFallbackRule(n domain.NodeSpec) map[string]any {
 	rule := map[string]any{
 		"inbound": []string{fallbackGuardInboundTag}, "protocol": []string{"http"},
-		"action": "route", "outbound": "direct",
+		"action": "route", "outbound": fallbackDirectOutboundTag,
 	}
 	if n.SingBoxFallbackHTTPDomain {
 		rule["domain"] = []string{n.SNI}

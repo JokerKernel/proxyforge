@@ -40,6 +40,7 @@ func (c *commandSet) outboundIPMenu(ctx context.Context, core string) error {
 
 	sections := []confirmationSection{{title: "将执行", items: []string{
 		"按 " + core + " 出站访问域名时的地址族策略更新配置",
+		"只影响用户代理流量，REALITY 回落仍保持双栈",
 		"不修改 DNS 服务器列表和系统全局 DNS",
 		"使用内核原生命令校验候选配置",
 		"备份并原子更新当前服务端配置",

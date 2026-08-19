@@ -37,9 +37,9 @@ sudo proxyforge config generate xray \
 
 sing-box 和 Xray 默认生成回落防偷跑配置。可用 `--standard-config` 恢复标准模板；sing-box 还支持 `--simplified-config`。这些模式参数不能组合。
 
-- sing-box 防偷跑模式在 `127.0.0.1` 创建 `direct` 入站，将 REALITY handshake 指向该入站，通过 TLS sniff 和域名规则控制真实 target；内部端口默认 61432。
+- sing-box 防偷跑模式在 `127.0.0.1` 创建 `direct` 入站，将 REALITY handshake 指向该入站，通过 TLS sniff 和域名规则把合法回落转到独立的 `fallback-direct`（默认双栈）；内部端口默认 61432。
 - sing-box 的明文 HTTP 回落默认不限制 Host。使用 `--sing-box-fallback-http-domain`（或交互菜单中的对应开关）后，HTTP 规则才会写入当前 SNI 的域名限制。
-- Xray 防偷跑模式在 `127.0.0.1` 创建 `dokodemo-door` 入站，将 REALITY target 指向该入站，匹配 `serverNames` 的流量走 direct，其余进入 blackhole；内部端口默认 61431。
+- Xray 防偷跑模式在 `127.0.0.1` 创建 `dokodemo-door` 入站，将 REALITY target 指向该入站，匹配 `serverNames` 的流量走独立的 `fallback-direct`（默认双栈），其余进入 blackhole；内部端口默认 61431。
 - `--sing-box-fallback-port` 和 `--xray-fallback-port` 可修改内部端口。端口不能与公网监听端口或另一个受管节点冲突。
 - 原有的 `--sing-box-fallback-guard` 和 `--xray-fallback-guard` 参数继续兼容，但默认模式不需要显式提供。
 
@@ -93,10 +93,11 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 ## 出站 IP
 
-“服务端配置 → 修改配置 → 出站 IP”只改 tag 为 `direct` 的出站，不改 DNS 服务器列表。
+“服务端配置 → 修改配置 → 出站 IP”只改用户代理走的 `direct` 出站，不改 DNS 服务器列表，也不改 REALITY 回落访问目标站的地址族。
 
 - 优先 IPv4 / 优先 IPv6：Xray 写入 Freedom `UseIPv4v6` / `UseIPv6v4`（先解析优先族，解析不到再试另一族；已解析出优先族后连接失败不会回退）。sing-box 给 `resolve` 规则加上 `prefer_ipv4` / `prefer_ipv6`（可连接回退）；简化配置没有该规则时会补一条同样的 `resolve`。
 - 仅 IPv4 / 仅 IPv6：Xray 写入 `ForceIPv4` / `ForceIPv6`；sing-box 同上写入 `ipv4_only` / `ipv6_only`。对端只有另一地址族时会失败。
+- 回落：防偷跑配置把合法 SNI 回落指到独立的 `fallback-direct`，始终保持默认双栈。给已有配置设置出站 IP 时，若回落还挂在 `direct` 上，会自动拆开。
 - 恢复默认：Xray 写回 Freedom `UseIP`；sing-box 去掉这些 `strategy`。标准配置会保留原来的 `resolve` 规则和本地 DNS；简化配置会撤掉补上的 `resolve` 规则，以及仅为它添加的本地 DNS。
 - 生成配置的默认状态是未设置（双栈）。重置 SNI/凭证会保留此项；完整生成会覆盖。
 

@@ -73,6 +73,70 @@ func TestPatchOutboundIPStrategyUpdatesFreedomOnly(t *testing.T) {
 	}
 }
 
+func TestPatchOutboundIPStrategyLeavesFallbackOnDualStack(t *testing.T) {
+	p := New()
+	config, err := p.RenderServer(domain.NodeSpec{
+		InboundTag: "xray-one", UserName: "one", Server: "203.0.113.10", Port: 443,
+		SNI: "example.com", Target: "example.com:443",
+		UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private", ShortID: "abcd",
+		XrayFallbackGuard: true, XrayFallbackPort: domain.DefaultXrayFallbackPort,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	patched, err := p.PatchOutboundIPStrategy(config, provider.OutboundIPPreferIPv4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(patched, &root); err != nil {
+		t.Fatal(err)
+	}
+	direct := xrayOutboundByTag(t, root, "direct")
+	if direct["settings"].(map[string]any)["domainStrategy"] != "UseIPv4v6" {
+		t.Fatalf("direct=%#v", direct)
+	}
+	fallback := xrayOutboundByTag(t, root, fallbackDirectOutboundTag)
+	if fallback["settings"].(map[string]any)["domainStrategy"] != "UseIP" {
+		t.Fatalf("fallback-direct should stay dual-stack: %#v", fallback)
+	}
+	rule := root["routing"].(map[string]any)["rules"].([]any)[0].(map[string]any)
+	if rule["outboundTag"] != fallbackDirectOutboundTag {
+		t.Fatalf("fallback allow rule=%#v", rule)
+	}
+}
+
+func TestPatchOutboundIPStrategyMigratesLegacyFallbackRoute(t *testing.T) {
+	p := New()
+	config := []byte(`{
+  "inbounds": [{"tag":"dokodemo-in","protocol":"dokodemo-door","listen":"127.0.0.1","port":61431}],
+  "outbounds": [{"protocol":"freedom","settings":{"domainStrategy":"UseIP"},"tag":"direct"}],
+  "routing": {"rules":[
+    {"inboundTag":["dokodemo-in"],"domain":["example.com"],"outboundTag":"direct"},
+    {"inboundTag":["dokodemo-in"],"outboundTag":"blocked-private"}
+  ]}
+}`)
+	patched, err := p.PatchOutboundIPStrategy(config, provider.OutboundIPIPv4Only)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(patched, &root); err != nil {
+		t.Fatal(err)
+	}
+	if xrayOutboundByTag(t, root, "direct")["settings"].(map[string]any)["domainStrategy"] != "ForceIPv4" {
+		t.Fatal("user outbound was not updated")
+	}
+	fallback := xrayOutboundByTag(t, root, fallbackDirectOutboundTag)
+	if fallback["settings"].(map[string]any)["domainStrategy"] != "UseIP" {
+		t.Fatalf("migrated fallback-direct=%#v", fallback)
+	}
+	rule := root["routing"].(map[string]any)["rules"].([]any)[0].(map[string]any)
+	if rule["outboundTag"] != fallbackDirectOutboundTag {
+		t.Fatalf("legacy fallback rule was not moved: %#v", rule)
+	}
+}
+
 func TestCurrentOutboundIPStrategyReportsCustomUnknownValue(t *testing.T) {
 	p := New()
 	config := []byte(`{"outbounds":[{"protocol":"freedom","settings":{"domainStrategy":"UseIPv4"},"tag":"direct"}]}`)

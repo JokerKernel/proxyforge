@@ -106,7 +106,7 @@ func TestRenderedConfigsFollowOfficialFieldOrder(t *testing.T) {
 		route := singBoxConfigSection(t, config, `"route"`, "")
 		assertSingBoxFieldsInOrder(t, route,
 			`"inbound"`, `"action": "sniff"`,
-			`"inbound"`, `"protocol"`, `"domain"`, `"action": "route"`, `"outbound": "direct"`,
+			`"inbound"`, `"protocol"`, `"domain"`, `"action": "route"`, `"outbound": "fallback-direct"`,
 			`"inbound"`, `"action": "reject"`,
 		)
 	})
@@ -253,12 +253,12 @@ func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, t
 	allow := rules[1].(map[string]any)
 	domains := allow["domain"].([]any)
 	protocols := allow["protocol"].([]any)
-	if allow["action"] != "route" || allow["outbound"] != "direct" || len(protocols) != 1 || protocols[0] != "tls" || len(domains) != 1 || domains[0] != allowedDomain {
+	if allow["action"] != "route" || allow["outbound"] != fallbackDirectOutboundTag || len(protocols) != 1 || protocols[0] != "tls" || len(domains) != 1 || domains[0] != allowedDomain {
 		t.Fatalf("fallback allow rule=%#v", allow)
 	}
 	httpAllow := rules[2].(map[string]any)
 	httpProtocols := httpAllow["protocol"].([]any)
-	if httpAllow["action"] != "route" || httpAllow["outbound"] != "direct" || len(httpProtocols) != 1 || httpProtocols[0] != "http" {
+	if httpAllow["action"] != "route" || httpAllow["outbound"] != fallbackDirectOutboundTag || len(httpProtocols) != 1 || httpProtocols[0] != "http" {
 		t.Fatalf("fallback HTTP allow rule=%#v", httpAllow)
 	}
 	httpDomains, hasHTTPDomains := httpAllow["domain"].([]any)

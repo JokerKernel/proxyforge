@@ -91,6 +91,9 @@ func (*Provider) PatchOutboundIPStrategy(config []byte, strategy string) ([]byte
 	clearLeftoverResolverStrategy(root, outbound)
 	if strategy == provider.OutboundIPUnset {
 		restoreSimplifiedRoute(root)
+		if err := ensureFallbackDirectIsolation(root); err != nil {
+			return nil, err
+		}
 		return marshalSingBox(root)
 	}
 
@@ -98,6 +101,9 @@ func (*Provider) PatchOutboundIPStrategy(config []byte, strategy string) ([]byte
 	if !setResolveRuleStrategy(root, value) {
 		ensureLocalDNSServer(root)
 		prependResolveRule(root, value)
+	}
+	if err := ensureFallbackDirectIsolation(root); err != nil {
+		return nil, err
 	}
 	return marshalSingBox(root)
 }
@@ -322,4 +328,96 @@ func domainResolverServer(raw any) string {
 	default:
 		return ""
 	}
+}
+
+func ensureFallbackDirectIsolation(root map[string]any) error {
+	if !hasTaggedObject(root, "inbounds", fallbackGuardInboundTag) {
+		return nil
+	}
+	route, err := childObject(root, "route", "sing-box route")
+	if err != nil {
+		return err
+	}
+	rules, err := objectList(route, "rules", "sing-box route rules")
+	if err != nil {
+		return err
+	}
+	var toMove []map[string]any
+	for _, rule := range rules {
+		if action, _ := rule["action"].(string); action != "route" {
+			continue
+		}
+		if !stringListContains(rule["inbound"], fallbackGuardInboundTag) {
+			continue
+		}
+		if outbound, _ := rule["outbound"].(string); outbound == "direct" {
+			toMove = append(toMove, rule)
+		}
+	}
+	if len(toMove) == 0 {
+		return nil
+	}
+	if err := ensureFallbackDirectOutbound(root); err != nil {
+		return err
+	}
+	for _, rule := range toMove {
+		rule["outbound"] = fallbackDirectOutboundTag
+	}
+	return nil
+}
+
+func ensureFallbackDirectOutbound(root map[string]any) error {
+	outbounds, err := objectList(root, "outbounds", "sing-box outbounds")
+	if err != nil {
+		return err
+	}
+	var existing []map[string]any
+	for _, outbound := range outbounds {
+		if tag, _ := outbound["tag"].(string); tag == fallbackDirectOutboundTag {
+			existing = append(existing, outbound)
+		}
+	}
+	if len(existing) > 1 {
+		return fmt.Errorf("现有 sing-box 配置中 tag=%s 的出站数量为 %d，无法安全修改", fallbackDirectOutboundTag, len(existing))
+	}
+	if len(existing) == 1 {
+		if typeName, _ := existing[0]["type"].(string); typeName != "" && typeName != "direct" {
+			return fmt.Errorf("现有 sing-box 配置中 tag=%s 的出站不是 direct", fallbackDirectOutboundTag)
+		}
+		return nil
+	}
+	raw, _ := root["outbounds"].([]any)
+	inserted := map[string]any{"type": "direct", "tag": fallbackDirectOutboundTag}
+	index := len(raw)
+	for i, item := range raw {
+		object, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if tag, _ := object["tag"].(string); tag == "direct" {
+			index = i + 1
+			break
+		}
+	}
+	root["outbounds"] = slices.Insert(raw, index, any(inserted))
+	return nil
+}
+
+func hasTaggedObject(root map[string]any, key, tag string) bool {
+	objects, err := objectList(root, key, "sing-box "+key)
+	if err != nil {
+		return false
+	}
+	count := 0
+	for _, object := range objects {
+		if value, _ := object["tag"].(string); value == tag {
+			count++
+		}
+	}
+	return count == 1
+}
+
+func isFallbackAllowOutbound(value any) bool {
+	tag, _ := value.(string)
+	return tag == "direct" || tag == fallbackDirectOutboundTag
 }

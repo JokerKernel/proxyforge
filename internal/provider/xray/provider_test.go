@@ -288,7 +288,7 @@ func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, t
 		t.Fatalf("vless inbound=%#v", vless)
 	}
 	rules := root["routing"].(map[string]any)["rules"].([]any)
-	if len(rules) != 3 || rules[0].(map[string]any)["outboundTag"] != "direct" || rules[1].(map[string]any)["outboundTag"] != "blocked-private" {
+	if len(rules) != 3 || rules[0].(map[string]any)["outboundTag"] != fallbackDirectOutboundTag || rules[1].(map[string]any)["outboundTag"] != "blocked-private" {
 		t.Fatalf("routing rules=%#v", rules)
 	}
 }

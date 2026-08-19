@@ -98,7 +98,7 @@ func patchFallbackDomain(root map[string]any, oldSNI, nextSNI string, restrictHT
 	for _, protocol := range protocols {
 		var matches []map[string]any
 		for _, rule := range rules {
-			if rule["action"] != "route" || rule["outbound"] != "direct" ||
+			if rule["action"] != "route" || !isFallbackAllowOutbound(rule["outbound"]) ||
 				!stringListContains(rule["inbound"], fallbackGuardInboundTag) ||
 				!stringListContains(rule["protocol"], protocol) {
 				continue

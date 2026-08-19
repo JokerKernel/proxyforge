@@ -97,7 +97,10 @@ func xrayPatchFallbackDomain(root map[string]any, oldSNI, nextSNI string) error 
 	}
 	var matches []map[string]any
 	for _, rule := range rules {
-		if rule["outboundTag"] == "direct" && xrayStringListContains(rule["inboundTag"], fallbackGuardInboundTag) {
+		if !xrayIsFallbackAllowOutbound(rule["outboundTag"]) || !xrayStringListContains(rule["inboundTag"], fallbackGuardInboundTag) {
+			continue
+		}
+		if _, hasDomain := rule["domain"]; hasDomain {
 			matches = append(matches, rule)
 		}
 	}
