@@ -90,14 +90,15 @@ func (*Provider) PatchOutboundIPStrategy(config []byte, strategy string) ([]byte
 	delete(outbound, "domain_strategy")
 	clearLeftoverResolverStrategy(root, outbound)
 	if strategy == provider.OutboundIPUnset {
+		restoreSimplifiedRoute(root)
 		return marshalSingBox(root)
 	}
 
 	value := singBoxOutboundIPStrategy[strategy]
-	if setResolveRuleStrategy(root, value) {
-		return marshalSingBox(root)
+	if !setResolveRuleStrategy(root, value) {
+		ensureLocalDNSServer(root)
+		prependResolveRule(root, value)
 	}
-	outbound["domain_resolver"] = setDomainResolverStrategy(outbound["domain_resolver"], "local", value)
 	return marshalSingBox(root)
 }
 
@@ -175,6 +176,108 @@ func setResolveRuleStrategy(root map[string]any, strategy string) bool {
 	return updated
 }
 
+func prependResolveRule(root map[string]any, strategy string) {
+	route, ok := root["route"].(map[string]any)
+	if !ok || route == nil {
+		route = map[string]any{}
+		root["route"] = route
+	}
+	rules, _ := route["rules"].([]any)
+	route["rules"] = append([]any{map[string]any{
+		"action": "resolve", "server": "local", "strategy": strategy,
+	}}, rules...)
+}
+
+func ensureLocalDNSServer(root map[string]any) {
+	dns, ok := root["dns"].(map[string]any)
+	if !ok || dns == nil {
+		root["dns"] = map[string]any{
+			"servers": []any{map[string]any{"type": "local", "tag": "local"}},
+		}
+		return
+	}
+	servers, _ := dns["servers"].([]any)
+	for _, raw := range servers {
+		server, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if tag, _ := server["tag"].(string); tag == "local" {
+			return
+		}
+	}
+	dns["servers"] = append([]any{map[string]any{"type": "local", "tag": "local"}}, servers...)
+}
+
+func restoreSimplifiedRoute(root map[string]any) {
+	route, ok := root["route"].(map[string]any)
+	if !ok {
+		return
+	}
+	if _, exists := route["default_domain_resolver"]; exists {
+		return
+	}
+	rules, ok := route["rules"].([]any)
+	if !ok {
+		return
+	}
+	kept := make([]any, 0, len(rules))
+	for _, raw := range rules {
+		rule, ok := raw.(map[string]any)
+		if !ok {
+			kept = append(kept, raw)
+			continue
+		}
+		if isBareResolveRule(rule) {
+			continue
+		}
+		kept = append(kept, rule)
+	}
+	route["rules"] = kept
+	if dnsIsOnlyLocal(root) {
+		delete(root, "dns")
+	}
+}
+
+func isBareResolveRule(rule map[string]any) bool {
+	if action, _ := rule["action"].(string); action != "resolve" {
+		return false
+	}
+	for key := range rule {
+		if key != "action" && key != "server" && key != "strategy" {
+			return false
+		}
+	}
+	return true
+}
+
+func dnsIsOnlyLocal(root map[string]any) bool {
+	dns, ok := root["dns"].(map[string]any)
+	if !ok {
+		return false
+	}
+	servers, ok := dns["servers"].([]any)
+	if !ok || len(servers) != 1 {
+		return false
+	}
+	server, ok := servers[0].(map[string]any)
+	if !ok {
+		return false
+	}
+	if tag, _ := server["tag"].(string); tag != "local" {
+		return false
+	}
+	if serverType, _ := server["type"].(string); serverType != "local" {
+		return false
+	}
+	for key := range dns {
+		if key != "servers" {
+			return false
+		}
+	}
+	return true
+}
+
 func clearOutboundDomainResolver(outbound map[string]any) {
 	raw, exists := outbound["domain_resolver"]
 	if !exists {
@@ -207,23 +310,6 @@ func clearDomainResolverStrategy(raw any) any {
 		}
 	}
 	return object
-}
-
-func setDomainResolverStrategy(raw any, fallbackServer, strategy string) map[string]any {
-	server := domainResolverServer(raw)
-	if server == "" {
-		server = fallbackServer
-	}
-	resolver := map[string]any{"server": server, "strategy": strategy}
-	if object, ok := raw.(map[string]any); ok {
-		for key, value := range object {
-			if key == "server" || key == "strategy" {
-				continue
-			}
-			resolver[key] = value
-		}
-	}
-	return resolver
 }
 
 func domainResolverServer(raw any) string {
