@@ -131,7 +131,7 @@ func TestFillGenerateRequiresExplicitFastCandidateSelection(t *testing.T) {
 		reader: bufio.NewReader(strings.NewReader("\n\n\n\n2\nyes\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
-			if len(candidates) < 10 || server != "server.example.com" || limit != app.DefaultSNICandidateLimit {
+			if len(candidates) < 10 || server != "server.example.com" || limit != len(defaultSNICandidates) {
 				t.Fatalf("probe candidates=%d server=%q limit=%d", len(candidates), server, limit)
 			}
 			return []app.SNICandidate{
@@ -147,8 +147,8 @@ func TestFillGenerateRequiresExplicitFastCandidateSelection(t *testing.T) {
 	if opts.SNI != "second.example.com" || opts.Target != "second.example.com:443" || opts.UserName != domain.DefaultUserName || opts.InboundTag != domain.DefaultInboundTag(domain.CoreSingBox) {
 		t.Fatalf("generate options=%#v", opts)
 	}
-	if !strings.Contains(out.String(), "最快的候选域名（按较快地址族延迟排序）") || !strings.Contains(out.String(), "2 second.example.com") ||
-		!strings.Contains(out.String(), "必须输入编号") || !strings.Contains(out.String(), "TLS 1.3 / h2") ||
+	if !strings.Contains(out.String(), "全部有效候选（按较快地址族延迟排序）") || !strings.Contains(out.String(), "2 second.example.com") ||
+		!strings.Contains(out.String(), "第 1/1 页") || !strings.Contains(out.String(), "TLS 1.3 / h2") ||
 		!strings.Contains(out.String(), "Akamai（CNAME）") || !strings.Contains(out.String(), "均已通过 DNS、TLS 和证书名称校验") ||
 		strings.Contains(out.String(), "[默认]") || strings.Contains(out.String(), "证书 SAN=fast.example.com") {
 		t.Fatalf("candidate menu output=%q", out.String())

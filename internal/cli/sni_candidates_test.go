@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -58,6 +59,49 @@ func TestRetestSNICandidatesCanRunAgainWithoutChangingState(t *testing.T) {
 	}
 	if !reflect.DeepEqual(gotState, wantState) {
 		t.Fatalf("state changed:\nwant=%#v\ngot=%#v", wantState, gotState)
+	}
+}
+
+func TestSNIPageBounds(t *testing.T) {
+	start, end, pages := sniPageBounds(23, 0, 10)
+	if start != 0 || end != 10 || pages != 3 {
+		t.Fatalf("page0=%d-%d pages=%d", start, end, pages)
+	}
+	start, end, pages = sniPageBounds(23, 2, 10)
+	if start != 20 || end != 23 || pages != 3 {
+		t.Fatalf("page2=%d-%d pages=%d", start, end, pages)
+	}
+	start, end, pages = sniPageBounds(0, 0, 10)
+	if start != 0 || end != 0 || pages != 1 {
+		t.Fatalf("empty=%d-%d pages=%d", start, end, pages)
+	}
+}
+
+func TestSelectSNICandidatePaginatesAllResults(t *testing.T) {
+	results := make([]app.SNICandidate, 12)
+	for i := range results {
+		results[i] = app.SNICandidate{Domain: fmt.Sprintf("n%d.example.com", i+1), Latency: time.Duration(i+1) * time.Millisecond}
+	}
+	var out bytes.Buffer
+	c := &commandSet{
+		reader: bufio.NewReader(strings.NewReader("n\n11\n")),
+		out:    &out,
+		probeSNI: func(context.Context, []string, string, int) ([]app.SNICandidate, error) {
+			return results, nil
+		},
+	}
+	got, err := c.selectSNICandidate(context.Background(), "server.example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "n11.example.com" {
+		t.Fatalf("selected=%q", got)
+	}
+	if !strings.Contains(out.String(), "第 1/2 页，共 12 个") ||
+		!strings.Contains(out.String(), "第 2/2 页，共 12 个") ||
+		!strings.Contains(out.String(), "  11 n11.example.com") ||
+		!strings.Contains(out.String(), "下一页") {
+		t.Fatalf("pagination output=%q", out.String())
 	}
 }
 

@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	// DefaultSNICandidateLimit is how many fastest valid SNI targets the
-	// generate and retest menus keep after probing.
+	// DefaultSNICandidateLimit is kept for callers that still pass a
+	// positive cap; the menus now request every valid probe result.
 	DefaultSNICandidateLimit   = 20
 	defaultSNIProbeConcurrency = 20
 	defaultSNIProbeTimeout     = 4 * time.Second

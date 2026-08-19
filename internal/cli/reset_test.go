@@ -76,7 +76,7 @@ func TestFillResetUsesSameAutomaticSNICandidatesAsGenerate(t *testing.T) {
 		reader: bufio.NewReader(strings.NewReader("\n1\n\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
-			if len(candidates) < 10 || server != "server.example.com" || limit != app.DefaultSNICandidateLimit {
+			if len(candidates) < 10 || server != "server.example.com" || limit != len(defaultSNICandidates) {
 				t.Fatalf("probe candidates=%d server=%q limit=%d", len(candidates), server, limit)
 			}
 			return []app.SNICandidate{{Domain: "new.example.com", Latency: 4 * time.Millisecond, TLSVersion: "1.3", ALPN: "h2", CertificateSANs: []string{"new.example.com"}, CDN: "未发现明显特征"}}, nil
