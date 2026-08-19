@@ -189,6 +189,8 @@ func decorateSourceLabels(value string) string {
 		{"[官方脚本/信息]", ansiBlue},
 		{"[官方脚本/风险]", ansiBoldYellow},
 		{"[默认]", ansiBoldYellow},
+		{"[已安装]", ansiOrange},
+		{"[未安装]", ansiBrightBlack},
 	}
 	value = colorizeLabel(value, "[命令]", commandLabelColor(value))
 	value = colorizeLabel(value, "[状态]", statusLabelColor(value))

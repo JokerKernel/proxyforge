@@ -15,9 +15,11 @@ const proxyForgeHeaderRule = "╰───────────────�
 
 const menuDescriptionColumn = 18
 
+const menuStatusColumn = 20
+
 func (c *commandSet) menu(ctx context.Context) error {
 	for {
-		core, selected, err := c.selectCore()
+		core, selected, err := c.selectCore(ctx)
 		if err != nil {
 			if err == io.EOF {
 				return nil
@@ -179,11 +181,11 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 	}
 }
 
-func (c *commandSet) selectCore() (string, bool, error) {
+func (c *commandSet) selectCore(ctx context.Context) (string, bool, error) {
 	c.clearScreen()
 	c.printProxyForgeHeader()
-	c.printMenuChoice("1", "Xray-core（管理 Xray-core 内核与节点配置，默认）")
-	c.printMenuChoice("2", "sing-box（管理 sing-box 内核与节点配置）")
+	c.printMenuStatusChoice("1", "Xray-core", c.coreInstalled(ctx, domain.CoreXray))
+	c.printMenuStatusChoice("2", "sing-box", c.coreInstalled(ctx, domain.CoreSingBox))
 	c.printMenuChoice("0/q", "退出")
 	choice, err := c.chooseNumber("请选择", 0, 2, 1)
 	if err != nil {
@@ -197,6 +199,13 @@ func (c *commandSet) selectCore() (string, bool, error) {
 	default:
 		return "", false, nil
 	}
+}
+
+func (c *commandSet) coreInstalled(ctx context.Context, core string) bool {
+	if c.app == nil {
+		return false
+	}
+	return c.app.CheckCoreInstalled(ctx, core) == nil
 }
 
 func (c *commandSet) printCoreMenu(core string) {
@@ -242,6 +251,18 @@ func (c *commandSet) printMenuChoice(key, label string) {
 		fmt.Fprintf(&line, "%s-- %s", strings.Repeat(" ", padding), description)
 	}
 	fmt.Fprintln(c.out, line.String())
+}
+
+func (c *commandSet) printMenuStatusChoice(key, title string, installed bool) {
+	status := "[未安装]"
+	if installed {
+		status = "[已安装]"
+	}
+	padding := menuStatusColumn - menuDisplayWidth(title)
+	if padding < 2 {
+		padding = 2
+	}
+	fmt.Fprintf(c.out, "  %-3s %s%s%s\n", key, title, strings.Repeat(" ", padding), status)
 }
 
 func menuDisplayWidth(value string) int {

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -209,7 +210,7 @@ func TestSelectCoreUsesNumericChoice(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
 			c := &commandSet{reader: bufio.NewReader(strings.NewReader(tt.input)), out: &out}
-			got, selected, err := c.selectCore()
+			got, selected, err := c.selectCore(context.Background())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -227,18 +228,77 @@ func TestSelectCoreAcceptsQToExit(t *testing.T) {
 		out:            &out,
 		currentVersion: "v1.2.6",
 	}
-	core, selected, err := c.selectCore()
+	core, selected, err := c.selectCore(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if selected || core != "" {
 		t.Fatalf("core=%q selected=%v, want exit", core, selected)
 	}
-	if !strings.Contains(out.String(), "  1   Xray-core         -- 管理 Xray-core 内核与节点配置，默认") ||
-		!strings.Contains(out.String(), "  2   sing-box          -- 管理 sing-box 内核与节点配置") ||
+	if !strings.Contains(out.String(), "  1   Xray-core           [未安装]") ||
+		!strings.Contains(out.String(), "  2   sing-box            [未安装]") ||
 		!strings.Contains(out.String(), "  0/q 退出") ||
 		!strings.Contains(out.String(), "❯ 请选择 [1]：") {
 		t.Fatalf("menu style output=%q", out.String())
+	}
+}
+
+func TestSelectCoreShowsInstallStatus(t *testing.T) {
+	a := &app.App{
+		Registry:  provider.NewRegistry(singbox.New(), xray.New()),
+		RootCheck: func() error { return nil },
+		LookPath: func(name string) (string, error) {
+			if name == "xray" {
+				return "/usr/bin/xray", nil
+			}
+			return "", exec.ErrNotFound
+		},
+		Services: system.ServiceManager{Runner: installedUnitRunner{}},
+	}
+	var out bytes.Buffer
+	c := &commandSet{
+		app:    a,
+		reader: bufio.NewReader(strings.NewReader("q\n")),
+		out:    &out,
+	}
+	if _, _, err := c.selectCore(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "  1   Xray-core           [已安装]") {
+		t.Fatalf("installed xray status missing: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "  2   sing-box            [未安装]") {
+		t.Fatalf("missing sing-box status: %q", out.String())
+	}
+}
+
+func TestSelectCoreColorsInstallStatus(t *testing.T) {
+	a := &app.App{
+		Registry:  provider.NewRegistry(singbox.New(), xray.New()),
+		RootCheck: func() error { return nil },
+		LookPath: func(name string) (string, error) {
+			if name == "xray" {
+				return "/usr/bin/xray", nil
+			}
+			return "", exec.ErrNotFound
+		},
+		Services: system.ServiceManager{Runner: installedUnitRunner{}},
+	}
+	var out bytes.Buffer
+	c := &commandSet{
+		app:    a,
+		reader: bufio.NewReader(strings.NewReader("q\n")),
+		out:    system.NewColorWriter(&out, true),
+	}
+	if _, _, err := c.selectCore(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "\x1b[38;5;208m[已安装]\x1b[0m") {
+		t.Fatalf("installed status should use theme orange: %q", got)
+	}
+	if !strings.Contains(got, "\x1b[90m[未安装]\x1b[0m") {
+		t.Fatalf("missing status should be gray: %q", got)
 	}
 }
 
