@@ -86,7 +86,7 @@ var defaultSNICandidates = []string{
 	"ms-python.gallerycdn.vsassets.io",
 }
 
-const sniResultPageSize = 10
+const sniResultPageSize = 20
 
 type sniCandidateProbeFunc func(context.Context, []string, string, int) ([]app.SNICandidate, error)
 
@@ -115,16 +115,21 @@ func (c *commandSet) selectSNICandidate(ctx context.Context, server string) (str
 		c.printSNIPageControls(page, pages, true)
 		fmt.Fprintln(c.out)
 		fmt.Fprintln(c.out, "提示：以上候选均已通过 DNS、TLS 和证书名称校验；IPv4/IPv6 延迟为各自 TCP+TLS 探测耗时。")
-		fmt.Fprintln(c.out, "      可输入总排名编号选择；CDN 为启发式识别，不代表目标归属、长期可用性或使用授权。")
+		fmt.Fprintln(c.out, "      只能选择本页显示的编号；n/p 翻页，g/G 首尾页，p3 跳到第 3 页。")
 		action, index, err := c.readSNIPageChoice(len(candidates), page, pages, sniPageChoiceOptions{AllowManual: true})
 		if err != nil {
 			return "", err
+		}
+		if action == sniPageActionCancel {
+			return "", errReturnToMenu
 		}
 		switch action {
 		case sniPageActionNext:
 			page++
 		case sniPageActionPrev:
 			page--
+		case sniPageActionGoto:
+			page = index
 		case sniPageActionSelect:
 			return candidates[index-1].Domain, nil
 		case sniPageActionManual:
@@ -206,8 +211,8 @@ func (c *commandSet) retestSNICandidates(ctx context.Context, core string) error
 			c.printSNIPageControls(page, pages, false)
 			c.printMenuChoice("0/q", "返回服务端配置")
 			fmt.Fprintln(c.out, "\n提示：本操作只重新检测和展示结果，不会修改 SNI、target 或重启服务。")
-			fmt.Fprintln(c.out, "      如需采用新候选，请返回后选择“重置 SNI/target”。")
-			action, _, err := c.readSNIPageChoice(0, page, pages, sniPageChoiceOptions{AllowRetest: true, AllowBack: true})
+			fmt.Fprintln(c.out, "      如需采用新候选，请返回后选择“重置 SNI/target”。n/p 翻页，g/G 首尾页，p3 跳页。")
+			action, index, err := c.readSNIPageChoice(0, page, pages, sniPageChoiceOptions{AllowRetest: true, AllowBack: true})
 			if err != nil {
 				return err
 			}
@@ -216,6 +221,8 @@ func (c *commandSet) retestSNICandidates(ctx context.Context, core string) error
 				page++
 			case sniPageActionPrev:
 				page--
+			case sniPageActionGoto:
+				page = index
 			case sniPageActionRetest:
 				break
 			case sniPageActionBack:
@@ -268,6 +275,8 @@ const (
 	sniPageActionSelect = "select"
 	sniPageActionNext   = "next"
 	sniPageActionPrev   = "prev"
+	sniPageActionGoto   = "goto"
+	sniPageActionCancel = "cancel"
 	sniPageActionManual = "manual"
 	sniPageActionRetest = "retest"
 	sniPageActionBack   = "back"
@@ -293,11 +302,15 @@ func (c *commandSet) printSNIResultPage(candidates []app.SNICandidate, page int,
 }
 
 func (c *commandSet) printSNIPageControls(page, pages int, allowManual bool) {
-	if page+1 < pages {
-		c.printMenuChoice("n", "下一页")
-	}
-	if page > 0 {
-		c.printMenuChoice("p", "上一页")
+	if pages > 1 {
+		if page+1 < pages {
+			c.printMenuChoice("n", "下一页")
+		}
+		if page > 0 {
+			c.printMenuChoice("p", "上一页")
+		}
+		c.printMenuChoice("g/G", "第一页 / 最后一页")
+		c.printMenuChoice("p3", "跳到第 3 页（数字可改）")
 	}
 	if allowManual {
 		c.printMenuChoice("0", "手动输入")
@@ -308,11 +321,11 @@ func (c *commandSet) readSNIPageChoice(total, page, pages int, opts sniPageChoic
 	prompt := "❯ 请选择"
 	switch {
 	case opts.AllowManual && pages > 1:
-		prompt += "（输入总排名编号，n 下一页，p 上一页，0 手动输入）"
+		prompt += "（本页编号，n/p 翻页，g/G 首尾，p3 跳页，0 手动输入）"
 	case opts.AllowManual:
 		prompt += "（输入编号，0 表示手动输入）"
 	case opts.AllowRetest && pages > 1:
-		prompt += "（1 重新测试，n 下一页，p 上一页，0 返回）"
+		prompt += "（1 重新测试，n/p 翻页，g/G 首尾，p3 跳页，0 返回）"
 	case opts.AllowRetest:
 		prompt += "（1 重新测试，0 返回）"
 	}
@@ -323,44 +336,66 @@ func (c *commandSet) readSNIPageChoice(total, page, pages int, opts sniPageChoic
 		if err != nil && len(line) == 0 {
 			return "", 0, err
 		}
-		value := strings.TrimSpace(line)
-		switch {
-		case strings.EqualFold(value, "q"):
-			if opts.AllowBack || opts.AllowManual {
-				if opts.AllowBack {
-					return sniPageActionBack, 0, nil
-				}
-				return "", 0, errReturnToMenu
-			}
-		case value == "0":
-			if opts.AllowManual {
-				return sniPageActionManual, 0, nil
-			}
-			if opts.AllowBack {
-				return sniPageActionBack, 0, nil
-			}
-		case strings.EqualFold(value, "n"):
-			if page+1 < pages {
-				return sniPageActionNext, 0, nil
-			}
-		case strings.EqualFold(value, "p"):
-			if page > 0 {
-				return sniPageActionPrev, 0, nil
-			}
-		case opts.AllowRetest && value == "1":
-			return sniPageActionRetest, 0, nil
-		}
-		if !opts.AllowRetest {
-			choice, parseErr := strconv.Atoi(value)
-			if parseErr == nil && choice >= 1 && choice <= total {
-				return sniPageActionSelect, choice, nil
-			}
+		action, index, ok := parseSNIPageInput(strings.TrimSpace(line), total, page, pages, opts)
+		if ok {
+			return action, index, nil
 		}
 		if c.interactiveUI() {
 			eraseChoiceRetry(c.out, false)
 		}
 		fmt.Fprintln(c.out, "无效选择，请按提示输入。")
 	}
+}
+
+func parseSNIPageInput(value string, total, page, pages int, opts sniPageChoiceOptions) (string, int, bool) {
+	switch {
+	case strings.EqualFold(value, "q"):
+		if opts.AllowBack {
+			return sniPageActionBack, 0, true
+		}
+		if opts.AllowManual {
+			return sniPageActionCancel, 0, true
+		}
+	case value == "0":
+		if opts.AllowManual {
+			return sniPageActionManual, 0, true
+		}
+		if opts.AllowBack {
+			return sniPageActionBack, 0, true
+		}
+	case strings.EqualFold(value, "n"):
+		if page+1 < pages {
+			return sniPageActionNext, 0, true
+		}
+	case value == "p":
+		if page > 0 {
+			return sniPageActionPrev, 0, true
+		}
+	case value == "g":
+		if pages > 1 {
+			return sniPageActionGoto, 0, true
+		}
+	case value == "G":
+		if pages > 1 {
+			return sniPageActionGoto, pages - 1, true
+		}
+	case opts.AllowRetest && value == "1":
+		return sniPageActionRetest, 0, true
+	}
+	if len(value) > 1 && (value[0] == 'p' || value[0] == 'P') {
+		target, err := strconv.Atoi(value[1:])
+		if err == nil && target >= 1 && target <= pages {
+			return sniPageActionGoto, target - 1, true
+		}
+	}
+	if !opts.AllowRetest {
+		choice, parseErr := strconv.Atoi(value)
+		start, end, _ := sniPageBounds(total, page, sniResultPageSize)
+		if parseErr == nil && choice >= start+1 && choice <= end {
+			return sniPageActionSelect, choice, true
+		}
+	}
+	return "", 0, false
 }
 
 func (c *commandSet) drainBufferedNewlines() {
@@ -401,13 +436,12 @@ func (c *commandSet) printSNICandidateSummary(index int, candidate app.SNICandid
 	if marker != "" {
 		displayMarker = "  " + marker
 	}
-	fmt.Fprintf(c.out, "  %d %s%s\n", index, candidate.Domain, displayMarker)
 	if cdn == "未发现明显特征" {
 		cdn = "未识别 CDN"
 	} else if cdn == "未知" {
 		cdn = "CDN 未知"
 	}
-	fmt.Fprintf(c.out, "    %s  ·  TLS %s / %s  ·  %s\n", latency, tlsVersion, alpn, cdn)
+	fmt.Fprintf(c.out, "  %d %s  %s  TLS %s / %s  ·  %s%s\n", index, candidate.Domain, latency, tlsVersion, alpn, cdn, displayMarker)
 }
 
 func (c *commandSet) printSNICandidateDetails(prefix string, candidate app.SNICandidate) {

@@ -77,14 +77,40 @@ func TestSNIPageBounds(t *testing.T) {
 	}
 }
 
+func TestParseSNIPageInputJumpsAndSelects(t *testing.T) {
+	opts := sniPageChoiceOptions{AllowManual: true}
+	action, index, ok := parseSNIPageInput("p3", 25, 0, 3, opts)
+	if !ok || action != sniPageActionGoto || index != 2 {
+		t.Fatalf("p3 action=%s index=%d ok=%v", action, index, ok)
+	}
+	action, index, ok = parseSNIPageInput("G", 25, 0, 3, opts)
+	if !ok || action != sniPageActionGoto || index != 2 {
+		t.Fatalf("G action=%s index=%d ok=%v", action, index, ok)
+	}
+	if _, _, ok = parseSNIPageInput("21", 25, 0, 2, opts); ok {
+		t.Fatal("rank 21 on page 1 should not select")
+	}
+	action, index, ok = parseSNIPageInput("21", 25, 1, 2, opts)
+	if !ok || action != sniPageActionSelect || index != 21 {
+		t.Fatalf("21 on page 2 action=%s index=%d ok=%v", action, index, ok)
+	}
+	action, index, ok = parseSNIPageInput("5", 25, 0, 3, opts)
+	if !ok || action != sniPageActionSelect || index != 5 {
+		t.Fatalf("5 on page 1 action=%s index=%d ok=%v", action, index, ok)
+	}
+	if _, _, ok = parseSNIPageInput("p", 25, 0, 3, opts); ok {
+		t.Fatal("p on first page should be invalid")
+	}
+}
+
 func TestSelectSNICandidatePaginatesAllResults(t *testing.T) {
-	results := make([]app.SNICandidate, 12)
+	results := make([]app.SNICandidate, 25)
 	for i := range results {
 		results[i] = app.SNICandidate{Domain: fmt.Sprintf("n%d.example.com", i+1), Latency: time.Duration(i+1) * time.Millisecond}
 	}
 	var out bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("n\n11\n")),
+		reader: bufio.NewReader(strings.NewReader("p2\n21\n")),
 		out:    &out,
 		probeSNI: func(context.Context, []string, string, int) ([]app.SNICandidate, error) {
 			return results, nil
@@ -94,12 +120,12 @@ func TestSelectSNICandidatePaginatesAllResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "n11.example.com" {
+	if got != "n21.example.com" {
 		t.Fatalf("selected=%q", got)
 	}
-	if !strings.Contains(out.String(), "第 1/2 页，共 12 个") ||
-		!strings.Contains(out.String(), "第 2/2 页，共 12 个") ||
-		!strings.Contains(out.String(), "  11 n11.example.com") ||
+	if !strings.Contains(out.String(), "第 1/2 页，共 25 个") ||
+		!strings.Contains(out.String(), "第 2/2 页，共 25 个") ||
+		!strings.Contains(out.String(), "  21 n21.example.com") ||
 		!strings.Contains(out.String(), "下一页") {
 		t.Fatalf("pagination output=%q", out.String())
 	}
@@ -171,7 +197,7 @@ func TestPrintSNICandidateSummaryShowsFamilyLatencies(t *testing.T) {
 		IPv6:       app.FamilyLatency{Present: true, OK: true, Latency: 22 * time.Millisecond},
 	}, "")
 	got := out.String()
-	if !strings.Contains(got, "IPv4 11ms") || !strings.Contains(got, "IPv6 22ms") || strings.Contains(got, "延迟 11ms") {
+	if !strings.Contains(got, "IPv4 11ms") || !strings.Contains(got, "IPv6 22ms") || strings.Contains(got, "\n    IPv4") {
 		t.Fatalf("summary=%q", got)
 	}
 }
