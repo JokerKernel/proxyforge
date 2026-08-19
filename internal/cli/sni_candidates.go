@@ -110,7 +110,7 @@ func (c *commandSet) selectSNICandidate(ctx context.Context, server string) (str
 	for {
 		c.clearScreen()
 		c.printPageHeader("REALITY SNI 候选检测")
-		fmt.Fprintln(c.out, "全部有效候选（按较快地址族延迟排序）：")
+		fmt.Fprintln(c.out, "全部有效候选（按 IPv4 延迟排序）：")
 		_, _, pages := c.printSNIResultPage(candidates, page, "")
 		c.printSNIPageControls(page, pages, true)
 		fmt.Fprintln(c.out)
@@ -204,7 +204,7 @@ func (c *commandSet) retestSNICandidates(ctx context.Context, core string) error
 
 		page := 0
 		for {
-			fmt.Fprintln(c.out, "\n全部有效候选（按较快地址族延迟排序）：")
+			fmt.Fprintln(c.out, "\n全部有效候选（按 IPv4 延迟排序）：")
 			_, _, pages := c.printSNIResultPage(results, page, currentSNI)
 			fmt.Fprintln(c.out)
 			c.printMenuChoice("1", "重新测试")

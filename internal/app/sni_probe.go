@@ -63,7 +63,7 @@ func ProbeSNICandidates(ctx context.Context, candidates []string, server string,
 		}
 		return SNICandidate{
 			Domain:          domain,
-			Latency:         bestFamilyLatency(inspection.IPv4, inspection.IPv6),
+			Latency:         ipv4SortLatency(inspection.IPv4, inspection.IPv6),
 			IPv4:            inspection.IPv4,
 			IPv6:            inspection.IPv6,
 			TLSVersion:      tlsVersionLabel(inspection.TLSVersion),
@@ -75,20 +75,36 @@ func ProbeSNICandidates(ctx context.Context, candidates []string, server string,
 	return probeSNICandidates(ctx, candidates, server, limit, defaultSNIProbeConcurrency, probe)
 }
 
-func bestFamilyLatency(ipv4, ipv6 FamilyLatency) time.Duration {
-	switch {
-	case ipv4.OK && ipv6.OK:
-		if ipv4.Latency <= ipv6.Latency {
-			return ipv4.Latency
-		}
-		return ipv6.Latency
-	case ipv4.OK:
+func ipv4SortLatency(ipv4, ipv6 FamilyLatency) time.Duration {
+	if ipv4.OK {
 		return ipv4.Latency
-	case ipv6.OK:
-		return ipv6.Latency
-	default:
-		return 0
 	}
+	if ipv6.OK {
+		return ipv6.Latency
+	}
+	return 0
+}
+
+func sniLessByIPv4(left, right SNICandidate) bool {
+	leftKey, leftOK := sniIPv4SortKey(left)
+	rightKey, rightOK := sniIPv4SortKey(right)
+	if leftOK != rightOK {
+		return leftOK
+	}
+	if leftKey != rightKey {
+		return leftKey < rightKey
+	}
+	return left.Domain < right.Domain
+}
+
+func sniIPv4SortKey(candidate SNICandidate) (time.Duration, bool) {
+	if candidate.IPv4.OK {
+		return candidate.IPv4.Latency, true
+	}
+	if !candidate.IPv4.Present && !candidate.IPv6.Present && candidate.Latency > 0 {
+		return candidate.Latency, true
+	}
+	return 0, false
 }
 
 func probeSNICandidates(ctx context.Context, candidates []string, server string, limit, concurrency int, probe sniProbeFunc) ([]SNICandidate, error) {
@@ -145,10 +161,7 @@ func probeSNICandidates(ctx context.Context, candidates []string, server string,
 		return nil, fmt.Errorf("没有候选域名通过 DNS、TLS 和证书名称校验")
 	}
 	sort.Slice(valid, func(i, j int) bool {
-		if valid[i].Latency == valid[j].Latency {
-			return valid[i].Domain < valid[j].Domain
-		}
-		return valid[i].Latency < valid[j].Latency
+		return sniLessByIPv4(valid[i], valid[j])
 	})
 	if len(valid) > limit {
 		valid = valid[:limit]

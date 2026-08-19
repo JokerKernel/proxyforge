@@ -59,23 +59,39 @@ func TestProbeSNICandidatesRejectsNoValidTargets(t *testing.T) {
 	}
 }
 
-func TestBestFamilyLatencyPrefersFasterSuccessfulFamily(t *testing.T) {
-	got := bestFamilyLatency(
-		FamilyLatency{Present: true, OK: true, Latency: 20 * time.Millisecond},
-		FamilyLatency{Present: true, OK: true, Latency: 8 * time.Millisecond},
+func TestSNISortPrefersIPv4Latency(t *testing.T) {
+	got, err := probeSNICandidates(
+		context.Background(),
+		[]string{"v6-fast.example.com", "v4-mid.example.com", "v4-fast.example.com"},
+		"server.example.com",
+		10,
+		3,
+		func(_ context.Context, domain, _ string) (SNICandidate, error) {
+			switch domain {
+			case "v6-fast.example.com":
+				return SNICandidate{
+					IPv6: FamilyLatency{Present: true, OK: true, Latency: 3 * time.Millisecond},
+				}, nil
+			case "v4-mid.example.com":
+				return SNICandidate{
+					IPv4: FamilyLatency{Present: true, OK: true, Latency: 20 * time.Millisecond},
+					IPv6: FamilyLatency{Present: true, OK: true, Latency: 1 * time.Millisecond},
+				}, nil
+			case "v4-fast.example.com":
+				return SNICandidate{
+					IPv4: FamilyLatency{Present: true, OK: true, Latency: 8 * time.Millisecond},
+					IPv6: FamilyLatency{Present: true, OK: true, Latency: 50 * time.Millisecond},
+				}, nil
+			default:
+				return SNICandidate{}, errors.New("unexpected")
+			}
+		},
 	)
-	if got != 8*time.Millisecond {
-		t.Fatalf("best=%s", got)
+	if err != nil {
+		t.Fatal(err)
 	}
-	ipv4Only := bestFamilyLatency(
-		FamilyLatency{Present: true, OK: true, Latency: 15 * time.Millisecond},
-		FamilyLatency{Present: true, OK: false},
-	)
-	if ipv4Only != 15*time.Millisecond {
-		t.Fatalf("ipv4 only=%s", ipv4Only)
-	}
-	if bestFamilyLatency(FamilyLatency{}, FamilyLatency{}) != 0 {
-		t.Fatal("empty families should have zero latency")
+	if len(got) != 3 || got[0].Domain != "v4-fast.example.com" || got[1].Domain != "v4-mid.example.com" || got[2].Domain != "v6-fast.example.com" {
+		t.Fatalf("order=%#v", got)
 	}
 }
 
