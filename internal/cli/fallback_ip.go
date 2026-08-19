@@ -24,12 +24,12 @@ func (c *commandSet) fallbackIPMenu(ctx context.Context, core string) error {
 	defaultChoice := -1
 	for index, strategy := range settings.Strategies {
 		key := strconv.Itoa(index + 1)
+		label := outboundIPChoiceLabel(core, strategy)
 		if strategy == settings.Current {
-			c.printMenuBadgeChoice(key, outboundIPChoiceTitle(strategy), "[当前]")
+			label = "[当前] " + label
 			defaultChoice = index + 1
-			continue
 		}
-		c.printMenuChoice(key, outboundIPChoiceDisplay(strategy))
+		c.printMenuChoice(key, label)
 	}
 	c.printMenuChoice("0/q", "返回")
 	choice, err := c.chooseNumber("请选择回落 IP", 0, len(settings.Strategies), defaultChoice)

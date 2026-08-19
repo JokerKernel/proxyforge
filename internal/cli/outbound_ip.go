@@ -20,12 +20,12 @@ func (c *commandSet) outboundIPMenu(ctx context.Context, core string) error {
 	defaultChoice := -1
 	for index, strategy := range settings.Strategies {
 		key := strconv.Itoa(index + 1)
+		label := outboundIPChoiceLabel(core, strategy)
 		if strategy == settings.Current {
-			c.printMenuBadgeChoice(key, outboundIPChoiceTitle(strategy), "[当前]")
+			label = "[当前] " + label
 			defaultChoice = index + 1
-			continue
 		}
-		c.printMenuChoice(key, outboundIPChoiceDisplay(strategy))
+		c.printMenuChoice(key, label)
 	}
 	c.printMenuChoice("0/q", "返回")
 	choice, err := c.chooseNumber("请选择出站 IP", 0, len(settings.Strategies), defaultChoice)
@@ -111,16 +111,40 @@ func (c *commandSet) outboundIPMenu(ctx context.Context, core string) error {
 
 func outboundIPChoiceTitle(strategy string) string {
 	if strategy == provider.OutboundIPUnset {
-		return "恢复默认"
+		return "默认"
 	}
 	return outboundIPDisplay(strategy)
 }
 
-func outboundIPChoiceDisplay(strategy string) string {
-	if strategy == provider.OutboundIPUnset {
-		return "恢复默认（双栈）"
+func outboundIPChoiceLabel(core, strategy string) string {
+	hint := outboundIPChoiceHint(core, strategy)
+	if hint == "" {
+		return outboundIPChoiceTitle(strategy)
 	}
-	return outboundIPDisplay(strategy)
+	return outboundIPChoiceTitle(strategy) + "（" + hint + "）"
+}
+
+func outboundIPChoiceHint(core, strategy string) string {
+	switch strategy {
+	case provider.OutboundIPPreferIPv4:
+		if core == domain.CoreXray {
+			return "有 IPv4 后连不上也不改走 IPv6"
+		}
+		return "先 IPv4，短延迟后可回退 IPv6"
+	case provider.OutboundIPPreferIPv6:
+		if core == domain.CoreXray {
+			return "有 IPv6 后连不上也不改走 IPv4"
+		}
+		return "先 IPv6，短延迟后可回退 IPv4"
+	case provider.OutboundIPIPv4Only:
+		return "只使用 IPv4"
+	case provider.OutboundIPIPv6Only:
+		return "只使用 IPv6"
+	case provider.OutboundIPUnset:
+		return "先 IPv4，300ms 后竞速 IPv6"
+	default:
+		return ""
+	}
 }
 
 func outboundIPDisplay(strategy string) string {
