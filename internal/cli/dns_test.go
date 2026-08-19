@@ -10,8 +10,15 @@ import (
 
 func TestDNSCardDisplayIncludesConcreteAddresses(t *testing.T) {
 	got := dnsCardDisplay(domain.CoreXray, provider.DNSProfileSystem, []string{"1.1.1.1", "8.8.8.8"})
-	if !strings.Contains(got, "系统 DNS") || !strings.Contains(got, "1.1.1.1") || !strings.Contains(got, "8.8.8.8") {
-		t.Fatalf("card=%q", got)
+	if got != "系统 DNS（推荐） · 1.1.1.1, 8.8.8.8" {
+		t.Fatalf("system card=%q", got)
+	}
+	got = dnsCardDisplay(domain.CoreXray, provider.DNSProfilePublicCloudflare, []string{"1.1.1.1", "8.8.8.8"})
+	if got != "公共 DNS（Cloudflare） · 1.1.1.1, 8.8.8.8" {
+		t.Fatalf("public card=%q", got)
+	}
+	if strings.Contains(got, "同时写入") {
+		t.Fatalf("card repeated profile details: %q", got)
 	}
 }
 

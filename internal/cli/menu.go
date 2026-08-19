@@ -313,11 +313,38 @@ func modifyConfigValue(hasConfig bool, raw string, display func() string) string
 }
 
 func dnsCardDisplay(core, profile string, servers []string) string {
-	label := dnsProfileDisplay(core, profile)
+	label := dnsCardProfile(core, profile)
 	if len(servers) == 0 {
 		return label
 	}
 	return label + " · " + strings.Join(servers, ", ")
+}
+
+func dnsCardProfile(core, profile string) string {
+	switch profile {
+	case provider.DNSProfileSystem:
+		return "系统 DNS（推荐）"
+	case provider.DNSProfilePublicCloudflare:
+		return "公共 DNS（Cloudflare）"
+	case provider.DNSProfilePublicGoogle:
+		return "公共 DNS（Google）"
+	case provider.DNSProfileDoHCloudflare:
+		return "加密 DNS/DoH（Cloudflare）"
+	case provider.DNSProfileDoHGoogle:
+		return "加密 DNS/DoH（Google）"
+	case provider.DNSProfileCloudflare:
+		return "Cloudflare DNS"
+	case provider.DNSProfileGoogle:
+		return "Google DNS"
+	case "none":
+		return "未配置内核 DNS"
+	case "implicit-system":
+		return "隐式系统 DNS"
+	case "custom":
+		return "自定义 DNS"
+	default:
+		return dnsProfileDisplay(core, profile)
+	}
 }
 
 func outboundIPCardDisplay(core, strategy string) string {
