@@ -131,7 +131,7 @@ func TestFillGenerateRequiresExplicitFastCandidateSelection(t *testing.T) {
 		reader: bufio.NewReader(strings.NewReader("\n\n\n\n2\nyes\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
-			if len(candidates) < 10 || server != "server.example.com" || limit != 10 {
+			if len(candidates) < 10 || server != "server.example.com" || limit != app.DefaultSNICandidateLimit {
 				t.Fatalf("probe candidates=%d server=%q limit=%d", len(candidates), server, limit)
 			}
 			return []app.SNICandidate{

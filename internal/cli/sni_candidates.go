@@ -95,7 +95,7 @@ func (c *commandSet) selectSNICandidate(ctx context.Context, server string) (str
 	c.clearScreen()
 	c.printPageHeader("REALITY SNI 候选检测")
 	fmt.Fprintf(c.out, "正在并发测试 %d 个 SNI 候选的 DNS、TCP/TLS、ALPN、证书 SAN 和 CDN 特征，请稍候……\n", len(defaultSNICandidates))
-	candidates, err := probe(ctx, defaultSNICandidates, server, 10)
+	candidates, err := probe(ctx, defaultSNICandidates, server, app.DefaultSNICandidateLimit)
 	if err != nil {
 		return "", err
 	}
@@ -190,7 +190,7 @@ func (c *commandSet) retestSNICandidates(ctx context.Context, core string) error
 			c.printSNICandidateDetails("当前 SNI：", currentResult)
 		}
 
-		displayLimit := 10
+		displayLimit := app.DefaultSNICandidateLimit
 		if len(results) < displayLimit {
 			displayLimit = len(results)
 		}

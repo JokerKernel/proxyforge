@@ -12,7 +12,9 @@ import (
 )
 
 const (
-	defaultSNIProbeLimit       = 10
+	// DefaultSNICandidateLimit is how many fastest valid SNI targets the
+	// generate and retest menus keep after probing.
+	DefaultSNICandidateLimit   = 20
 	defaultSNIProbeConcurrency = 20
 	defaultSNIProbeTimeout     = 4 * time.Second
 )
@@ -44,7 +46,7 @@ type sniProbeFunc func(context.Context, string, string) (SNICandidate, error)
 // are omitted.
 func ProbeSNICandidates(ctx context.Context, candidates []string, server string, limit int) ([]SNICandidate, error) {
 	if limit <= 0 {
-		limit = defaultSNIProbeLimit
+		limit = DefaultSNICandidateLimit
 	}
 	probe := func(ctx context.Context, domain, server string) (SNICandidate, error) {
 		probeCtx, cancel := context.WithTimeout(ctx, defaultSNIProbeTimeout)
