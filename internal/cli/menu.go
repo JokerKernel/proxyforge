@@ -8,8 +8,10 @@ import (
 	"strconv"
 	"strings"
 
+	"proxyforge/internal/app"
 	"proxyforge/internal/domain"
 	"proxyforge/internal/install"
+	"proxyforge/internal/provider"
 )
 
 const proxyForgeHeaderRule = "╰──────────────────────────────────────────────"
@@ -181,6 +183,7 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 	for {
 		c.clearScreen()
 		c.printPageHeader(core, "修改配置")
+		c.printModifyConfigCard(core)
 		c.printMenuChoice("1", "DNS 设置")
 		c.printMenuChoice("2", "出站 IP（优先或仅使用 IPv4 / IPv6）")
 		next := 3
@@ -263,6 +266,56 @@ func (c *commandSet) printCoreMenu(ctx context.Context, core string) {
 	c.printMenuChoice("4", "服务管理（启动、停止、状态与日志）")
 	c.printMenuChoice("5", "卸载内核（同时清理配置和运行数据）")
 	c.printMenuChoice("0/q", "返回")
+}
+
+func (c *commandSet) printModifyConfigCard(core string) {
+	var status app.ModifyConfigStatus
+	if c.app != nil {
+		status = c.app.ModifyConfigStatus(core)
+	}
+	rows := [][2]string{
+		{"DNS 设置", modifyConfigValue(status.HasConfig, status.DNS, func() string { return dnsProfileDisplay(core, status.DNS) })},
+		{"出站 IP", modifyConfigValue(status.HasConfig, status.OutboundIP, func() string { return outboundIPCardDisplay(core, status.OutboundIP) })},
+	}
+	if status.HasFallback {
+		rows = append(rows, [2]string{
+			"回落 IP", modifyConfigValue(status.HasConfig, status.FallbackIP, func() string { return outboundIPCardDisplay(core, status.FallbackIP) }),
+		})
+	}
+	sni := strings.TrimSpace(status.SNI)
+	if sni == "" {
+		sni = "未生成"
+	}
+	rows = append(rows, [2]string{"SNI", sni})
+
+	const labelWidth = 10
+	fmt.Fprintln(c.out, "╭─ 当前配置")
+	for _, row := range rows {
+		padding := labelWidth - menuDisplayWidth(row[0])
+		if padding < 1 {
+			padding = 1
+		}
+		fmt.Fprintf(c.out, "│ %s%s%s\n", row[0], strings.Repeat(" ", padding), row[1])
+	}
+	fmt.Fprintln(c.out, proxyForgeHeaderRule)
+	fmt.Fprintln(c.out)
+}
+
+func modifyConfigValue(hasConfig bool, raw string, display func() string) string {
+	if raw == "" {
+		if hasConfig {
+			return "无法读取"
+		}
+		return "未生成"
+	}
+	return display()
+}
+
+func outboundIPCardDisplay(core, strategy string) string {
+	if strategy == provider.OutboundIPUnset {
+		return outboundIPChoiceLabel(core, strategy)
+	}
+	return outboundIPDisplay(strategy)
 }
 
 func (c *commandSet) printCoreStatusCard(ctx context.Context, core string) {

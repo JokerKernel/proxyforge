@@ -10,6 +10,7 @@ import (
 	"proxyforge/internal/app"
 	"proxyforge/internal/domain"
 	"proxyforge/internal/provider"
+	"proxyforge/internal/provider/xray"
 	"proxyforge/internal/system"
 )
 
@@ -90,5 +91,66 @@ func TestModifyConfigMenuShowsFallbackIPWhenEnabled(t *testing.T) {
 	if !strings.Contains(out.String(), "2   出站 IP") || !strings.Contains(out.String(), "3   回落 IP") ||
 		!strings.Contains(out.String(), "4   重置 SNI") || !strings.Contains(out.String(), "6   REALITY SNI") {
 		t.Fatalf("fallback modify menu=%q", out.String())
+	}
+}
+
+func TestModifyConfigMenuShowsStatusCard(t *testing.T) {
+	layout := system.Layout{Root: t.TempDir()}
+	store := system.StateStore{Layout: layout}
+	p := xray.New()
+	node := domain.NodeSpec{
+		ManagedBy: "proxyforge", Core: domain.CoreXray, InboundTag: "xray-one", UserName: "one",
+		Server: "203.0.113.10", Port: 443, SNI: "www.example.com", Target: "www.example.com:443",
+		UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private", PublicKey: "public", ShortID: "abcd",
+		XrayFallbackGuard: true, XrayFallbackPort: 61431,
+	}
+	config, err := p.RenderServer(node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configPath := layout.Resolve(p.ConfigPath())
+	if err := system.AtomicWrite(configPath, config, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save(node); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	c := &commandSet{
+		app:    &app.App{Registry: provider.NewRegistry(p), Layout: layout, Store: store},
+		reader: bufio.NewReader(strings.NewReader("0\n")),
+		out:    &out,
+	}
+	if err := c.modifyConfigMenu(context.Background(), domain.CoreXray); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	for _, text := range []string{
+		"╭─ 当前配置",
+		"DNS 设置", "系统 DNS",
+		"出站 IP", "默认（先 IPv4，300ms 后竞速 IPv6）",
+		"回落 IP",
+		"SNI", "www.example.com",
+	} {
+		if !strings.Contains(got, text) {
+			t.Fatalf("status card missing %q: %q", text, got)
+		}
+	}
+
+	patched, err := p.PatchOutboundIPStrategy(config, provider.OutboundIPPreferIPv4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := system.AtomicWrite(configPath, patched, 0600); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	c.reader = bufio.NewReader(strings.NewReader("0\n"))
+	if err := c.modifyConfigMenu(context.Background(), domain.CoreXray); err != nil {
+		t.Fatal(err)
+	}
+	got = out.String()
+	if !strings.Contains(got, "优先 IPv4") || !strings.Contains(got, "默认（先 IPv4，300ms 后竞速 IPv6）") {
+		t.Fatalf("patched status card=%q", got)
 	}
 }
