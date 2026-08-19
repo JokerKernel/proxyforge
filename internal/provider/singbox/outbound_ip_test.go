@@ -41,14 +41,12 @@ func TestPatchOutboundIPStrategyUsesDomainResolver(t *testing.T) {
 	if _, exists := direct["domain_strategy"]; exists {
 		t.Fatalf("deprecated domain_strategy was written: %#v", direct)
 	}
-	resolver := direct["domain_resolver"].(map[string]any)
-	if resolver["server"] != "local" || resolver["strategy"] != "prefer_ipv4" {
-		t.Fatalf("domain_resolver=%#v", resolver)
+	if _, exists := direct["domain_resolver"]; exists {
+		t.Fatalf("outbound domain_resolver should stay unset when resolve rules exist: %#v", direct)
 	}
 	route := root["route"].(map[string]any)
-	defaultResolver := route["default_domain_resolver"].(map[string]any)
-	if defaultResolver["server"] != "local" || defaultResolver["strategy"] != "prefer_ipv4" {
-		t.Fatalf("default_domain_resolver=%#v", defaultResolver)
+	if resolver, ok := route["default_domain_resolver"].(string); !ok || resolver != "local" {
+		t.Fatalf("default_domain_resolver should stay a server tag: %#v", route["default_domain_resolver"])
 	}
 	foundResolve := false
 	for _, raw := range route["rules"].([]any) {
@@ -97,11 +95,32 @@ func TestPatchOutboundIPStrategyUsesDomainResolver(t *testing.T) {
 func TestCurrentOutboundIPStrategyReportsConflictAsCustom(t *testing.T) {
 	p := New()
 	config := []byte(`{
-  "outbounds": [{"type":"direct","tag":"direct","domain_resolver":{"server":"local","strategy":"prefer_ipv4"}}],
-  "route": {"default_domain_resolver":{"server":"local","strategy":"ipv4_only"},"rules":[]}
+  "outbounds": [{"type":"direct","tag":"direct"}],
+  "route": {"rules":[
+    {"action":"resolve","server":"local","strategy":"prefer_ipv4"},
+    {"action":"resolve","server":"local","strategy":"ipv4_only"}
+  ]}
 }`)
 	if current, err := p.CurrentOutboundIPStrategy(config); err != nil || current != "custom" {
 		t.Fatalf("current=%q error=%v", current, err)
+	}
+}
+
+func TestPatchOutboundIPStrategyUsesOutboundWhenNoResolveRules(t *testing.T) {
+	p := New()
+	config := []byte(`{"outbounds":[{"type":"direct","tag":"direct"}],"route":{"final":"direct","rules":[{"action":"reject","ip_is_private":true}]}}`)
+	patched, err := p.PatchOutboundIPStrategy(config, provider.OutboundIPIPv4Only)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(patched, &root); err != nil {
+		t.Fatal(err)
+	}
+	direct := singBoxOutboundByTag(t, root, "direct")
+	resolver := direct["domain_resolver"].(map[string]any)
+	if resolver["strategy"] != "ipv4_only" {
+		t.Fatalf("domain_resolver=%#v", resolver)
 	}
 }
 

@@ -40,15 +40,7 @@ func (*Provider) CurrentOutboundIPStrategy(config []byte) (string, error) {
 		return "", err
 	}
 	seen := make([]string, 0, 4)
-	if value := singBoxStrategyValue(outbound["domain_resolver"]); value != "" {
-		seen = append(seen, value)
-	} else if value, _ := outbound["domain_strategy"].(string); strings.TrimSpace(value) != "" {
-		seen = append(seen, strings.TrimSpace(value))
-	}
 	if route, ok := root["route"].(map[string]any); ok {
-		if value := singBoxStrategyValue(route["default_domain_resolver"]); value != "" {
-			seen = append(seen, value)
-		}
 		if rules, ok := route["rules"].([]any); ok {
 			for _, raw := range rules {
 				rule, ok := raw.(map[string]any)
@@ -62,6 +54,13 @@ func (*Provider) CurrentOutboundIPStrategy(config []byte) (string, error) {
 					seen = append(seen, strings.TrimSpace(value))
 				}
 			}
+		}
+	}
+	if len(seen) == 0 {
+		if value := singBoxStrategyValue(outbound["domain_resolver"]); value != "" {
+			seen = append(seen, value)
+		} else if value, _ := outbound["domain_strategy"].(string); strings.TrimSpace(value) != "" {
+			seen = append(seen, strings.TrimSpace(value))
 		}
 	}
 	if len(seen) == 0 {
@@ -89,50 +88,16 @@ func (*Provider) PatchOutboundIPStrategy(config []byte, strategy string) ([]byte
 		return nil, err
 	}
 	delete(outbound, "domain_strategy")
+	clearLeftoverResolverStrategy(root, outbound)
 	if strategy == provider.OutboundIPUnset {
-		clearOutboundDomainResolver(outbound)
-		if route, ok := root["route"].(map[string]any); ok {
-			if _, exists := route["default_domain_resolver"]; exists {
-				route["default_domain_resolver"] = clearDomainResolverStrategy(route["default_domain_resolver"])
-			}
-			if rules, ok := route["rules"].([]any); ok {
-				for _, raw := range rules {
-					rule, ok := raw.(map[string]any)
-					if !ok {
-						continue
-					}
-					if action, _ := rule["action"].(string); action == "resolve" {
-						delete(rule, "strategy")
-					}
-				}
-			}
-		}
 		return marshalSingBox(root)
 	}
 
 	value := singBoxOutboundIPStrategy[strategy]
-	outbound["domain_resolver"] = setDomainResolverStrategy(outbound["domain_resolver"], "local", value)
-
-	if route, ok := root["route"].(map[string]any); ok {
-		if _, exists := route["default_domain_resolver"]; exists {
-			server := domainResolverServer(route["default_domain_resolver"])
-			if server == "" {
-				server = "local"
-			}
-			route["default_domain_resolver"] = setDomainResolverStrategy(route["default_domain_resolver"], server, value)
-		}
-		if rules, ok := route["rules"].([]any); ok {
-			for _, raw := range rules {
-				rule, ok := raw.(map[string]any)
-				if !ok {
-					continue
-				}
-				if action, _ := rule["action"].(string); action == "resolve" {
-					rule["strategy"] = value
-				}
-			}
-		}
+	if setResolveRuleStrategy(root, value) {
+		return marshalSingBox(root)
 	}
+	outbound["domain_resolver"] = setDomainResolverStrategy(outbound["domain_resolver"], "local", value)
 	return marshalSingBox(root)
 }
 
@@ -168,6 +133,46 @@ func singBoxStrategyValue(raw any) string {
 	default:
 		return ""
 	}
+}
+
+func clearLeftoverResolverStrategy(root, outbound map[string]any) {
+	clearOutboundDomainResolver(outbound)
+	route, ok := root["route"].(map[string]any)
+	if !ok {
+		return
+	}
+	if _, exists := route["default_domain_resolver"]; exists {
+		route["default_domain_resolver"] = clearDomainResolverStrategy(route["default_domain_resolver"])
+	}
+	setResolveRuleStrategy(root, "")
+}
+
+func setResolveRuleStrategy(root map[string]any, strategy string) bool {
+	route, ok := root["route"].(map[string]any)
+	if !ok {
+		return false
+	}
+	rules, ok := route["rules"].([]any)
+	if !ok {
+		return false
+	}
+	updated := false
+	for _, raw := range rules {
+		rule, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if action, _ := rule["action"].(string); action != "resolve" {
+			continue
+		}
+		if strategy == "" {
+			delete(rule, "strategy")
+		} else {
+			rule["strategy"] = strategy
+		}
+		updated = true
+	}
+	return updated
 }
 
 func clearOutboundDomainResolver(outbound map[string]any) {
