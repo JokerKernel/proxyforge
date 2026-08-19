@@ -70,6 +70,7 @@ func (*Provider) PatchOutboundIPStrategy(config []byte, strategy string) ([]byte
 		applyFreedomHappyEyeballs(outbound)
 	} else {
 		settings["domainStrategy"] = xrayOutboundIPStrategy[strategy]
+		clearFreedomHappyEyeballs(outbound)
 	}
 	if err := ensureFallbackDirectIsolation(root); err != nil {
 		return nil, err
@@ -134,6 +135,7 @@ func (*Provider) PatchFallbackIPStrategy(config []byte, strategy string) ([]byte
 		applyFreedomHappyEyeballs(outbound)
 	} else {
 		settings["domainStrategy"] = xrayOutboundIPStrategy[strategy]
+		clearFreedomHappyEyeballs(outbound)
 	}
 	return marshalXray(root)
 }
@@ -350,6 +352,24 @@ func applyFreedomHappyEyeballs(outbound map[string]any) {
 	}
 	happy["tryDelayMs"] = xrayHappyEyeballsDelayMs
 	happy["prioritizeIPv6"] = false
+}
+
+func clearFreedomHappyEyeballs(outbound map[string]any) {
+	stream, _ := outbound["streamSettings"].(map[string]any)
+	if stream == nil {
+		return
+	}
+	sockopt, _ := stream["sockopt"].(map[string]any)
+	if sockopt != nil {
+		delete(sockopt, "happyEyeballs")
+		delete(sockopt, "domainStrategy")
+		if len(sockopt) == 0 {
+			delete(stream, "sockopt")
+		}
+	}
+	if len(stream) == 0 {
+		delete(outbound, "streamSettings")
+	}
 }
 
 func xrayIsFallbackAllowOutbound(value any) bool {

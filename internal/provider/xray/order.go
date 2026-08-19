@@ -12,7 +12,29 @@ import (
 // fields are retained and sorted after the documented fields, so targeted
 // updates remain readable without dropping manual configuration.
 func marshalXray(value any) ([]byte, error) {
-	return jsonutil.Marshal(orderXrayValue(value))
+	normalized, err := normalizeXrayValue(value)
+	if err != nil {
+		return nil, err
+	}
+	return jsonutil.Marshal(orderXrayValue(normalized))
+}
+
+func normalizeXrayValue(value any) (any, error) {
+	if _, ok := value.(map[string]any); ok {
+		return value, nil
+	}
+	if _, ok := value.([]any); ok {
+		return value, nil
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	var generic any
+	if err := json.Unmarshal(raw, &generic); err != nil {
+		return nil, err
+	}
+	return generic, nil
 }
 
 type orderedXrayObject map[string]any
@@ -37,7 +59,7 @@ func (object orderedXrayObject) MarshalJSON() ([]byte, error) {
 	for key := range object {
 		keys = append(keys, key)
 	}
-	priority := xrayFieldPriority(object)
+	priority := xrayFieldPriority(map[string]any(object))
 	sort.Slice(keys, func(i, j int) bool {
 		left, leftOK := priority[keys[i]]
 		right, rightOK := priority[keys[j]]
@@ -90,6 +112,8 @@ func xrayFieldPriority(object map[string]any) map[string]int {
 	switch {
 	case hasAnyXrayKey(object, "inbounds", "outbounds") && hasAnyXrayKey(object, "log", "dns", "routing"):
 		order = []string{"log", "dns", "inbounds", "outbounds", "routing"}
+	case hasAnyXrayKey(object, "tryDelayMs", "prioritizeIPv6") && !hasAnyXrayKey(object, "domainStrategy", "rules", "protocol"):
+		order = []string{"tryDelayMs", "prioritizeIPv6", "interleave", "maxConcurrentTry"}
 	case object["protocol"] == "dokodemo-door":
 		order = []string{"listen", "port", "protocol", "settings", "tag", "sniffing"}
 	case hasXrayKeys(object, "listen", "protocol", "settings"):
@@ -116,8 +140,6 @@ func xrayFieldPriority(object map[string]any) map[string]int {
 		order = []string{"sockopt"}
 	case hasXrayKeys(object, "domainStrategy", "happyEyeballs"):
 		order = []string{"domainStrategy", "happyEyeballs"}
-	case hasAnyXrayKey(object, "tryDelayMs", "prioritizeIPv6"):
-		order = []string{"tryDelayMs", "prioritizeIPv6", "interleave", "maxConcurrentTry"}
 	case hasXrayKeys(object, "domainStrategy", "rules"):
 		order = []string{"domainStrategy", "rules"}
 	case hasXrayKeys(object, "type", "outboundTag"):

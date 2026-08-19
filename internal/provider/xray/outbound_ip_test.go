@@ -9,6 +9,41 @@ import (
 	"proxyforge/internal/provider"
 )
 
+func TestHappyEyeballsFieldOrderStaysStableAfterPatch(t *testing.T) {
+	p := New()
+	config, err := p.RenderServer(domain.NodeSpec{
+		InboundTag: "xray-one", UserName: "one", Server: "203.0.113.10", Port: 443,
+		SNI: "example.com", Target: "example.com:443",
+		UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private", ShortID: "abcd",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	generatedAt := strings.Index(string(config), `"happyEyeballs"`)
+	if generatedAt < 0 || !strings.Contains(string(config)[generatedAt:], `"tryDelayMs"`) {
+		t.Fatalf("generated missing happyEyeballs: %s", config)
+	}
+	if strings.Index(string(config)[generatedAt:], `"tryDelayMs"`) > strings.Index(string(config)[generatedAt:], `"prioritizeIPv6"`) {
+		t.Fatalf("generated happyEyeballs order=%s", config[generatedAt:])
+	}
+
+	patched, err := p.PatchOutboundIPStrategy(config, provider.OutboundIPPreferIPv6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(patched, &root); err != nil {
+		t.Fatal(err)
+	}
+	direct := xrayOutboundByTag(t, root, "direct")
+	if _, exists := direct["streamSettings"]; exists {
+		t.Fatalf("prefer IPv6 left unused sockopt: %#v", direct["streamSettings"])
+	}
+	if direct["settings"].(map[string]any)["domainStrategy"] != "UseIPv6v4" {
+		t.Fatalf("prefer IPv6 direct=%#v", direct)
+	}
+}
+
 func TestPatchOutboundIPStrategyUpdatesFreedomOnly(t *testing.T) {
 	p := New()
 	config, err := p.RenderServer(domain.NodeSpec{
@@ -40,6 +75,9 @@ func TestPatchOutboundIPStrategyUpdatesFreedomOnly(t *testing.T) {
 	direct := xrayOutboundByTag(t, root, "direct")
 	if direct["settings"].(map[string]any)["domainStrategy"] != "UseIPv4v6" {
 		t.Fatalf("direct=%#v", direct)
+	}
+	if _, exists := direct["streamSettings"]; exists {
+		t.Fatalf("prefer IPv4 left unused sockopt: %#v", direct["streamSettings"])
 	}
 
 	only, err := p.PatchOutboundIPStrategy(patched, provider.OutboundIPIPv6Only)
@@ -157,8 +195,12 @@ func TestPatchFallbackIPStrategyUpdatesFallbackDirectOnly(t *testing.T) {
 	if err := json.Unmarshal(patched, &root); err != nil {
 		t.Fatal(err)
 	}
-	if xrayOutboundByTag(t, root, fallbackDirectOutboundTag)["settings"].(map[string]any)["domainStrategy"] != "UseIPv4v6" {
-		t.Fatalf("fallback-direct=%#v", xrayOutboundByTag(t, root, fallbackDirectOutboundTag))
+	fallback := xrayOutboundByTag(t, root, fallbackDirectOutboundTag)
+	if fallback["settings"].(map[string]any)["domainStrategy"] != "UseIPv4v6" {
+		t.Fatalf("fallback-direct=%#v", fallback)
+	}
+	if _, exists := fallback["streamSettings"]; exists {
+		t.Fatalf("prefer fallback IPv4 left unused sockopt: %#v", fallback["streamSettings"])
 	}
 	assertDirectHappyEyeballs(t, xrayOutboundByTag(t, root, "direct"))
 	restored, err := p.PatchFallbackIPStrategy(patched, provider.OutboundIPUnset)
