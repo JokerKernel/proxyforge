@@ -463,7 +463,7 @@ func TestPatchDNSProfileUpdatesResolverReferences(t *testing.T) {
 	dohServers := dohDNS["servers"].([]any)
 	dohRoute := dohRoot["route"].(map[string]any)
 	if len(dohServers) != 2 || dohServers[0].(map[string]any)["type"] != "local" ||
-		dohServers[1].(map[string]any)["server"] != "dns.google" || dohServers[1].(map[string]any)["type"] != "https" ||
+		dohServers[1].(map[string]any)["server"] != "8.8.8.8" || dohServers[1].(map[string]any)["type"] != "https" ||
 		dohDNS["final"] != "google-doh" ||
 		dohRoute["default_domain_resolver"] != "google-doh" || dohRoute["rules"].([]any)[0].(map[string]any)["server"] != "google-doh" {
 		t.Fatalf("doh dns=%#v route=%#v", dohDNS, dohRoute)
@@ -473,7 +473,7 @@ func TestPatchDNSProfileUpdatesResolverReferences(t *testing.T) {
 	if googleDoH["domain_resolver"] != "bootstrap" || googleTLS["enabled"] != true || googleTLS["server_name"] != "dns.google" {
 		t.Fatalf("google doh=%#v", googleDoH)
 	}
-	if servers, err := p.CurrentDNSServers(withDoH); err != nil || len(servers) != 1 || servers[0] != "dns.google" {
+	if servers, err := p.CurrentDNSServers(withDoH); err != nil || len(servers) != 1 || servers[0] != "8.8.8.8" {
 		t.Fatalf("doh display servers=%v error=%v", servers, err)
 	}
 	if current, err := p.CurrentDNSProfile(withDoH); err != nil || current != "doh-google" {
@@ -482,7 +482,7 @@ func TestPatchDNSProfileUpdatesResolverReferences(t *testing.T) {
 	assertSingBoxFieldsInOrder(t, withDoH, `"log"`, `"dns"`, `"inbounds"`, `"outbounds"`, `"route"`)
 	dohServer := singBoxConfigSection(t, withDoH, `"type": "https"`, `"inbounds"`)
 	assertSingBoxFieldsInOrder(t, dohServer,
-		`"type"`, `"tag": "google-doh"`, `"server": "dns.google"`, `"server_port": 443`, `"path": "/dns-query"`,
+		`"type"`, `"tag": "google-doh"`, `"server": "8.8.8.8"`, `"server_port": 443`, `"path": "/dns-query"`,
 		`"tls"`, `"enabled": true`, `"server_name": "dns.google"`, `"domain_resolver": "bootstrap"`,
 	)
 	backToSystem, err := p.PatchDNSProfile(withDoH, "system")
