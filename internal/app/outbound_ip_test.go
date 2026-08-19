@@ -65,4 +65,12 @@ func TestSetOutboundIPStrategyValidatesRestartsAndTracksManagedConfig(t *testing
 	if !strings.Contains(runner.callLog(), "xray run -test -config") || !strings.Contains(runner.callLog(), "systemctl restart xray.service") {
 		t.Fatalf("calls=%s", runner.callLog())
 	}
+
+	restored, err := a.SetOutboundIPStrategy(context.Background(), domain.CoreXray, provider.OutboundIPUnset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !restored.Changed || restored.Previous != provider.OutboundIPPreferIPv4 || restored.Current != provider.OutboundIPUnset {
+		t.Fatalf("restored=%#v", restored)
+	}
 }

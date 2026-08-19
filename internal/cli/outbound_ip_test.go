@@ -18,6 +18,9 @@ func TestOutboundIPDisplayAndModifyMenu(t *testing.T) {
 	if got := outboundIPDisplay(provider.OutboundIPIPv6Only); got != "仅 IPv6" {
 		t.Fatalf("display=%q", got)
 	}
+	if got := outboundIPChoiceDisplay(provider.OutboundIPUnset); got != "恢复默认（双栈）" {
+		t.Fatalf("choice display=%q", got)
+	}
 
 	var out bytes.Buffer
 	c := &commandSet{reader: bufio.NewReader(strings.NewReader("0\n")), out: &out}

@@ -14,6 +14,7 @@ var supportedOutboundIPStrategies = []string{
 	provider.OutboundIPPreferIPv6,
 	provider.OutboundIPIPv4Only,
 	provider.OutboundIPIPv6Only,
+	provider.OutboundIPUnset,
 }
 
 var xrayOutboundIPStrategy = map[string]string{
@@ -21,6 +22,7 @@ var xrayOutboundIPStrategy = map[string]string{
 	provider.OutboundIPPreferIPv6: "UseIPv6v4",
 	provider.OutboundIPIPv4Only:   "ForceIPv4",
 	provider.OutboundIPIPv6Only:   "ForceIPv6",
+	provider.OutboundIPUnset:      "UseIP",
 }
 
 func (*Provider) OutboundIPStrategies() []string {

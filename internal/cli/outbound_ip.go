@@ -19,7 +19,7 @@ func (c *commandSet) outboundIPMenu(ctx context.Context, core string) error {
 	fmt.Fprintf(c.out, "当前配置：%s\n\n", outboundIPDisplay(settings.Current))
 	defaultChoice := -1
 	for index, strategy := range settings.Strategies {
-		c.printMenuChoice(strconv.Itoa(index+1), outboundIPDisplay(strategy))
+		c.printMenuChoice(strconv.Itoa(index+1), outboundIPChoiceDisplay(strategy))
 		if strategy == settings.Current {
 			defaultChoice = index + 1
 		}
@@ -45,7 +45,8 @@ func (c *commandSet) outboundIPMenu(ctx context.Context, core string) error {
 		"备份并原子更新当前服务端配置",
 		"服务正在运行时自动重启使设置立即生效",
 	}}}
-	if selected == provider.OutboundIPPreferIPv4 || selected == provider.OutboundIPPreferIPv6 {
+	switch selected {
+	case provider.OutboundIPPreferIPv4, provider.OutboundIPPreferIPv6:
 		items := []string{
 			"优先解析所选地址族；解析不到时再尝试另一族",
 		}
@@ -55,7 +56,11 @@ func (c *commandSet) outboundIPMenu(ctx context.Context, core string) error {
 			items = append(items, "sing-box 会在短延迟后尝试另一族地址（连接回退）")
 		}
 		sections = append(sections, confirmationSection{title: "优先策略", items: items})
-	} else {
+	case provider.OutboundIPUnset:
+		sections = append(sections, confirmationSection{title: "恢复默认", items: []string{
+			"恢复为生成配置时的双栈行为，不偏科某一地址族",
+		}})
+	default:
 		items := []string{"对端只有另一地址族时将无法访问"}
 		if core == domain.CoreXray {
 			items = append(items, "Xray Freedom 的 UDP 出站默认仍偏向 IPv4")
@@ -94,6 +99,13 @@ func (c *commandSet) outboundIPMenu(ctx context.Context, core string) error {
 	fmt.Fprintf(c.out, "[结果] %s 出站 IP 已从 %s 修改为 %s；%s。\n",
 		core, outboundIPDisplay(change.Previous), outboundIPDisplay(change.Current), effect)
 	return nil
+}
+
+func outboundIPChoiceDisplay(strategy string) string {
+	if strategy == provider.OutboundIPUnset {
+		return "恢复默认（双栈）"
+	}
+	return outboundIPDisplay(strategy)
 }
 
 func outboundIPDisplay(strategy string) string {

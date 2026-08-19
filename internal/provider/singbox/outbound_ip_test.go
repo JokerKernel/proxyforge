@@ -63,6 +63,35 @@ func TestPatchOutboundIPStrategyUsesDomainResolver(t *testing.T) {
 	if !foundResolve {
 		t.Fatal("missing resolve rule")
 	}
+
+	restored, err := p.PatchOutboundIPStrategy(patched, provider.OutboundIPUnset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current, err := p.CurrentOutboundIPStrategy(restored); err != nil || current != provider.OutboundIPUnset {
+		t.Fatalf("restored current=%q error=%v", current, err)
+	}
+	if profile, err := p.CurrentDNSProfile(restored); err != nil || profile != provider.DNSProfileSystem {
+		t.Fatalf("restored dns profile=%q error=%v", profile, err)
+	}
+	if err := json.Unmarshal(restored, &root); err != nil {
+		t.Fatal(err)
+	}
+	direct = singBoxOutboundByTag(t, root, "direct")
+	if _, exists := direct["domain_resolver"]; exists {
+		t.Fatalf("restored outbound still has domain_resolver: %#v", direct)
+	}
+	if resolver, ok := root["route"].(map[string]any)["default_domain_resolver"].(string); !ok || resolver != "local" {
+		t.Fatalf("restored default_domain_resolver=%#v", root["route"].(map[string]any)["default_domain_resolver"])
+	}
+	for _, raw := range root["route"].(map[string]any)["rules"].([]any) {
+		rule := raw.(map[string]any)
+		if rule["action"] == "resolve" {
+			if _, exists := rule["strategy"]; exists {
+				t.Fatalf("restored resolve still has strategy: %#v", rule)
+			}
+		}
+	}
 }
 
 func TestCurrentOutboundIPStrategyReportsConflictAsCustom(t *testing.T) {

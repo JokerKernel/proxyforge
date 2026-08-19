@@ -13,6 +13,7 @@ var supportedOutboundIPStrategies = []string{
 	provider.OutboundIPPreferIPv6,
 	provider.OutboundIPIPv4Only,
 	provider.OutboundIPIPv6Only,
+	provider.OutboundIPUnset,
 }
 
 var singBoxOutboundIPStrategy = map[string]string{
@@ -83,12 +84,33 @@ func (*Provider) PatchOutboundIPStrategy(config []byte, strategy string) ([]byte
 	if !slices.Contains(supportedOutboundIPStrategies, strategy) {
 		return nil, fmt.Errorf("sing-box 出站 IP 策略 %q 无效", strategy)
 	}
-	value := singBoxOutboundIPStrategy[strategy]
 	root, outbound, err := parseDirectOutbound(config, "修改")
 	if err != nil {
 		return nil, err
 	}
 	delete(outbound, "domain_strategy")
+	if strategy == provider.OutboundIPUnset {
+		clearOutboundDomainResolver(outbound)
+		if route, ok := root["route"].(map[string]any); ok {
+			if _, exists := route["default_domain_resolver"]; exists {
+				route["default_domain_resolver"] = clearDomainResolverStrategy(route["default_domain_resolver"])
+			}
+			if rules, ok := route["rules"].([]any); ok {
+				for _, raw := range rules {
+					rule, ok := raw.(map[string]any)
+					if !ok {
+						continue
+					}
+					if action, _ := rule["action"].(string); action == "resolve" {
+						delete(rule, "strategy")
+					}
+				}
+			}
+		}
+		return marshalSingBox(root)
+	}
+
+	value := singBoxOutboundIPStrategy[strategy]
 	outbound["domain_resolver"] = setDomainResolverStrategy(outbound["domain_resolver"], "local", value)
 
 	if route, ok := root["route"].(map[string]any); ok {
@@ -146,6 +168,40 @@ func singBoxStrategyValue(raw any) string {
 	default:
 		return ""
 	}
+}
+
+func clearOutboundDomainResolver(outbound map[string]any) {
+	raw, exists := outbound["domain_resolver"]
+	if !exists {
+		return
+	}
+	cleared := clearDomainResolverStrategy(raw)
+	if cleared == nil {
+		delete(outbound, "domain_resolver")
+		return
+	}
+	if server, ok := cleared.(string); ok && server != "" {
+		delete(outbound, "domain_resolver")
+		return
+	}
+	outbound["domain_resolver"] = cleared
+}
+
+func clearDomainResolverStrategy(raw any) any {
+	object, ok := raw.(map[string]any)
+	if !ok {
+		return raw
+	}
+	delete(object, "strategy")
+	if len(object) == 0 {
+		return nil
+	}
+	if len(object) == 1 {
+		if server, ok := object["server"].(string); ok {
+			return server
+		}
+	}
+	return object
 }
 
 func setDomainResolverStrategy(raw any, fallbackServer, strategy string) map[string]any {

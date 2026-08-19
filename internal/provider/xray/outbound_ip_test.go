@@ -56,6 +56,21 @@ func TestPatchOutboundIPStrategyUpdatesFreedomOnly(t *testing.T) {
 	if direct["settings"].(map[string]any)["domainStrategy"] != "ForceIPv6" {
 		t.Fatalf("only direct=%#v", direct)
 	}
+
+	restored, err := p.PatchOutboundIPStrategy(only, provider.OutboundIPUnset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current, err := p.CurrentOutboundIPStrategy(restored); err != nil || current != provider.OutboundIPUnset {
+		t.Fatalf("restored current=%q error=%v", current, err)
+	}
+	if err := json.Unmarshal(restored, &root); err != nil {
+		t.Fatal(err)
+	}
+	direct = xrayOutboundByTag(t, root, "direct")
+	if direct["settings"].(map[string]any)["domainStrategy"] != "UseIP" {
+		t.Fatalf("restored direct=%#v", direct)
+	}
 }
 
 func TestCurrentOutboundIPStrategyReportsCustomUnknownValue(t *testing.T) {
