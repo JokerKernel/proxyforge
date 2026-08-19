@@ -111,24 +111,24 @@ func dnsProfileDisplay(core, profile string) string {
 		return "系统 DNS（推荐）"
 	case provider.DNSProfilePublicCloudflare:
 		if core == domain.CoreSingBox {
-			return "公共 DNS（Cloudflare 1.1.1.1）"
+			return "Cloudflare DNS（1.1.1.1）"
 		}
-		return "公共 DNS（Cloudflare 默认；同时写入 1.1.1.1 + 8.8.8.8）"
+		return "Cloudflare DNS（1.1.1.1 + 8.8.8.8）"
 	case provider.DNSProfilePublicGoogle:
 		if core == domain.CoreSingBox {
-			return "公共 DNS（Google 8.8.8.8）"
+			return "Google DNS（8.8.8.8）"
 		}
-		return "公共 DNS（Google 默认；同时写入 8.8.8.8 + 1.1.1.1）"
+		return "Google DNS（8.8.8.8 + 1.1.1.1）"
 	case provider.DNSProfileDoHCloudflare:
 		if core == domain.CoreSingBox {
-			return "加密 DNS/DoH（Cloudflare）"
+			return "Cloudflare DoH"
 		}
-		return "加密 DNS/DoH（Cloudflare 默认；同时配置 Google）"
+		return "Cloudflare DoH（同时配置 Google）"
 	case provider.DNSProfileDoHGoogle:
 		if core == domain.CoreSingBox {
-			return "加密 DNS/DoH（Google）"
+			return "Google DoH"
 		}
-		return "加密 DNS/DoH（Google 默认；同时配置 Cloudflare）"
+		return "Google DoH（同时配置 Cloudflare）"
 	case provider.DNSProfileCloudflare:
 		return "Cloudflare DNS（仅 1.1.1.1，旧单地址配置）"
 	case provider.DNSProfileGoogle:

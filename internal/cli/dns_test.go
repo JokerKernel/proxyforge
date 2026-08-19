@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"strings"
 	"testing"
 
 	"proxyforge/internal/domain"
@@ -14,19 +13,26 @@ func TestDNSCardDisplayIncludesConcreteAddresses(t *testing.T) {
 		t.Fatalf("system card=%q", got)
 	}
 	got = dnsCardDisplay(domain.CoreXray, provider.DNSProfilePublicCloudflare, []string{"1.1.1.1", "8.8.8.8"})
-	if got != "公共 DNS（Cloudflare） · 1.1.1.1, 8.8.8.8" {
+	if got != "Cloudflare DNS · 1.1.1.1, 8.8.8.8" {
 		t.Fatalf("public card=%q", got)
 	}
-	if strings.Contains(got, "同时写入") {
-		t.Fatalf("card repeated profile details: %q", got)
+	got = dnsCardDisplay(domain.CoreXray, provider.DNSProfilePublicGoogle, []string{"8.8.8.8", "1.1.1.1"})
+	if got != "Google DNS · 8.8.8.8, 1.1.1.1" {
+		t.Fatalf("google card=%q", got)
 	}
 }
 
-func TestDNSProfileDisplayIncludesEncryptedOptions(t *testing.T) {
-	for _, profile := range []string{provider.DNSProfileDoHCloudflare, provider.DNSProfileDoHGoogle} {
-		got := dnsProfileDisplay(domain.CoreSingBox, profile)
-		if !strings.Contains(got, "加密 DNS/DoH") {
-			t.Fatalf("profile %q display=%q", profile, got)
-		}
+func TestDNSProfileDisplayUsesProviderNames(t *testing.T) {
+	if got := dnsProfileDisplay(domain.CoreXray, provider.DNSProfilePublicCloudflare); got != "Cloudflare DNS（1.1.1.1 + 8.8.8.8）" {
+		t.Fatalf("cloudflare=%q", got)
+	}
+	if got := dnsProfileDisplay(domain.CoreXray, provider.DNSProfilePublicGoogle); got != "Google DNS（8.8.8.8 + 1.1.1.1）" {
+		t.Fatalf("google=%q", got)
+	}
+	if got := dnsProfileDisplay(domain.CoreXray, provider.DNSProfileDoHCloudflare); got != "Cloudflare DoH（同时配置 Google）" {
+		t.Fatalf("cloudflare doh=%q", got)
+	}
+	if got := dnsProfileDisplay(domain.CoreSingBox, provider.DNSProfileDoHGoogle); got != "Google DoH" {
+		t.Fatalf("sing-box google doh=%q", got)
 	}
 }

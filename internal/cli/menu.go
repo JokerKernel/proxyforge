@@ -324,18 +324,14 @@ func dnsCardProfile(core, profile string) string {
 	switch profile {
 	case provider.DNSProfileSystem:
 		return "系统 DNS（推荐）"
-	case provider.DNSProfilePublicCloudflare:
-		return "公共 DNS（Cloudflare）"
-	case provider.DNSProfilePublicGoogle:
-		return "公共 DNS（Google）"
-	case provider.DNSProfileDoHCloudflare:
-		return "加密 DNS/DoH（Cloudflare）"
-	case provider.DNSProfileDoHGoogle:
-		return "加密 DNS/DoH（Google）"
-	case provider.DNSProfileCloudflare:
+	case provider.DNSProfilePublicCloudflare, provider.DNSProfileCloudflare:
 		return "Cloudflare DNS"
-	case provider.DNSProfileGoogle:
+	case provider.DNSProfilePublicGoogle, provider.DNSProfileGoogle:
 		return "Google DNS"
+	case provider.DNSProfileDoHCloudflare:
+		return "Cloudflare DoH"
+	case provider.DNSProfileDoHGoogle:
+		return "Google DoH"
 	case "none":
 		return "未配置内核 DNS"
 	case "implicit-system":
