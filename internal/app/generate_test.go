@@ -522,6 +522,28 @@ func TestGenerateRestartsServiceWhenPortRemainsOccupied(t *testing.T) {
 	}
 }
 
+func TestDefaultPortKeepsCurrentCoreAndAvoidsOtherCore(t *testing.T) {
+	store := system.StateStore{Layout: system.Layout{Root: t.TempDir()}}
+	if got := DefaultPort(store, domain.CoreXray); got != 443 {
+		t.Fatalf("empty store default=%d", got)
+	}
+	if err := store.Save(domain.NodeSpec{ManagedBy: "proxyforge", Core: domain.CoreXray, Port: 443}); err != nil {
+		t.Fatal(err)
+	}
+	if got := DefaultPort(store, domain.CoreSingBox); got != 8443 {
+		t.Fatalf("second core default=%d", got)
+	}
+	if err := store.Save(domain.NodeSpec{ManagedBy: "proxyforge", Core: domain.CoreSingBox, Port: 8443}); err != nil {
+		t.Fatal(err)
+	}
+	if got := DefaultPort(store, domain.CoreXray); got != 443 {
+		t.Fatalf("regenerate xray default=%d", got)
+	}
+	if got := DefaultPort(store, domain.CoreSingBox); got != 8443 {
+		t.Fatalf("regenerate sing-box default=%d", got)
+	}
+}
+
 func TestGenerateRejectsManagedPortConflict(t *testing.T) {
 	r := &fakeRunner{port: freePort(t)}
 	a, _ := testApp(t, r)

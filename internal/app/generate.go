@@ -406,12 +406,26 @@ func (a *App) firewallHint(port int) {
 }
 
 func DefaultPort(store system.StateStore, core string) int {
+	if current, err := store.Load(core); err == nil && current.Port > 0 {
+		return current.Port
+	}
 	other := domain.CoreSingBox
-	if core == other {
+	if core == domain.CoreSingBox {
 		other = domain.CoreXray
 	}
-	if _, err := store.Load(other); err == nil {
+	otherState, err := store.Load(other)
+	if err != nil {
+		return 443
+	}
+	if !portUsedByNode(otherState, 443) {
+		return 443
+	}
+	if !portUsedByNode(otherState, 8443) {
 		return 8443
 	}
 	return 443
+}
+
+func portUsedByNode(n domain.NodeSpec, port int) bool {
+	return n.Port == port || nodeFallbackPort(n) == port
 }
