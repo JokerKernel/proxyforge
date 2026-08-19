@@ -83,7 +83,7 @@ func TestChooseNumberRetriesInvalidInput(t *testing.T) {
 	if choice != 2 {
 		t.Fatalf("choice = %d, want 2", choice)
 	}
-	if count := strings.Count(out.String(), "无效选择"); count != 2 {
+	if count := strings.Count(out.String(), "无效选择"); count != 1 {
 		t.Fatalf("invalid message count = %d, output=%q", count, out.String())
 	}
 	if strings.Contains(out.String(), "\x1b[") {

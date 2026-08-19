@@ -130,6 +130,27 @@ func TestReadSNIPageChoiceKeepsSingleInvalidHint(t *testing.T) {
 	}
 }
 
+func TestAskManualSNIKeepsSingleEmptyHint(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{
+		reader: bufio.NewReader(strings.NewReader("\n\nexample.com\n1\n")),
+		out:    &out,
+		probeSNI: func(context.Context, []string, string, int) ([]app.SNICandidate, error) {
+			return []app.SNICandidate{{Domain: "example.com", Latency: time.Millisecond}}, nil
+		},
+	}
+	got, err := c.askManualSNI(context.Background(), "203.0.113.10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "example.com" {
+		t.Fatalf("sni=%q", got)
+	}
+	if count := strings.Count(out.String(), "SNI 不能为空。"); count != 1 {
+		t.Fatalf("empty hint count=%d output=%q", count, out.String())
+	}
+}
+
 func TestSNIPageControlLinesStayCompact(t *testing.T) {
 	first := sniPageControlLines(0, 3, true, sniPageChoiceOptions{AllowManual: true})
 	if len(first) != 2 {

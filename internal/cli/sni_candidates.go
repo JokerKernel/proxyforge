@@ -144,6 +144,7 @@ func (c *commandSet) selectSNICandidate(ctx context.Context, server string) (str
 }
 
 func (c *commandSet) askManualSNI(ctx context.Context, server string) (string, error) {
+	emptyShown := false
 	for {
 		domain, err := c.askDefaultCancelable("请输入 REALITY SNI", "")
 		if err != nil {
@@ -156,7 +157,14 @@ func (c *commandSet) askManualSNI(ctx context.Context, server string) (string, e
 			}
 			return domain, nil
 		}
+		if c.interactiveUI() {
+			eraseChoiceRetry(c.out, false)
+		}
+		if emptyShown {
+			continue
+		}
 		fmt.Fprintln(c.out, "SNI 不能为空。")
+		emptyShown = true
 	}
 }
 

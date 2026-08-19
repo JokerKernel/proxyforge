@@ -59,7 +59,10 @@ func (c *commandSet) chooseNumberInput(label string, min, max, def int, cancelab
 			return choice, nil
 		}
 		if c.interactiveUI() {
-			eraseChoiceRetry(c.out, invalidShown)
+			eraseChoiceRetry(c.out, false)
+		}
+		if value == "" || invalidShown {
+			continue
 		}
 		if cancelable {
 			fmt.Fprintf(c.out, "无效选择，请输入 %d 到 %d 之间的数字，或输入 q/0 返回上级菜单。\n", min, max)
