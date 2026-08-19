@@ -16,13 +16,16 @@ func (c *commandSet) outboundIPMenu(ctx context.Context, core string) error {
 	}
 	c.clearScreen()
 	c.printPageHeader(core, "出站 IP")
-	fmt.Fprintf(c.out, "当前配置：%s\n\n", outboundIPDisplay(settings.Current))
+	fmt.Fprintf(c.out, "当前生效：%s\n\n", outboundIPDisplay(settings.Current))
 	defaultChoice := -1
 	for index, strategy := range settings.Strategies {
-		c.printMenuChoice(strconv.Itoa(index+1), outboundIPChoiceDisplay(strategy))
+		key := strconv.Itoa(index + 1)
 		if strategy == settings.Current {
+			c.printMenuBadgeChoice(key, outboundIPChoiceTitle(strategy), "[当前]")
 			defaultChoice = index + 1
+			continue
 		}
+		c.printMenuChoice(key, outboundIPChoiceDisplay(strategy))
 	}
 	c.printMenuChoice("0/q", "返回")
 	choice, err := c.chooseNumber("请选择出站 IP", 0, len(settings.Strategies), defaultChoice)
@@ -72,7 +75,7 @@ func (c *commandSet) outboundIPMenu(ctx context.Context, core string) error {
 		"操作确认：设置出站 IP",
 		[]string{
 			"目标内核：" + core,
-			"当前配置：" + outboundIPDisplay(settings.Current),
+			"当前生效：" + outboundIPDisplay(settings.Current),
 			"新的配置：" + outboundIPDisplay(selected),
 		},
 		sections...,
@@ -100,6 +103,13 @@ func (c *commandSet) outboundIPMenu(ctx context.Context, core string) error {
 	fmt.Fprintf(c.out, "[结果] %s 出站 IP 已从 %s 修改为 %s；%s。\n",
 		core, outboundIPDisplay(change.Previous), outboundIPDisplay(change.Current), effect)
 	return nil
+}
+
+func outboundIPChoiceTitle(strategy string) string {
+	if strategy == provider.OutboundIPUnset {
+		return "恢复默认"
+	}
+	return outboundIPDisplay(strategy)
 }
 
 func outboundIPChoiceDisplay(strategy string) string {

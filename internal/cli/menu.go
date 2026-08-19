@@ -339,11 +339,15 @@ func (c *commandSet) printMenuStatusChoice(key, title string, installed bool) {
 	if installed {
 		status = "[已安装]"
 	}
+	c.printMenuBadgeChoice(key, title, status)
+}
+
+func (c *commandSet) printMenuBadgeChoice(key, title, badge string) {
 	padding := menuStatusColumn - menuDisplayWidth(title)
 	if padding < 2 {
 		padding = 2
 	}
-	fmt.Fprintf(c.out, "  %-3s %s%s%s\n", key, title, strings.Repeat(" ", padding), status)
+	fmt.Fprintf(c.out, "  %-3s %s%s%s\n", key, title, strings.Repeat(" ", padding), badge)
 }
 
 func menuDisplayWidth(value string) int {
