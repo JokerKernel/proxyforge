@@ -103,17 +103,9 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		c.printMenuChoice("1", "生成/更新配置（完整覆盖现有配置，不合并原配置）")
 		c.printMenuChoice("2", "查看配置")
 		c.printMenuChoice("3", "编辑配置（vim / nano / vi）")
-		c.printMenuChoice("4", "DNS 设置")
-		c.printMenuChoice("5", "重置 SNI/target（保留节点凭证）")
-		c.printMenuChoice("6", "重置节点凭证（UUID、REALITY 密钥和 short ID；保留 SNI/target）")
-		c.printMenuChoice("7", "REALITY SNI 候选检测（重新测试，不修改配置）")
-		maxChoice := 7
-		if core == domain.CoreXray {
-			c.printMenuChoice("8", "专用运行用户（修复 systemd 的 nobody 安全警告）")
-			maxChoice = 8
-		}
+		c.printMenuChoice("4", "修改配置（DNS、重置节点、SNI 检测与运行用户）")
 		c.printMenuChoice("0/q", "返回")
-		choice, err := c.chooseNumber("请选择", 0, maxChoice, 0)
+		choice, err := c.chooseNumber("请选择", 0, 4, 0)
 		if err != nil {
 			return err
 		}
@@ -122,6 +114,7 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		}
 
 		c.clearScreen()
+		shouldPause := true
 		switch choice {
 		case 1:
 			o := domain.GenerateOptions{}
@@ -161,17 +154,54 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		case 3:
 			err = c.editServerConfig(core)
 		case 4:
+			shouldPause = false
+			err = c.modifyConfigMenu(ctx, core)
+		}
+		if err != nil {
+			c.printMenuError(err)
+		}
+		if shouldPause {
+			c.pauseForMenu()
+		}
+	}
+}
+
+func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
+	for {
+		c.clearScreen()
+		c.printPageHeader(core, "修改配置")
+		c.printMenuChoice("1", "DNS 设置")
+		c.printMenuChoice("2", "重置 SNI/target（保留节点凭证）")
+		c.printMenuChoice("3", "重置节点凭证（UUID、REALITY 密钥和 short ID；保留 SNI/target）")
+		c.printMenuChoice("4", "REALITY SNI 候选检测（重新测试，不修改配置）")
+		maxChoice := 4
+		if core == domain.CoreXray {
+			c.printMenuChoice("5", "专用运行用户（修复 systemd 的 nobody 安全警告）")
+			maxChoice = 5
+		}
+		c.printMenuChoice("0/q", "返回")
+		choice, err := c.chooseNumber("请选择", 0, maxChoice, 0)
+		if err != nil {
+			return err
+		}
+		if choice == 0 {
+			return nil
+		}
+
+		c.clearScreen()
+		switch choice {
+		case 1:
 			err = c.dnsSettingsMenu(ctx, core)
 			if errors.Is(err, errReturnToMenu) {
 				continue
 			}
-		case 5:
+		case 2:
 			err = c.resetChoice(ctx, core, 1)
-		case 6:
+		case 3:
 			err = c.resetChoice(ctx, core, 2)
-		case 7:
+		case 4:
 			err = c.retestSNICandidates(ctx, core)
-		case 8:
+		case 5:
 			err = c.dedicatedXrayServiceUser(ctx)
 			if errors.Is(err, errReturnToMenu) {
 				continue

@@ -116,13 +116,14 @@ func TestEditServerConfigRequiresInteractiveTerminal(t *testing.T) {
 	}
 }
 
-func TestXrayServerConfigMenuNumbersEditBeforeDedicatedUser(t *testing.T) {
+func TestXrayServerConfigMenuNumbersEditBeforeModify(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{reader: bufio.NewReader(strings.NewReader("0\n")), out: &out}
 	if err := c.serverConfigMenu(context.Background(), domain.CoreXray); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "3   编辑配置") || !strings.Contains(out.String(), "8   专用运行用户") {
+	if !strings.Contains(out.String(), "3   编辑配置") || !strings.Contains(out.String(), "4   修改配置") ||
+		strings.Contains(out.String(), "专用运行用户") {
 		t.Fatalf("xray menu=%q", out.String())
 	}
 }

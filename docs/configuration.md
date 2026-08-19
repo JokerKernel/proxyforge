@@ -49,7 +49,7 @@ sing-box 简化配置不启用内部 DNS 和路由预解析，改由出站连接
 
 SNI 留空时，程序会并发验证内置候选域名的 DNS、TCP/TLS、证书名称和延迟，展示最快的 10 个。手动输入的 SNI 会执行相同检查，并显示详细证书 SAN。
 
-已经生成节点后，可在交互菜单进入“服务端配置 → REALITY SNI 候选检测”重新测试。程序会同时复测当前 SNI 和全部内置候选，显示当前 SNI 是否仍然有效、在有效候选中的排名及最快的 10 个结果。结果页可以直接选择“重新测试”连续复测，或返回服务端配置；检测只读取节点状态和网络结果，不修改 SNI、target 或服务状态。
+已经生成节点后，可在交互菜单进入“服务端配置 → 修改配置 → REALITY SNI 候选检测”重新测试。程序会同时复测当前 SNI 和全部内置候选，显示当前 SNI 是否仍然有效、在有效候选中的排名及最快的 10 个结果。结果页可以直接选择“重新测试”连续复测，或返回服务端配置；检测只读取节点状态和网络结果，不修改 SNI、target 或服务状态。
 
 CDN 识别只基于 CNAME、域名和地址数量进行启发式判断，不代表权威归属；测速也只反映当前网络。最终 SNI 和 target 需要人工确认。
 
@@ -63,7 +63,7 @@ CDN 识别只基于 CNAME、域名和地址数量进行启发式判断，不代�
 
 XTLS 官方安装脚本首次安装时默认在 systemd unit 中写入 `User=nobody`，较新的 systemd 会报告 `Special user nobody configured, this is not safe!`。这通常不影响启动，但 `nobody` 是多个程序可共用的特殊账号，不适合作为长期服务身份。
 
-在交互菜单进入“Xray → 服务端配置 → 专用运行用户”，ProxyForge 会写入 `/usr/lib/sysusers.d/proxyforge-xray.conf`，通过 `systemd-sysusers` 创建禁止登录且不创建 home 目录的独立 `xray` 系统用户和组，再更新 `xray.service` 与 `xray@.service`、写入持久化 drop-in，并同步配置及日志权限。切换前会以 `xray` 身份校验配置及引用文件的读取权限；若服务正在运行，修改完成后会自动重启。任一步骤失败会恢复原 systemd unit 和文件权限；已经创建的专用账号会保留，避免删除仍可能拥有文件的系统账号。
+在交互菜单进入“Xray → 服务端配置 → 修改配置 → 专用运行用户”，ProxyForge 会写入 `/usr/lib/sysusers.d/proxyforge-xray.conf`，通过 `systemd-sysusers` 创建禁止登录且不创建 home 目录的独立 `xray` 系统用户和组，再更新 `xray.service` 与 `xray@.service`、写入持久化 drop-in，并同步配置及日志权限。切换前会以 `xray` 身份校验配置及引用文件的读取权限；若服务正在运行，修改完成后会自动重启。任一步骤失败会恢复原 systemd unit 和文件权限；已经创建的专用账号会保留，避免删除仍可能拥有文件的系统账号。
 
 普通重新生成会保留 UUID、REALITY 密钥和 short ID。只有使用 `--rotate-credentials` 或执行凭据重置时才会轮换它们，并让旧客户端失效。
 
@@ -83,7 +83,7 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 ## DNS 设置
 
-“服务端配置管理 → DNS 设置”支持系统 DNS（推荐）、Cloudflare/Google 明文 DNS 和 DoH。所有选项只影响代理内核，不修改系统全局 DNS。
+“服务端配置 → 修改配置 → DNS 设置”支持系统 DNS（推荐）、Cloudflare/Google 明文 DNS 和 DoH。所有选项只影响代理内核，不修改系统全局 DNS。
 
 - Xray 的明文 DNS 和 DoH 都写入两家服务器并按所选顺序回退；DoH 使用 IP 形式的 `https+local` 地址。
 - sing-box 只写入所选的一个公共上游；DoH 额外保留系统 DNS 用于引导解析，并同步更新 `dns.final`、`route.default_domain_resolver` 和所有 `resolve` 规则。
