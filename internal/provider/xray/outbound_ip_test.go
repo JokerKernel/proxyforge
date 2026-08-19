@@ -42,6 +42,7 @@ func TestHappyEyeballsFieldOrderStaysStableAfterPatch(t *testing.T) {
 	if direct["settings"].(map[string]any)["domainStrategy"] != "UseIPv6v4" {
 		t.Fatalf("prefer IPv6 direct=%#v", direct)
 	}
+	assertNoFinalRules(t, direct)
 }
 
 func TestPatchOutboundIPStrategyUpdatesFreedomOnly(t *testing.T) {
@@ -76,7 +77,7 @@ func TestPatchOutboundIPStrategyUpdatesFreedomOnly(t *testing.T) {
 	if direct["settings"].(map[string]any)["domainStrategy"] != "UseIPv4v6" {
 		t.Fatalf("direct=%#v", direct)
 	}
-	assertDirectAllowFinalRule(t, direct)
+	assertNoFinalRules(t, direct)
 	if _, exists := direct["streamSettings"]; exists {
 		t.Fatalf("prefer IPv4 left unused sockopt: %#v", direct["streamSettings"])
 	}
@@ -95,6 +96,7 @@ func TestPatchOutboundIPStrategyUpdatesFreedomOnly(t *testing.T) {
 	if direct["settings"].(map[string]any)["domainStrategy"] != "ForceIPv6" {
 		t.Fatalf("only direct=%#v", direct)
 	}
+	assertNoFinalRules(t, direct)
 
 	restored, err := p.PatchOutboundIPStrategy(only, provider.OutboundIPUnset)
 	if err != nil {
@@ -134,6 +136,7 @@ func TestPatchOutboundIPStrategyLeavesFallbackOnDualStack(t *testing.T) {
 	if direct["settings"].(map[string]any)["domainStrategy"] != "UseIPv4v6" {
 		t.Fatalf("direct=%#v", direct)
 	}
+	assertNoFinalRules(t, direct)
 	fallback := xrayOutboundByTag(t, root, fallbackDirectOutboundTag)
 	assertDirectHappyEyeballs(t, fallback)
 	assertNoFinalRules(t, fallback)
@@ -244,6 +247,27 @@ func TestCurrentOutboundIPStrategyReportsCustomUnknownValue(t *testing.T) {
 	}
 	if _, err := p.PatchOutboundIPStrategy(config, "prefer-ipv4-typo"); err == nil || !strings.Contains(err.Error(), "无效") {
 		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestPatchOutboundIPKeepsCustomFinalRules(t *testing.T) {
+	p := New()
+	config := []byte(`{"outbounds":[{"protocol":"freedom","settings":{"domainStrategy":"AsIs","finalRules":[{"action":"allow"},{"action":"allow","ip":["192.168.1.10"],"port":"9100"}]},"tag":"direct"}]}`)
+	patched, err := p.PatchOutboundIPStrategy(config, provider.OutboundIPPreferIPv4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(patched, &root); err != nil {
+		t.Fatal(err)
+	}
+	rules := xrayOutboundByTag(t, root, "direct")["settings"].(map[string]any)["finalRules"].([]any)
+	if len(rules) != 1 {
+		t.Fatalf("finalRules=%#v", rules)
+	}
+	rule := rules[0].(map[string]any)
+	if rule["action"] != "allow" || rule["port"] != "9100" {
+		t.Fatalf("kept rule=%#v", rule)
 	}
 }
 

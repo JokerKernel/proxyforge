@@ -98,7 +98,7 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 - 优先 IPv4 / 优先 IPv6：Xray 写入 Freedom `UseIPv4v6` / `UseIPv6v4`（先解析优先族，解析不到再试另一族；已解析出优先族后连接失败不会回退）。sing-box 给 `resolve` 规则加上 `prefer_ipv4` / `prefer_ipv6`（可连接回退）；简化配置没有该规则时会补一条同样的 `resolve`。
 - 仅 IPv4 / 仅 IPv6：Xray 写入 `ForceIPv4` / `ForceIPv6`；sing-box 同上写入 `ipv4_only` / `ipv6_only`。对端只有另一地址族时会失败。
 - 回落：防偷跑配置把合法 SNI 回落指到独立的 `fallback-direct`。给已有配置设置出站 IP 时，若回落还挂在 `direct` 上，会自动拆开。
-- 恢复默认：Xray 写回 Freedom `AsIs`，并在 sockopt 打开 `UseIP` + `happyEyeballs`（先 IPv4，300ms 后竞速 IPv6，与 sing-box 默认一致）；`direct` 若还没有 `finalRules`，会补一条空的 `allow`，避免 VLESS 内置拦私网先把域名解析成单个 IP。sing-box 去掉这些 `strategy`。标准配置会保留原来的 `resolve` 规则和本地 DNS；简化配置会撤掉补上的 `resolve` 规则，以及仅为它添加的本地 DNS。
+- 恢复默认：Xray 写回 Freedom `AsIs`，并在 sockopt 打开 `UseIP` + `happyEyeballs`（先 IPv4，300ms 后竞速 IPv6，与 sing-box 默认一致）；`direct` 若还没有 `finalRules`，会补一条空的 `allow`，避免 VLESS 内置拦私网先把域名解析成单个 IP。优先/仅 IPv4·IPv6 会删掉这条空 `allow`（手写的带 `ip`/`port` 的规则保留）。sing-box 去掉这些 `strategy`。标准配置会保留原来的 `resolve` 规则和本地 DNS；简化配置会撤掉补上的 `resolve` 规则，以及仅为它添加的本地 DNS。
 - 生成配置的默认状态是未设置（双栈）。Xray 默认先 IPv4 再竞速 IPv6（`direct` 带空 `allow`；`fallback-direct` 不需要）；sing-box 同样先 IPv4。重置 SNI/凭证会保留此项；完整生成会覆盖。
 
 ## 回落 IP

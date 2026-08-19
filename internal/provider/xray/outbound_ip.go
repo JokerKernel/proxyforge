@@ -71,6 +71,7 @@ func (*Provider) PatchOutboundIPStrategy(config []byte, strategy string) ([]byte
 	} else {
 		settings["domainStrategy"] = xrayOutboundIPStrategy[strategy]
 		clearFreedomHappyEyeballs(outbound)
+		clearDirectRacingAllow(settings)
 	}
 	if err := ensureFallbackDirectIsolation(root); err != nil {
 		return nil, err
@@ -339,6 +340,43 @@ func ensureDirectAllowFinalRule(settings map[string]any) {
 		return
 	}
 	settings["finalRules"] = []any{map[string]any{"action": "allow"}}
+}
+
+func clearDirectRacingAllow(settings map[string]any) {
+	raw, exists := settings["finalRules"]
+	if !exists {
+		return
+	}
+	rules, ok := raw.([]any)
+	if !ok {
+		delete(settings, "finalRules")
+		return
+	}
+	kept := make([]any, 0, len(rules))
+	for _, item := range rules {
+		rule, ok := item.(map[string]any)
+		if !ok || !isDirectRacingAllow(rule) {
+			kept = append(kept, item)
+		}
+	}
+	if len(kept) == 0 {
+		delete(settings, "finalRules")
+		return
+	}
+	settings["finalRules"] = kept
+}
+
+func isDirectRacingAllow(rule map[string]any) bool {
+	if action, _ := rule["action"].(string); action != "allow" {
+		return false
+	}
+	if _, ok := rule["ip"]; ok {
+		return false
+	}
+	if _, ok := rule["port"]; ok {
+		return false
+	}
+	return true
 }
 
 func applyFreedomHappyEyeballs(outbound map[string]any) {
