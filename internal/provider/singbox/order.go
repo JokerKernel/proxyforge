@@ -104,6 +104,8 @@ func singBoxFieldPriority(object map[string]any) map[string]int {
 	case typeName == "direct" && hasAnySingBoxKey(object, "listen", "listen_port", "override_address"):
 		order = append([]string{"type", "tag"}, singBoxListenFieldOrder()...)
 		order = append(order, "network", "override_address", "override_port")
+	case typeName == "direct":
+		order = []string{"type", "tag", "domain_resolver", "domain_strategy"}
 	case typeName == "vless" && hasSingBoxKeys(object, "listen", "users"):
 		order = append([]string{"type", "tag"}, singBoxListenFieldOrder()...)
 		order = append(order, "users", "tls", "multiplex", "transport")
@@ -142,8 +144,10 @@ func singBoxFieldPriority(object map[string]any) map[string]int {
 		order = []string{
 			"inbound", "ip_version", "auth_user", "protocol", "client", "network", "domain", "domain_suffix",
 			"domain_keyword", "domain_regex", "source_ip_cidr", "source_ip_is_private", "ip_is_private", "ip_cidr",
-			"port", "port_range", "source_port", "source_port_range", "rule_set", "invert", "action", "outbound", "server",
+			"port", "port_range", "source_port", "source_port_range", "rule_set", "invert", "action", "outbound", "server", "strategy",
 		}
+	case hasSingBoxKeys(object, "server") && hasAnySingBoxKey(object, "strategy", "rewrite_ttl", "client_subnet") && !hasAnySingBoxKey(object, "server_port", "type"):
+		order = []string{"server", "strategy", "rewrite_ttl", "client_subnet"}
 	}
 	priority := make(map[string]int, len(order))
 	for index, key := range order {

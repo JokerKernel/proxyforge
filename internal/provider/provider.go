@@ -49,6 +49,20 @@ type DNSProfileProvider interface {
 	PatchDNSProfile([]byte, string) ([]byte, error)
 }
 
+const (
+	OutboundIPPreferIPv4 = "prefer-ipv4"
+	OutboundIPPreferIPv6 = "prefer-ipv6"
+	OutboundIPIPv4Only   = "ipv4-only"
+	OutboundIPIPv6Only   = "ipv6-only"
+	OutboundIPUnset      = "unset"
+)
+
+type OutboundIPProvider interface {
+	OutboundIPStrategies() []string
+	CurrentOutboundIPStrategy([]byte) (string, error)
+	PatchOutboundIPStrategy([]byte, string) ([]byte, error)
+}
+
 type CoreProvider interface {
 	Name() string
 	Binary() string

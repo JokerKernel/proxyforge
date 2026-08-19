@@ -91,6 +91,14 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 修改前会运行内核原生校验，随后备份并原子写入。服务运行时才会重启；失败会恢复旧配置。
 
+## 出站 IP
+
+“服务端配置 → 修改配置 → 出站 IP”只改 tag 为 `direct` 的出站，不改 DNS 服务器列表。
+
+- 优先 IPv4 / 优先 IPv6：Xray 写入 Freedom `UseIPv4v6` / `UseIPv6v4`（先解析优先族，解析不到再试另一族；已解析出优先族后连接失败不会回退）。sing-box 写入 `domain_resolver.strategy` 为 `prefer_ipv4` / `prefer_ipv6`（可连接回退）。
+- 仅 IPv4 / 仅 IPv6：Xray 写入 `ForceIPv4` / `ForceIPv6`；sing-box 写入 `ipv4_only` / `ipv6_only`。对端只有另一地址族时会失败。
+- 生成配置的默认状态是未设置（双栈）。重置 SNI/凭证会保留此项；完整生成会覆盖。
+
 ## 菜单、日志与输出
 
 真实终端中的菜单会自动清屏并使用固定语义颜色。管道和文件重定向会自动关闭颜色；也可设置 `NO_COLOR=1`、`PROXYFORGE_COLOR=never` 或 `PROXYFORGE_COLOR=always`。

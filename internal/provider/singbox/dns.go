@@ -51,7 +51,7 @@ func (*Provider) CurrentDNSProfile(config []byte) (string, error) {
 	if !ok {
 		return "custom", nil
 	}
-	if resolver, _ := route["default_domain_resolver"].(string); resolver != expectedTag {
+	if resolver := domainResolverServer(route["default_domain_resolver"]); resolver != expectedTag {
 		return "custom", nil
 	}
 	rules, ok := route["rules"].([]any)
@@ -121,7 +121,11 @@ func (*Provider) PatchDNSProfile(config []byte, profile string) ([]byte, error) 
 		route = make(map[string]any)
 		root["route"] = route
 	}
-	route["default_domain_resolver"] = tag
+	if existing, ok := route["default_domain_resolver"].(map[string]any); ok {
+		existing["server"] = tag
+	} else {
+		route["default_domain_resolver"] = tag
+	}
 	rules, exists := route["rules"].([]any)
 	if !exists {
 		if _, present := route["rules"]; present {

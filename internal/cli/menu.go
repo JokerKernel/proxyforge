@@ -103,7 +103,7 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		c.printMenuChoice("1", "生成/更新配置（完整覆盖现有配置，不合并原配置）")
 		c.printMenuChoice("2", "查看配置")
 		c.printMenuChoice("3", "编辑配置（vim / nano / vi）")
-		c.printMenuChoice("4", "修改配置（DNS、重置节点与 SNI 检测）")
+		c.printMenuChoice("4", "修改配置（DNS、出站 IP、重置节点与 SNI 检测）")
 		maxChoice := 4
 		if core == domain.CoreXray {
 			c.printMenuChoice("5", "专用运行用户（修复 systemd 的 nobody 安全警告）")
@@ -181,11 +181,12 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 		c.clearScreen()
 		c.printPageHeader(core, "修改配置")
 		c.printMenuChoice("1", "DNS 设置")
-		c.printMenuChoice("2", "重置 SNI/target（保留节点凭证）")
-		c.printMenuChoice("3", "重置节点凭证（UUID、REALITY 密钥和 short ID；保留 SNI/target）")
-		c.printMenuChoice("4", "REALITY SNI 候选检测（重新测试，不修改配置）")
+		c.printMenuChoice("2", "出站 IP（优先或仅使用 IPv4 / IPv6）")
+		c.printMenuChoice("3", "重置 SNI/target（保留节点凭证）")
+		c.printMenuChoice("4", "重置节点凭证（UUID、REALITY 密钥和 short ID；保留 SNI/target）")
+		c.printMenuChoice("5", "REALITY SNI 候选检测（重新测试，不修改配置）")
 		c.printMenuChoice("0/q", "返回")
-		choice, err := c.chooseNumber("请选择", 0, 4, 0)
+		choice, err := c.chooseNumber("请选择", 0, 5, 0)
 		if err != nil {
 			return err
 		}
@@ -201,10 +202,15 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 				continue
 			}
 		case 2:
-			err = c.resetChoice(ctx, core, 1)
+			err = c.outboundIPMenu(ctx, core)
+			if errors.Is(err, errReturnToMenu) {
+				continue
+			}
 		case 3:
-			err = c.resetChoice(ctx, core, 2)
+			err = c.resetChoice(ctx, core, 1)
 		case 4:
+			err = c.resetChoice(ctx, core, 2)
+		case 5:
 			err = c.retestSNICandidates(ctx, core)
 		}
 		if err != nil {
