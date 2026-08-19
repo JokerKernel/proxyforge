@@ -98,8 +98,8 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 - 优先 IPv4 / 优先 IPv6：Xray 写入 Freedom `UseIPv4v6` / `UseIPv6v4`（先解析优先族，解析不到再试另一族；已解析出优先族后连接失败不会回退）。sing-box 给 `resolve` 规则加上 `prefer_ipv4` / `prefer_ipv6`（可连接回退）；简化配置没有该规则时会补一条同样的 `resolve`。
 - 仅 IPv4 / 仅 IPv6：Xray 写入 `ForceIPv4` / `ForceIPv6`；sing-box 同上写入 `ipv4_only` / `ipv6_only`。对端只有另一地址族时会失败。
 - 回落：防偷跑配置把合法 SNI 回落指到独立的 `fallback-direct`。给已有配置设置出站 IP 时，若回落还挂在 `direct` 上，会自动拆开。
-- 恢复默认：Xray 写回 Freedom `UseIP`；sing-box 去掉这些 `strategy`。标准配置会保留原来的 `resolve` 规则和本地 DNS；简化配置会撤掉补上的 `resolve` 规则，以及仅为它添加的本地 DNS。
-- 生成配置的默认状态是未设置（双栈）。重置 SNI/凭证会保留此项；完整生成会覆盖。
+- 恢复默认：Xray 写回 Freedom `AsIs`，并在 sockopt 打开 `UseIP` + `happyEyeballs`（先 IPv4，300ms 后竞速 IPv6，与 sing-box 默认一致）；sing-box 去掉这些 `strategy`。标准配置会保留原来的 `resolve` 规则和本地 DNS；简化配置会撤掉补上的 `resolve` 规则，以及仅为它添加的本地 DNS。
+- 生成配置的默认状态是未设置（双栈）。Xray 默认先 IPv4 再竞速 IPv6；sing-box 同样先 IPv4。重置 SNI/凭证会保留此项；完整生成会覆盖。
 
 ## 回落 IP
 
@@ -107,7 +107,7 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 - 优先 IPv4 / 优先 IPv6：Xray 写入回落 Freedom `UseIPv4v6` / `UseIPv6v4`。sing-box 给 `fallback-direct` 的 `domain_resolver` 加上 `prefer_ipv4` / `prefer_ipv6`。
 - 仅 IPv4 / 仅 IPv6：Xray 写入 `ForceIPv4` / `ForceIPv6`；sing-box 写入 `ipv4_only` / `ipv6_only`。
-- 恢复默认：回落回到双栈，不偏科某一地址族。
+- 恢复默认：回落回到生成时的双栈。Xray 与用户出站相同，先 IPv4、300ms 后竞速 IPv6；sing-box 去掉 `fallback-direct` 的 `strategy`。
 
 ## 菜单、日志与输出
 

@@ -19,8 +19,14 @@
   "outbounds": [
     {
       "protocol": "freedom",
-      "settings": {"domainStrategy": "UseIP"},
-      "tag": "direct"
+      "settings": {"domainStrategy": "AsIs"},
+      "tag": "direct",
+      "streamSettings": {
+        "sockopt": {
+          "domainStrategy": "UseIP",
+          "happyEyeballs": {"tryDelayMs": 300, "prioritizeIPv6": false}
+        }
+      }
     },
     {"protocol": "blackhole", "settings": {}, "tag": "blocked-private"}
   ],

@@ -66,7 +66,11 @@ func (*Provider) PatchOutboundIPStrategy(config []byte, strategy string) ([]byte
 		settings = map[string]any{}
 		outbound["settings"] = settings
 	}
-	settings["domainStrategy"] = xrayOutboundIPStrategy[strategy]
+	if strategy == provider.OutboundIPUnset {
+		applyFreedomHappyEyeballs(outbound)
+	} else {
+		settings["domainStrategy"] = xrayOutboundIPStrategy[strategy]
+	}
 	if err := ensureFallbackDirectIsolation(root); err != nil {
 		return nil, err
 	}
@@ -126,7 +130,11 @@ func (*Provider) PatchFallbackIPStrategy(config []byte, strategy string) ([]byte
 		settings = map[string]any{}
 		outbound["settings"] = settings
 	}
-	settings["domainStrategy"] = xrayOutboundIPStrategy[strategy]
+	if strategy == provider.OutboundIPUnset {
+		applyFreedomHappyEyeballs(outbound)
+	} else {
+		settings["domainStrategy"] = xrayOutboundIPStrategy[strategy]
+	}
 	return marshalXray(root)
 }
 
@@ -269,9 +277,10 @@ func ensureFallbackDirectOutbound(root map[string]any) error {
 	}
 	raw, _ := root["outbounds"].([]any)
 	inserted := map[string]any{
-		"protocol": "freedom",
-		"settings": map[string]any{"domainStrategy": "UseIP"},
-		"tag":      fallbackDirectOutboundTag,
+		"protocol":       "freedom",
+		"settings":       map[string]any{"domainStrategy": "AsIs"},
+		"tag":            fallbackDirectOutboundTag,
+		"streamSettings": freedomHappyEyeballsStream(),
 	}
 	index := len(raw)
 	for i, item := range raw {
@@ -300,6 +309,47 @@ func xrayHasTaggedObject(root map[string]any, key, tag string) bool {
 		}
 	}
 	return count == 1
+}
+
+const xrayHappyEyeballsDelayMs = 300
+
+func freedomHappyEyeballsStream() map[string]any {
+	return map[string]any{
+		"sockopt": map[string]any{
+			"domainStrategy": "UseIP",
+			"happyEyeballs": map[string]any{
+				"tryDelayMs":     xrayHappyEyeballsDelayMs,
+				"prioritizeIPv6": false,
+			},
+		},
+	}
+}
+
+func applyFreedomHappyEyeballs(outbound map[string]any) {
+	settings, ok := outbound["settings"].(map[string]any)
+	if !ok || settings == nil {
+		settings = map[string]any{}
+		outbound["settings"] = settings
+	}
+	settings["domainStrategy"] = "AsIs"
+	stream, _ := outbound["streamSettings"].(map[string]any)
+	if stream == nil {
+		stream = map[string]any{}
+		outbound["streamSettings"] = stream
+	}
+	sockopt, _ := stream["sockopt"].(map[string]any)
+	if sockopt == nil {
+		sockopt = map[string]any{}
+		stream["sockopt"] = sockopt
+	}
+	sockopt["domainStrategy"] = "UseIP"
+	happy, _ := sockopt["happyEyeballs"].(map[string]any)
+	if happy == nil {
+		happy = map[string]any{}
+		sockopt["happyEyeballs"] = happy
+	}
+	happy["tryDelayMs"] = xrayHappyEyeballsDelayMs
+	happy["prioritizeIPv6"] = false
 }
 
 func xrayIsFallbackAllowOutbound(value any) bool {

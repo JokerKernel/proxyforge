@@ -92,10 +92,10 @@ type clientRealitySettings struct {
 }
 
 type xrayOutbound struct {
-	Protocol       string                 `json:"protocol"`
-	Settings       any                    `json:"settings"`
-	Tag            string                 `json:"tag"`
-	StreamSettings *realityStreamSettings `json:"streamSettings,omitempty"`
+	Protocol       string `json:"protocol"`
+	Settings       any    `json:"settings"`
+	Tag            string `json:"tag"`
+	StreamSettings any    `json:"streamSettings,omitempty"`
 }
 
 type vlessOutboundSettings struct {
@@ -313,11 +313,21 @@ func blockedOutbound() xrayOutbound {
 }
 
 func directOutbound() xrayOutbound {
-	return xrayOutbound{Protocol: "freedom", Settings: map[string]any{"domainStrategy": "UseIP"}, Tag: "direct"}
+	return xrayOutbound{
+		Protocol:       "freedom",
+		Settings:       map[string]any{"domainStrategy": "AsIs"},
+		Tag:            "direct",
+		StreamSettings: freedomHappyEyeballsStream(),
+	}
 }
 
 func fallbackDirectOutbound() xrayOutbound {
-	return xrayOutbound{Protocol: "freedom", Settings: map[string]any{"domainStrategy": "UseIP"}, Tag: fallbackDirectOutboundTag}
+	return xrayOutbound{
+		Protocol:       "freedom",
+		Settings:       map[string]any{"domainStrategy": "AsIs"},
+		Tag:            fallbackDirectOutboundTag,
+		StreamSettings: freedomHappyEyeballsStream(),
+	}
 }
 
 func (*Provider) ValidateConfig(ctx context.Context, r provider.Runner, path string) error {

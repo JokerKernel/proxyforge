@@ -61,9 +61,13 @@ func (c *commandSet) outboundIPMenu(ctx context.Context, core string) error {
 		}
 		sections = append(sections, confirmationSection{title: "优先策略", items: items})
 	case provider.OutboundIPUnset:
-		sections = append(sections, confirmationSection{title: "恢复默认", items: []string{
-			"恢复为生成配置时的双栈行为，不偏科某一地址族",
-		}})
+		items := []string{"恢复为生成配置时的双栈行为"}
+		if core == domain.CoreXray {
+			items = append(items, "Xray 先连 IPv4，约 300ms 后竞速 IPv6")
+		} else {
+			items = append(items, "不偏科某一地址族；双栈时先 IPv4，约 300ms 后竞速 IPv6")
+		}
+		sections = append(sections, confirmationSection{title: "恢复默认", items: items})
 	default:
 		items := []string{"对端只有另一地址族时将无法访问"}
 		if core == domain.CoreXray {

@@ -68,9 +68,7 @@ func TestPatchOutboundIPStrategyUpdatesFreedomOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	direct = xrayOutboundByTag(t, root, "direct")
-	if direct["settings"].(map[string]any)["domainStrategy"] != "UseIP" {
-		t.Fatalf("restored direct=%#v", direct)
-	}
+	assertDirectHappyEyeballs(t, direct)
 }
 
 func TestPatchOutboundIPStrategyLeavesFallbackOnDualStack(t *testing.T) {
@@ -96,10 +94,7 @@ func TestPatchOutboundIPStrategyLeavesFallbackOnDualStack(t *testing.T) {
 	if direct["settings"].(map[string]any)["domainStrategy"] != "UseIPv4v6" {
 		t.Fatalf("direct=%#v", direct)
 	}
-	fallback := xrayOutboundByTag(t, root, fallbackDirectOutboundTag)
-	if fallback["settings"].(map[string]any)["domainStrategy"] != "UseIP" {
-		t.Fatalf("fallback-direct should stay dual-stack: %#v", fallback)
-	}
+	assertDirectHappyEyeballs(t, xrayOutboundByTag(t, root, fallbackDirectOutboundTag))
 	rule := root["routing"].(map[string]any)["rules"].([]any)[0].(map[string]any)
 	if rule["outboundTag"] != fallbackDirectOutboundTag {
 		t.Fatalf("fallback allow rule=%#v", rule)
@@ -127,10 +122,7 @@ func TestPatchOutboundIPStrategyMigratesLegacyFallbackRoute(t *testing.T) {
 	if xrayOutboundByTag(t, root, "direct")["settings"].(map[string]any)["domainStrategy"] != "ForceIPv4" {
 		t.Fatal("user outbound was not updated")
 	}
-	fallback := xrayOutboundByTag(t, root, fallbackDirectOutboundTag)
-	if fallback["settings"].(map[string]any)["domainStrategy"] != "UseIP" {
-		t.Fatalf("migrated fallback-direct=%#v", fallback)
-	}
+	assertDirectHappyEyeballs(t, xrayOutboundByTag(t, root, fallbackDirectOutboundTag))
 	rule := root["routing"].(map[string]any)["rules"].([]any)[0].(map[string]any)
 	if rule["outboundTag"] != fallbackDirectOutboundTag {
 		t.Fatalf("legacy fallback rule was not moved: %#v", rule)
@@ -168,9 +160,16 @@ func TestPatchFallbackIPStrategyUpdatesFallbackDirectOnly(t *testing.T) {
 	if xrayOutboundByTag(t, root, fallbackDirectOutboundTag)["settings"].(map[string]any)["domainStrategy"] != "UseIPv4v6" {
 		t.Fatalf("fallback-direct=%#v", xrayOutboundByTag(t, root, fallbackDirectOutboundTag))
 	}
-	if xrayOutboundByTag(t, root, "direct")["settings"].(map[string]any)["domainStrategy"] != "UseIP" {
-		t.Fatalf("direct=%#v", xrayOutboundByTag(t, root, "direct"))
+	assertDirectHappyEyeballs(t, xrayOutboundByTag(t, root, "direct"))
+	restored, err := p.PatchFallbackIPStrategy(patched, provider.OutboundIPUnset)
+	if err != nil {
+		t.Fatal(err)
 	}
+	if err := json.Unmarshal(restored, &root); err != nil {
+		t.Fatal(err)
+	}
+	assertDirectHappyEyeballs(t, xrayOutboundByTag(t, root, fallbackDirectOutboundTag))
+	assertDirectHappyEyeballs(t, xrayOutboundByTag(t, root, "direct"))
 }
 
 func TestPatchFallbackIPStrategyRejectsStandardConfig(t *testing.T) {
@@ -196,6 +195,21 @@ func TestCurrentOutboundIPStrategyReportsCustomUnknownValue(t *testing.T) {
 	}
 	if _, err := p.PatchOutboundIPStrategy(config, "prefer-ipv4-typo"); err == nil || !strings.Contains(err.Error(), "无效") {
 		t.Fatalf("error=%v", err)
+	}
+}
+
+func assertDirectHappyEyeballs(t *testing.T, outbound map[string]any) {
+	t.Helper()
+	if outbound["settings"].(map[string]any)["domainStrategy"] != "AsIs" {
+		t.Fatalf("direct settings=%#v", outbound["settings"])
+	}
+	sockopt := outbound["streamSettings"].(map[string]any)["sockopt"].(map[string]any)
+	if sockopt["domainStrategy"] != "UseIP" {
+		t.Fatalf("direct sockopt=%#v", sockopt)
+	}
+	happy := sockopt["happyEyeballs"].(map[string]any)
+	if happy["tryDelayMs"] != float64(xrayHappyEyeballsDelayMs) || happy["prioritizeIPv6"] != false {
+		t.Fatalf("direct happyEyeballs=%#v", happy)
 	}
 }
 
