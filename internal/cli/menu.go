@@ -140,7 +140,7 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 			}
 			if errors.Is(err, errReturnToMenu) {
 				fmt.Fprintln(c.out, "已取消生成服务端配置。")
-				return nil
+				continue
 			}
 		case 2:
 			shouldPause = false
@@ -206,25 +206,19 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 		switch {
 		case choice == 1:
 			err = c.dnsSettingsMenu(ctx, core)
-			if errors.Is(err, errReturnToMenu) {
-				continue
-			}
 		case choice == 2:
 			err = c.outboundIPMenu(ctx, core)
-			if errors.Is(err, errReturnToMenu) {
-				continue
-			}
 		case hasFallback && choice == 3:
 			err = c.fallbackIPMenu(ctx, core)
-			if errors.Is(err, errReturnToMenu) {
-				continue
-			}
 		case choice == next:
 			err = c.resetChoice(ctx, core, 1)
 		case choice == next+1:
 			err = c.resetChoice(ctx, core, 2)
 		case choice == next+2:
 			err = c.retestSNICandidates(ctx, core)
+		}
+		if errors.Is(err, errReturnToMenu) {
+			continue
 		}
 		if err != nil {
 			c.printMenuError(err)

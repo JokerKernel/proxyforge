@@ -78,7 +78,7 @@ func TestServerConfigGenerationQReturnsWithoutApplying(t *testing.T) {
 	var out, errOut bytes.Buffer
 	c := &commandSet{
 		app:    a,
-		reader: bufio.NewReader(strings.NewReader("1\nq\n")),
+		reader: bufio.NewReader(strings.NewReader("1\nq\n0\n")),
 		out:    &out,
 		errOut: &errOut,
 	}

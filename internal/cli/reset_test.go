@@ -36,6 +36,35 @@ func TestCredentialResetConfirmationWarnsAboutOldClients(t *testing.T) {
 	}
 }
 
+func TestModifyConfigResetSNIQReturnsWithoutError(t *testing.T) {
+	store := system.StateStore{Layout: system.Layout{Root: t.TempDir()}}
+	if err := store.Save(domain.NodeSpec{
+		ManagedBy: "proxyforge", Core: domain.CoreSingBox, Server: "server.example.com",
+		SNI: "old.example.com", Target: "old.example.com:443",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var out, errOut bytes.Buffer
+	c := &commandSet{
+		app:    &app.App{Store: store},
+		reader: bufio.NewReader(strings.NewReader("3\n\nq\n0\n")),
+		out:    &out,
+		errOut: &errOut,
+		probeSNI: func(context.Context, []string, string, int) ([]app.SNICandidate, error) {
+			return []app.SNICandidate{{Domain: "fast.example.com", Latency: time.Millisecond}}, nil
+		},
+	}
+	if err := c.modifyConfigMenu(context.Background(), domain.CoreSingBox); err != nil {
+		t.Fatal(err)
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("q reported as error: %q", errOut.String())
+	}
+	if strings.Contains(out.String(), "操作失败") {
+		t.Fatalf("q treated as failure: %q", out.String())
+	}
+}
+
 func TestFillResetDefaultsTargetToNewSNI(t *testing.T) {
 	store := system.StateStore{Layout: system.Layout{Root: t.TempDir()}}
 	if err := store.Save(domain.NodeSpec{ManagedBy: "proxyforge", Core: domain.CoreSingBox, SNI: "old.example.com", Target: "old.example.com:443"}); err != nil {

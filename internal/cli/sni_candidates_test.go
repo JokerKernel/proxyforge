@@ -112,6 +112,24 @@ func TestParseSNIPageInputJumpsAndSelects(t *testing.T) {
 	}
 }
 
+func TestReadSNIPageChoiceKeepsSingleInvalidHint(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{
+		reader: bufio.NewReader(strings.NewReader("\nx\ny\n21\n2\n")),
+		out:    &out,
+	}
+	action, index, err := c.readSNIPageChoice(25, 0, 2, sniPageChoiceOptions{AllowManual: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if action != sniPageActionSelect || index != 2 {
+		t.Fatalf("action=%s index=%d", action, index)
+	}
+	if count := strings.Count(out.String(), "无效选择，请按提示输入。"); count != 1 {
+		t.Fatalf("invalid hint count=%d output=%q", count, out.String())
+	}
+}
+
 func TestSNIPageControlLinesStayCompact(t *testing.T) {
 	first := sniPageControlLines(0, 3, true, sniPageChoiceOptions{AllowManual: true})
 	if len(first) != 2 {

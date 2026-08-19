@@ -349,20 +349,33 @@ func (c *commandSet) readSNIPageChoice(total, page, pages int, opts sniPageChoic
 		prompt += "（下方按键）"
 	}
 	fmt.Fprintln(c.out)
+	const invalidHint = "无效选择，请按提示输入。"
+	invalidShown := false
 	for {
 		fmt.Fprintf(c.out, "%s：", prompt)
 		line, err := c.reader.ReadString('\n')
 		if err != nil && len(line) == 0 {
 			return "", 0, err
 		}
-		action, index, ok := parseSNIPageInput(strings.TrimSpace(line), total, page, pages, opts)
+		value := strings.TrimSpace(line)
+		if value == "" {
+			if c.interactiveUI() {
+				eraseChoiceRetry(c.out, false)
+			}
+			continue
+		}
+		action, index, ok := parseSNIPageInput(value, total, page, pages, opts)
 		if ok {
 			return action, index, nil
 		}
 		if c.interactiveUI() {
 			eraseChoiceRetry(c.out, false)
 		}
-		fmt.Fprintln(c.out, "无效选择，请按提示输入。")
+		if invalidShown {
+			continue
+		}
+		fmt.Fprintln(c.out, invalidHint)
+		invalidShown = true
 	}
 }
 

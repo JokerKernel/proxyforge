@@ -21,9 +21,17 @@ func (c *commandSet) resetCommand() *cobra.Command {
 					return fmt.Errorf("非交互模式重置凭据必须显式提供 --yes")
 				}
 				if err := c.fillReset(cmd.Context(), args[0], &opts); err != nil {
+					if errors.Is(err, errReturnToMenu) {
+						fmt.Fprintln(c.out, "已取消节点重置。")
+						return nil
+					}
 					return err
 				}
 				confirmed, err := c.confirmCredentialReset(args[0], opts)
+				if errors.Is(err, errReturnToMenu) {
+					fmt.Fprintln(c.out, "已取消节点重置。")
+					return nil
+				}
 				if err != nil {
 					return err
 				}
