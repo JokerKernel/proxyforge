@@ -155,6 +155,64 @@ func TestFillGenerateRequiresExplicitFastCandidateSelection(t *testing.T) {
 	}
 }
 
+func TestFillGenerateOffersExistingSNI(t *testing.T) {
+	store := system.StateStore{Layout: system.Layout{Root: t.TempDir()}}
+	if err := store.Save(domain.NodeSpec{
+		ManagedBy: "proxyforge", Core: domain.CoreSingBox,
+		SNI: "old.example.com", Target: "origin.example.com:8443",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	probeCalls := 0
+	var out bytes.Buffer
+	c := &commandSet{
+		app:    &app.App{Store: store},
+		reader: bufio.NewReader(strings.NewReader("\n\n\n\nyes\n")),
+		out:    &out,
+		probeSNI: func(context.Context, []string, string, int) ([]app.SNICandidate, error) {
+			probeCalls++
+			return nil, errors.New("should not probe when reusing SNI")
+		},
+	}
+	opts := domain.GenerateOptions{Server: "server.example.com", Port: 443, StandardConfig: true}
+	if err := c.fillGenerate(context.Background(), domain.CoreSingBox, &opts); err != nil {
+		t.Fatal(err)
+	}
+	if probeCalls != 0 || opts.SNI != "old.example.com" || opts.Target != "origin.example.com:8443" {
+		t.Fatalf("probeCalls=%d options=%#v", probeCalls, opts)
+	}
+	if !strings.Contains(out.String(), "当前已配置 REALITY SNI：old.example.com") ||
+		!strings.Contains(out.String(), "使用原有 SNI") ||
+		!strings.Contains(out.String(), "重新输入或自动测速") {
+		t.Fatalf("existing SNI prompt missing: %q", out.String())
+	}
+}
+
+func TestFillGenerateCanSkipExistingSNIAndSpeedTest(t *testing.T) {
+	store := system.StateStore{Layout: system.Layout{Root: t.TempDir()}}
+	if err := store.Save(domain.NodeSpec{
+		ManagedBy: "proxyforge", Core: domain.CoreSingBox, SNI: "old.example.com", Target: "old.example.com:443",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	c := &commandSet{
+		app:    &app.App{Store: store},
+		reader: bufio.NewReader(strings.NewReader("\n\n\n2\n\n1\nyes\n")),
+		out:    &out,
+		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
+			return []app.SNICandidate{{Domain: "fast.example.com", Latency: time.Millisecond, TLSVersion: "1.3"}}, nil
+		},
+	}
+	opts := domain.GenerateOptions{Server: "server.example.com", Port: 443, StandardConfig: true}
+	if err := c.fillGenerate(context.Background(), domain.CoreSingBox, &opts); err != nil {
+		t.Fatal(err)
+	}
+	if opts.SNI != "fast.example.com" || opts.Target != "fast.example.com:443" {
+		t.Fatalf("generate options=%#v", opts)
+	}
+}
+
 func TestFillGenerateSelectsSimplifiedSingBoxConfig(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{

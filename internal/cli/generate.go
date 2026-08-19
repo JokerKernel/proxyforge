@@ -208,6 +208,24 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 	o.SNI = strings.TrimSpace(o.SNI)
 	manualSNI := o.SNI != ""
 	if o.SNI == "" {
+		existingSNI, existingTarget := currentSNIAndTarget(c.app, core)
+		if existingSNI != "" {
+			fmt.Fprintf(c.out, "\n当前已配置 REALITY SNI：%s\n", existingSNI)
+			c.printMenuChoice("1", "使用原有 SNI（默认）")
+			c.printMenuChoice("2", "重新输入或自动测速")
+			choice, err := c.chooseNumberCancelable("请选择 SNI", 1, 2, 1)
+			if err != nil {
+				return err
+			}
+			if choice == 1 {
+				o.SNI = existingSNI
+				if o.Target == "" && existingTarget != "" {
+					o.Target = existingTarget
+				}
+			}
+		}
+	}
+	if o.SNI == "" {
 		var err error
 		o.SNI, err = c.askDefaultCancelable("REALITY SNI（输入域名；直接回车自动测速候选）", "")
 		if err != nil {
@@ -252,6 +270,17 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		return fmt.Errorf("用户取消配置生成")
 	}
 	return nil
+}
+
+func currentSNIAndTarget(a *app.App, core string) (string, string) {
+	if a == nil {
+		return "", ""
+	}
+	current, err := a.Store.Load(core)
+	if err != nil {
+		return "", ""
+	}
+	return strings.TrimSpace(current.SNI), strings.TrimSpace(current.Target)
 }
 
 func (c *commandSet) confirmServerConfigOverwrite(core string, interactive bool) error {
