@@ -1,10 +1,15 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
+
+	"proxyforge/internal/system"
 )
 
 type interfaceAddressCandidate struct {
@@ -146,4 +151,19 @@ func physicalPublicAddresses(candidates []interfaceAddressCandidate) []PublicInt
 		}
 	}
 	return public
+}
+
+func PublicAddress(ctx context.Context) (string, error) {
+	// Keep discovery deliberately simple and HTTPS-only; interactive users can edit it.
+	req, _ := httpRequest(ctx, "https://api.ipify.org")
+	client := &netHTTPClient{timeout: 5 * time.Second}
+	b, err := client.do(req)
+	if err != nil {
+		return "", err
+	}
+	address := strings.TrimSpace(string(b))
+	if err := system.ValidateServer(address); err != nil {
+		return "", err
+	}
+	return address, nil
 }
