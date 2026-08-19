@@ -102,8 +102,8 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		c.clearScreen()
 		c.printPageHeader(core, "服务端配置")
 		c.printMenuChoice("1", "生成/更新配置（完整覆盖现有配置，不合并原配置）")
-		c.printMenuChoice("2", "查看配置")
-		c.printMenuChoice("3", "修改配置（DNS、出站 IP、回落 IP、重置节点与 SNI 检测）")
+		c.printMenuChoice("2", "修改配置（DNS、出站 IP、回落 IP、重置节点与 SNI 检测）")
+		c.printMenuChoice("3", "查看配置")
 		c.printMenuChoice("4", "编辑配置（vim / nano / vi）")
 		maxChoice := 4
 		if core == domain.CoreXray {
@@ -143,6 +143,9 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 				return nil
 			}
 		case 2:
+			shouldPause = false
+			err = c.modifyConfigMenu(ctx, core)
+		case 3:
 			var b []byte
 			b, err = c.app.ServerConfig(core)
 			if err == nil {
@@ -157,9 +160,6 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 					fmt.Fprintln(c.out)
 				}
 			}
-		case 3:
-			shouldPause = false
-			err = c.modifyConfigMenu(ctx, core)
 		case 4:
 			err = c.editServerConfig(core)
 		case 5:

@@ -29,7 +29,7 @@ func TestServerConfigMenuShowsCurrentConfig(t *testing.T) {
 	}
 	var out, errOut bytes.Buffer
 	c := &commandSet{
-		app: a, reader: bufio.NewReader(strings.NewReader("2\n0\n")), out: &out, errOut: &errOut,
+		app: a, reader: bufio.NewReader(strings.NewReader("3\n0\n")), out: &out, errOut: &errOut,
 	}
 	if err := c.serverConfigMenu(context.Background(), domain.CoreSingBox); err != nil {
 		t.Fatal(err)
@@ -49,11 +49,11 @@ func TestServerConfigMenuShowsCurrentConfig(t *testing.T) {
 
 func TestXrayServerConfigMenuOffersDedicatedServiceUser(t *testing.T) {
 	var xrayOut, singBoxOut bytes.Buffer
-	xrayMenu := &commandSet{reader: bufio.NewReader(strings.NewReader("3\n0\n0\n")), out: &xrayOut}
+	xrayMenu := &commandSet{reader: bufio.NewReader(strings.NewReader("2\n0\n0\n")), out: &xrayOut}
 	if err := xrayMenu.serverConfigMenu(context.Background(), domain.CoreXray); err != nil {
 		t.Fatal(err)
 	}
-	singBoxMenu := &commandSet{reader: bufio.NewReader(strings.NewReader("3\n0\n0\n")), out: &singBoxOut}
+	singBoxMenu := &commandSet{reader: bufio.NewReader(strings.NewReader("2\n0\n0\n")), out: &singBoxOut}
 	if err := singBoxMenu.serverConfigMenu(context.Background(), domain.CoreSingBox); err != nil {
 		t.Fatal(err)
 	}
