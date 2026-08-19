@@ -19,6 +19,28 @@ func (a *App) Client(ctx context.Context, core, output string, force bool) ([]by
 	return a.ClientConfig(ctx, core, ClientFormatNative, output, force)
 }
 
+func (a *App) ServerConfigPath(core string) (string, error) {
+	if err := a.RootCheck(); err != nil {
+		return "", err
+	}
+	p, err := a.Registry.Get(core)
+	if err != nil {
+		return "", err
+	}
+	path := a.Layout.Resolve(p.ConfigPath())
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return "", fmt.Errorf("尚未找到 %s 服务端配置 %s", core, p.ConfigPath())
+	}
+	if err != nil {
+		return "", fmt.Errorf("检查 %s 服务端配置 %s: %w", core, p.ConfigPath(), err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("服务端配置路径不是普通文件: %s", p.ConfigPath())
+	}
+	return path, nil
+}
+
 func (a *App) ServerConfig(core string) ([]byte, error) {
 	if err := a.RootCheck(); err != nil {
 		return nil, err

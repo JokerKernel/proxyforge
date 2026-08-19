@@ -34,6 +34,8 @@ type commandSet struct {
 	interruptContext func(context.Context) (context.Context, context.CancelFunc)
 	currentVersion   string
 	selfUpdate       func(context.Context, selfupdate.Options) error
+	lookPath         func(string) (string, error)
+	runEditor        func(editor, path string) error
 }
 
 func New(version string) *cobra.Command {

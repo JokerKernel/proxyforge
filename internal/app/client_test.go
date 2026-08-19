@@ -56,6 +56,16 @@ func TestServerConfigReadsCurrentActiveFile(t *testing.T) {
 	if _, err := a.ServerConfig(domain.CoreXray); err == nil || !strings.Contains(err.Error(), "尚未找到") {
 		t.Fatalf("missing config error=%v", err)
 	}
+	gotPath, err := a.ServerConfigPath(domain.CoreSingBox)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != path {
+		t.Fatalf("server config path=%q, want %q", gotPath, path)
+	}
+	if _, err := a.ServerConfigPath(domain.CoreXray); err == nil || !strings.Contains(err.Error(), "尚未找到") {
+		t.Fatalf("missing config path error=%v", err)
+	}
 }
 
 func TestServerConfigExistsIgnoresEmptyPlaceholders(t *testing.T) {
