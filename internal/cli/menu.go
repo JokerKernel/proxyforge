@@ -102,8 +102,8 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		c.printPageHeader(core, "服务端配置")
 		c.printMenuChoice("1", "生成/更新配置（完整覆盖现有配置，不合并原配置）")
 		c.printMenuChoice("2", "查看配置")
-		c.printMenuChoice("3", "编辑配置（vim / nano / vi）")
-		c.printMenuChoice("4", "修改配置（DNS、出站 IP、重置节点与 SNI 检测）")
+		c.printMenuChoice("3", "修改配置（DNS、出站 IP、重置节点与 SNI 检测）")
+		c.printMenuChoice("4", "编辑配置（vim / nano / vi）")
 		maxChoice := 4
 		if core == domain.CoreXray {
 			c.printMenuChoice("5", "专用运行用户（修复 systemd 的 nobody 安全警告）")
@@ -157,10 +157,10 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 				}
 			}
 		case 3:
-			err = c.editServerConfig(core)
-		case 4:
 			shouldPause = false
 			err = c.modifyConfigMenu(ctx, core)
+		case 4:
+			err = c.editServerConfig(core)
 		case 5:
 			err = c.dedicatedXrayServiceUser(ctx)
 			if errors.Is(err, errReturnToMenu) {

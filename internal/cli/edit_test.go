@@ -57,7 +57,7 @@ func TestEditServerConfigOpensResolvedPathWithPreferredEditor(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
 		app:    a,
-		reader: bufio.NewReader(strings.NewReader("3\n0\n")),
+		reader: bufio.NewReader(strings.NewReader("4\n0\n")),
 		out:    &out,
 		lookPath: func(name string) (string, error) {
 			if name == "vim" {
@@ -122,7 +122,7 @@ func TestXrayServerConfigMenuNumbersEditBeforeModify(t *testing.T) {
 	if err := c.serverConfigMenu(context.Background(), domain.CoreXray); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "3   编辑配置") || !strings.Contains(out.String(), "4   修改配置") ||
+	if !strings.Contains(out.String(), "3   修改配置") || !strings.Contains(out.String(), "4   编辑配置") ||
 		!strings.Contains(out.String(), "5   专用运行用户") {
 		t.Fatalf("xray menu=%q", out.String())
 	}
