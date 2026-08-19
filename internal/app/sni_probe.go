@@ -85,9 +85,17 @@ func ipv4SortLatency(ipv4, ipv6 FamilyLatency) time.Duration {
 	return 0
 }
 
-func sniLessByIPv4(left, right SNICandidate) bool {
-	leftKey, leftOK := sniIPv4SortKey(left)
-	rightKey, rightOK := sniIPv4SortKey(right)
+// SortSNICandidates orders valid SNI targets by IPv4 or IPv6 probe latency.
+// Entries missing that family are placed after successful ones.
+func SortSNICandidates(candidates []SNICandidate, ipv4 bool) {
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return sniLessByFamily(candidates[i], candidates[j], ipv4)
+	})
+}
+
+func sniLessByFamily(left, right SNICandidate, ipv4 bool) bool {
+	leftKey, leftOK := sniFamilySortKey(left, ipv4)
+	rightKey, rightOK := sniFamilySortKey(right, ipv4)
 	if leftOK != rightOK {
 		return leftOK
 	}
@@ -97,11 +105,15 @@ func sniLessByIPv4(left, right SNICandidate) bool {
 	return left.Domain < right.Domain
 }
 
-func sniIPv4SortKey(candidate SNICandidate) (time.Duration, bool) {
-	if candidate.IPv4.OK {
-		return candidate.IPv4.Latency, true
+func sniFamilySortKey(candidate SNICandidate, ipv4 bool) (time.Duration, bool) {
+	family := candidate.IPv6
+	if ipv4 {
+		family = candidate.IPv4
 	}
-	if !candidate.IPv4.Present && !candidate.IPv6.Present && candidate.Latency > 0 {
+	if family.OK {
+		return family.Latency, true
+	}
+	if ipv4 && !candidate.IPv4.Present && !candidate.IPv6.Present && candidate.Latency > 0 {
 		return candidate.Latency, true
 	}
 	return 0, false
@@ -160,9 +172,7 @@ func probeSNICandidates(ctx context.Context, candidates []string, server string,
 	if len(valid) == 0 {
 		return nil, fmt.Errorf("没有候选域名通过 DNS、TLS 和证书名称校验")
 	}
-	sort.Slice(valid, func(i, j int) bool {
-		return sniLessByIPv4(valid[i], valid[j])
-	})
+	SortSNICandidates(valid, true)
 	if len(valid) > limit {
 		valid = valid[:limit]
 	}

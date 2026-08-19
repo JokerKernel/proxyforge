@@ -107,21 +107,26 @@ func (c *commandSet) selectSNICandidate(ctx context.Context, server string) (str
 	}
 	c.drainBufferedNewlines()
 	page := 0
+	sortIPv4 := true
 	for {
+		app.SortSNICandidates(candidates, sortIPv4)
 		c.clearScreen()
 		c.printPageHeader("REALITY SNI 候选检测")
-		fmt.Fprintln(c.out, "全部有效候选（按 IPv4 延迟排序）：")
+		fmt.Fprintf(c.out, "全部有效候选（%s）：\n", sniSortLabel(sortIPv4))
 		_, _, pages := c.printSNIResultPage(candidates, page, "")
-		c.printSNIPageControls(page, pages, true)
+		c.printSNIPageControls(page, pages, true, sortIPv4)
 		fmt.Fprintln(c.out)
 		fmt.Fprintln(c.out, "提示：以上候选均已通过 DNS、TLS 和证书名称校验；IPv4/IPv6 延迟为各自 TCP+TLS 探测耗时。")
-		fmt.Fprintln(c.out, "      只能选择本页显示的编号；n/p 翻页，g/G 首尾页，p3 跳到第 3 页。")
+		fmt.Fprintln(c.out, "      只能选择本页显示的编号；n/p 翻页，g/G 首尾页，p3 跳页，v 切换 IPv4/IPv6 排序。")
 		action, index, err := c.readSNIPageChoice(len(candidates), page, pages, sniPageChoiceOptions{AllowManual: true})
 		if err != nil {
 			return "", err
 		}
 		if action == sniPageActionCancel {
 			return "", errReturnToMenu
+		}
+		if applySNISortAction(&sortIPv4, &page, action) {
+			continue
 		}
 		switch action {
 		case sniPageActionNext:
@@ -185,36 +190,36 @@ func (c *commandSet) retestSNICandidates(ctx context.Context, core string) error
 			return fmt.Errorf("重新检测 REALITY SNI 候选: %w", err)
 		}
 
-		currentRank := 0
-		var currentResult app.SNICandidate
-		for index, candidate := range results {
-			if strings.EqualFold(candidate.Domain, currentSNI) {
-				currentRank = index + 1
-				currentResult = candidate
-				break
-			}
-		}
-		if currentRank == 0 {
-			fmt.Fprintln(c.out, "\n[警告] 当前 SNI 未通过本次 DNS、TLS 或证书名称校验。")
-			fmt.Fprintln(c.out, "检测结果可能受临时网络波动影响，可立即重新测试；本次不会修改配置。")
-		} else {
-			fmt.Fprintf(c.out, "\n[结果] 当前 SNI 通过检测，在全部有效候选中排名第 %d。\n", currentRank)
-			c.printSNICandidateDetails("当前 SNI：", currentResult)
-		}
-
+		sortIPv4 := true
 		page := 0
 		for {
-			fmt.Fprintln(c.out, "\n全部有效候选（按 IPv4 延迟排序）：")
+			app.SortSNICandidates(results, sortIPv4)
+			currentRank, currentResult := sniCurrentRank(results, currentSNI)
+			c.clearScreen()
+			c.printPageHeader(core, "REALITY SNI 候选重新检测")
+			fmt.Fprintf(c.out, "节点地址：%s\n", server)
+			fmt.Fprintf(c.out, "当前 SNI：%s\n", currentSNI)
+			if currentRank == 0 {
+				fmt.Fprintln(c.out, "\n[警告] 当前 SNI 未通过本次 DNS、TLS 或证书名称校验。")
+				fmt.Fprintln(c.out, "检测结果可能受临时网络波动影响，可立即重新测试；本次不会修改配置。")
+			} else {
+				fmt.Fprintf(c.out, "\n[结果] 当前 SNI 通过检测，在全部有效候选中排名第 %d。\n", currentRank)
+				c.printSNICandidateDetails("当前 SNI：", currentResult)
+			}
+			fmt.Fprintf(c.out, "\n全部有效候选（%s）：\n", sniSortLabel(sortIPv4))
 			_, _, pages := c.printSNIResultPage(results, page, currentSNI)
 			fmt.Fprintln(c.out)
 			c.printMenuChoice("1", "重新测试")
-			c.printSNIPageControls(page, pages, false)
+			c.printSNIPageControls(page, pages, false, sortIPv4)
 			c.printMenuChoice("0/q", "返回服务端配置")
 			fmt.Fprintln(c.out, "\n提示：本操作只重新检测和展示结果，不会修改 SNI、target 或重启服务。")
-			fmt.Fprintln(c.out, "      如需采用新候选，请返回后选择“重置 SNI/target”。n/p 翻页，g/G 首尾页，p3 跳页。")
+			fmt.Fprintln(c.out, "      如需采用新候选，请返回后选择“重置 SNI/target”。n/p 翻页，v 切换 IPv4/IPv6 排序。")
 			action, index, err := c.readSNIPageChoice(0, page, pages, sniPageChoiceOptions{AllowRetest: true, AllowBack: true})
 			if err != nil {
 				return err
+			}
+			if applySNISortAction(&sortIPv4, &page, action) {
+				continue
 			}
 			switch action {
 			case sniPageActionNext:
@@ -230,16 +235,6 @@ func (c *commandSet) retestSNICandidates(ctx context.Context, core string) error
 			}
 			if action == sniPageActionRetest {
 				break
-			}
-			c.clearScreen()
-			c.printPageHeader(core, "REALITY SNI 候选重新检测")
-			fmt.Fprintf(c.out, "节点地址：%s\n", server)
-			fmt.Fprintf(c.out, "当前 SNI：%s\n", currentSNI)
-			if currentRank == 0 {
-				fmt.Fprintln(c.out, "\n[警告] 当前 SNI 未通过本次 DNS、TLS 或证书名称校验。")
-			} else {
-				fmt.Fprintf(c.out, "\n[结果] 当前 SNI 通过检测，在全部有效候选中排名第 %d。\n", currentRank)
-				c.printSNICandidateDetails("当前 SNI：", currentResult)
 			}
 		}
 	}
@@ -272,14 +267,17 @@ func (c *commandSet) confirmManualSNI(ctx context.Context, domain, server string
 }
 
 const (
-	sniPageActionSelect = "select"
-	sniPageActionNext   = "next"
-	sniPageActionPrev   = "prev"
-	sniPageActionGoto   = "goto"
-	sniPageActionCancel = "cancel"
-	sniPageActionManual = "manual"
-	sniPageActionRetest = "retest"
-	sniPageActionBack   = "back"
+	sniPageActionSelect     = "select"
+	sniPageActionNext       = "next"
+	sniPageActionPrev       = "prev"
+	sniPageActionGoto       = "goto"
+	sniPageActionCancel     = "cancel"
+	sniPageActionManual     = "manual"
+	sniPageActionRetest     = "retest"
+	sniPageActionBack       = "back"
+	sniPageActionSortToggle = "sort-toggle"
+	sniPageActionSortIPv4   = "sort-ipv4"
+	sniPageActionSortIPv6   = "sort-ipv6"
 )
 
 type sniPageChoiceOptions struct {
@@ -302,7 +300,12 @@ func (c *commandSet) printSNIResultPage(candidates []app.SNICandidate, page int,
 	return start, end, pages
 }
 
-func (c *commandSet) printSNIPageControls(page, pages int, allowManual bool) {
+func (c *commandSet) printSNIPageControls(page, pages int, allowManual, sortIPv4 bool) {
+	if sortIPv4 {
+		c.printMenuChoice("v", "按 IPv6 延迟排序")
+	} else {
+		c.printMenuChoice("v", "按 IPv4 延迟排序")
+	}
 	if pages > 1 {
 		if page+1 < pages {
 			c.printMenuChoice("n", "下一页")
@@ -322,13 +325,13 @@ func (c *commandSet) readSNIPageChoice(total, page, pages int, opts sniPageChoic
 	prompt := "❯ 请选择"
 	switch {
 	case opts.AllowManual && pages > 1:
-		prompt += "（本页编号，n/p 翻页，g/G 首尾，p3 跳页，0 手动输入）"
+		prompt += "（本页编号，n/p 翻页，v 切换排序，p3 跳页，0 手动输入）"
 	case opts.AllowManual:
-		prompt += "（输入编号，0 表示手动输入）"
+		prompt += "（输入编号，v 切换 IPv4/IPv6 排序，0 手动输入）"
 	case opts.AllowRetest && pages > 1:
-		prompt += "（1 重新测试，n/p 翻页，g/G 首尾，p3 跳页，0 返回）"
+		prompt += "（1 重新测试，n/p 翻页，v 切换排序，0 返回）"
 	case opts.AllowRetest:
-		prompt += "（1 重新测试，0 返回）"
+		prompt += "（1 重新测试，v 切换排序，0 返回）"
 	}
 	fmt.Fprintln(c.out)
 	for {
@@ -382,6 +385,12 @@ func parseSNIPageInput(value string, total, page, pages int, opts sniPageChoiceO
 		}
 	case opts.AllowRetest && value == "1":
 		return sniPageActionRetest, 0, true
+	case strings.EqualFold(value, "v"):
+		return sniPageActionSortToggle, 0, true
+	case strings.EqualFold(value, "v4"):
+		return sniPageActionSortIPv4, 0, true
+	case strings.EqualFold(value, "v6"):
+		return sniPageActionSortIPv6, 0, true
 	}
 	if len(value) > 1 && (value[0] == 'p' || value[0] == 'P') {
 		target, err := strconv.Atoi(value[1:])
@@ -397,6 +406,41 @@ func parseSNIPageInput(value string, total, page, pages int, opts sniPageChoiceO
 		}
 	}
 	return "", 0, false
+}
+
+func applySNISortAction(sortIPv4 *bool, page *int, action string) bool {
+	switch action {
+	case sniPageActionSortToggle:
+		*sortIPv4 = !*sortIPv4
+		*page = 0
+		return true
+	case sniPageActionSortIPv4:
+		*sortIPv4 = true
+		*page = 0
+		return true
+	case sniPageActionSortIPv6:
+		*sortIPv4 = false
+		*page = 0
+		return true
+	default:
+		return false
+	}
+}
+
+func sniSortLabel(ipv4 bool) string {
+	if ipv4 {
+		return "按 IPv4 延迟排序"
+	}
+	return "按 IPv6 延迟排序"
+}
+
+func sniCurrentRank(candidates []app.SNICandidate, currentSNI string) (int, app.SNICandidate) {
+	for index, candidate := range candidates {
+		if strings.EqualFold(candidate.Domain, currentSNI) {
+			return index + 1, candidate
+		}
+	}
+	return 0, app.SNICandidate{}
 }
 
 func (c *commandSet) drainBufferedNewlines() {

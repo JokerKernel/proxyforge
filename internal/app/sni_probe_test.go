@@ -93,6 +93,10 @@ func TestSNISortPrefersIPv4Latency(t *testing.T) {
 	if len(got) != 3 || got[0].Domain != "v4-fast.example.com" || got[1].Domain != "v4-mid.example.com" || got[2].Domain != "v6-fast.example.com" {
 		t.Fatalf("order=%#v", got)
 	}
+	SortSNICandidates(got, false)
+	if got[0].Domain != "v4-mid.example.com" || got[1].Domain != "v6-fast.example.com" || got[2].Domain != "v4-fast.example.com" {
+		t.Fatalf("ipv6 order=%#v", got)
+	}
 }
 
 func TestTLSVersionLabel(t *testing.T) {

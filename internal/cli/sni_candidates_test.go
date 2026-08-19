@@ -101,6 +101,46 @@ func TestParseSNIPageInputJumpsAndSelects(t *testing.T) {
 	if _, _, ok = parseSNIPageInput("p", 25, 0, 3, opts); ok {
 		t.Fatal("p on first page should be invalid")
 	}
+	action, _, ok = parseSNIPageInput("v", 25, 0, 2, opts)
+	if !ok || action != sniPageActionSortToggle {
+		t.Fatalf("v action=%s ok=%v", action, ok)
+	}
+	action, _, ok = parseSNIPageInput("v6", 25, 0, 2, opts)
+	if !ok || action != sniPageActionSortIPv6 {
+		t.Fatalf("v6 action=%s ok=%v", action, ok)
+	}
+}
+
+func TestSelectSNICandidateCanSwitchIPv6Sort(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{
+		reader: bufio.NewReader(strings.NewReader("v\n1\n")),
+		out:    &out,
+		probeSNI: func(context.Context, []string, string, int) ([]app.SNICandidate, error) {
+			return []app.SNICandidate{
+				{
+					Domain: "v4-fast.example.com",
+					IPv4:   app.FamilyLatency{Present: true, OK: true, Latency: 5 * time.Millisecond},
+					IPv6:   app.FamilyLatency{Present: true, OK: true, Latency: 50 * time.Millisecond},
+				},
+				{
+					Domain: "v6-fast.example.com",
+					IPv4:   app.FamilyLatency{Present: true, OK: true, Latency: 40 * time.Millisecond},
+					IPv6:   app.FamilyLatency{Present: true, OK: true, Latency: 4 * time.Millisecond},
+				},
+			}, nil
+		},
+	}
+	got, err := c.selectSNICandidate(context.Background(), "server.example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "v6-fast.example.com" {
+		t.Fatalf("selected=%q", got)
+	}
+	if !strings.Contains(out.String(), "按 IPv6 延迟排序") {
+		t.Fatalf("sort toggle output=%q", out.String())
+	}
 }
 
 func TestSelectSNICandidatePaginatesAllResults(t *testing.T) {
