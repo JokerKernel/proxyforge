@@ -47,6 +47,48 @@ func TestServerConfigMenuShowsCurrentConfig(t *testing.T) {
 	}
 }
 
+func TestServerConfigMenuShowsStatusCard(t *testing.T) {
+	layout := system.Layout{Root: t.TempDir()}
+	store := system.StateStore{Layout: layout}
+	p := xray.New()
+	node := domain.NodeSpec{
+		ManagedBy: "proxyforge", Core: domain.CoreXray, InboundTag: "xray-one", UserName: "one",
+		Server: "203.0.113.10", Port: 443, SNI: "www.example.com", Target: "www.example.com:443",
+		UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private", PublicKey: "public", ShortID: "abcd",
+		XrayFallbackGuard: true, XrayFallbackPort: 61431,
+	}
+	config, err := p.RenderServer(node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := system.AtomicWrite(layout.Resolve(p.ConfigPath()), config, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save(node); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	c := &commandSet{
+		app:    &app.App{Registry: provider.NewRegistry(p), Layout: layout, Store: store},
+		reader: bufio.NewReader(strings.NewReader("0\n")),
+		out:    &out,
+	}
+	if err := c.serverConfigMenu(context.Background(), domain.CoreXray); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	for _, text := range []string{
+		"服务端配置", "╭─ 当前配置",
+		"DNS 设置", "系统 DNS",
+		"出站 IP", "默认（先 IPv4，300ms 后竞速 IPv6）",
+		"回落 IP", "SNI", "www.example.com",
+	} {
+		if !strings.Contains(got, text) {
+			t.Fatalf("server config card missing %q: %q", text, got)
+		}
+	}
+}
+
 func TestXrayServerConfigMenuOffersDedicatedServiceUser(t *testing.T) {
 	var xrayOut, singBoxOut bytes.Buffer
 	xrayMenu := &commandSet{reader: bufio.NewReader(strings.NewReader("2\n0\n0\n")), out: &xrayOut}
@@ -59,6 +101,11 @@ func TestXrayServerConfigMenuOffersDedicatedServiceUser(t *testing.T) {
 	}
 	if !strings.Contains(xrayOut.String(), "专用运行用户") || !strings.Contains(xrayOut.String(), "nobody 安全警告") {
 		t.Fatalf("xray menu output=%q", xrayOut.String())
+	}
+	for _, text := range []string{"╭─ 当前配置", "DNS 设置", "出站 IP", "SNI"} {
+		if !strings.Contains(xrayOut.String(), text) || !strings.Contains(singBoxOut.String(), text) {
+			t.Fatalf("server config card missing %q: xray=%q sing-box=%q", text, xrayOut.String(), singBoxOut.String())
+		}
 	}
 	if !strings.Contains(xrayOut.String(), "REALITY SNI 候选检测") || !strings.Contains(singBoxOut.String(), "REALITY SNI 候选检测") {
 		t.Fatalf("SNI retest option missing: xray=%q sing-box=%q", xrayOut.String(), singBoxOut.String())
