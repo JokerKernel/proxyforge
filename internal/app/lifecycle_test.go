@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -61,7 +62,7 @@ func TestUninstallAutomaticallyCleansSelectedCoreData(t *testing.T) {
 			t.Fatalf("automatic cleanup left %s: %v", path, err)
 		}
 	}
-	if !strings.Contains(r.callLog(), "dpkg --remove sing-box") {
+	if !strings.Contains(r.callLog(), "dpkg --purge sing-box") {
 		t.Fatalf("package removal was not called: %s", r.callLog())
 	}
 	for _, want := range []string{
@@ -256,7 +257,11 @@ func TestCleanupAllRemovesBothCoresAndProxyForgeData(t *testing.T) {
 		a.Layout.Resolve("/etc/sing-box/config.json"),
 		a.Layout.Resolve("/var/lib/sing-box/cache.db"),
 		a.Layout.Resolve("/usr/local/etc/xray/config.json"),
+		a.Layout.Resolve("/usr/local/bin/xray"),
+		a.Layout.Resolve("/usr/local/share/xray/geosite.dat"),
 		a.Layout.Resolve("/var/log/xray/access.log"),
+		a.Layout.Resolve("/etc/systemd/system/xray@.service"),
+		a.Layout.Resolve("/etc/systemd/system/xray.service.d/20-proxyforge-user.conf"),
 		a.Layout.Resolve("/usr/lib/sysusers.d/proxyforge-xray.conf"),
 		a.Layout.StatePath(domain.CoreSingBox),
 		a.Layout.TrustPath(domain.CoreXray),
@@ -281,6 +286,88 @@ func TestCleanupAllRemovesBothCoresAndProxyForgeData(t *testing.T) {
 	}
 	if _, err := os.Stat(a.Layout.Resolve("/var/lib/proxyforge")); !os.IsNotExist(err) {
 		t.Fatalf("ProxyForge data root still exists: %v", err)
+	}
+}
+
+func TestCleanupRemovesOnlyOwnedXrayServiceAccount(t *testing.T) {
+	r := &fakeRunner{
+		missingBinary: true, unitRemoved: true, serviceStopped: true,
+		xrayUserExists: true, xrayGroupExists: true,
+	}
+	a, _ := testApp(t, r)
+	marker := xrayServiceAccountOwnership{Version: 1, UID: "999", GID: "999"}
+	data, err := json.Marshal(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := system.AtomicWrite(a.Layout.XrayServiceAccountMarkerPath(), append(data, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.Cleanup(context.Background(), domain.CoreXray); err != nil {
+		t.Fatal(err)
+	}
+	if r.xrayUserExists || r.xrayGroupExists {
+		t.Fatal("owned xray service account was not removed")
+	}
+	for _, want := range []string{"userdel xray", "groupdel xray"} {
+		if !strings.Contains(r.callLog(), want) {
+			t.Fatalf("cleanup calls missing %q: %s", want, r.callLog())
+		}
+	}
+	if _, err := os.Stat(a.Layout.XrayServiceAccountMarkerPath()); !os.IsNotExist(err) {
+		t.Fatalf("ownership marker remains: %v", err)
+	}
+}
+
+func TestCleanupPreservesUnmarkedExistingXrayServiceAccount(t *testing.T) {
+	r := &fakeRunner{
+		missingBinary: true, unitRemoved: true, serviceStopped: true,
+		xrayUserExists: true, xrayGroupExists: true,
+	}
+	a, _ := testApp(t, r)
+	if err := a.Cleanup(context.Background(), domain.CoreXray); err != nil {
+		t.Fatal(err)
+	}
+	if !r.xrayUserExists || !r.xrayGroupExists {
+		t.Fatal("unmarked pre-existing xray account was removed")
+	}
+	if strings.Contains(r.callLog(), "userdel ") || strings.Contains(r.callLog(), "groupdel ") {
+		t.Fatalf("unexpected account deletion: %s", r.callLog())
+	}
+}
+
+func TestCleanupRefusesChangedOwnedXrayServiceAccountIdentity(t *testing.T) {
+	r := &fakeRunner{
+		missingBinary: true, unitRemoved: true, serviceStopped: true,
+		xrayUserExists: true, xrayGroupExists: true,
+	}
+	a, _ := testApp(t, r)
+	marker := xrayServiceAccountOwnership{Version: 1, UID: "998", GID: "998"}
+	data, err := json.Marshal(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := system.AtomicWrite(a.Layout.XrayServiceAccountMarkerPath(), append(data, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+	config := a.Layout.Resolve("/usr/local/etc/xray/config.json")
+	if err := os.MkdirAll(filepath.Dir(config), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	err = a.Cleanup(context.Background(), domain.CoreXray)
+	if err == nil || !strings.Contains(err.Error(), "账号身份已变化") || !strings.Contains(err.Error(), "尚未删除其他残留") {
+		t.Fatalf("error=%v", err)
+	}
+	if !r.xrayUserExists || !r.xrayGroupExists {
+		t.Fatal("changed xray identity was removed")
+	}
+	if _, err := os.Stat(config); err != nil {
+		t.Fatalf("cleanup changed files after account safety failure: %v", err)
 	}
 }
 

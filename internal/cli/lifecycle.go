@@ -102,6 +102,13 @@ func (c *commandSet) installCommand() *cobra.Command {
 }
 
 func (c *commandSet) confirmUninstall(core string) (bool, error) {
+	permanentDeletes := []string{
+		"服务端配置、运行数据和文件日志",
+		"ProxyForge 状态、信任记录和历史备份",
+	}
+	if core == "xray" {
+		permanentDeletes = append(permanentDeletes, "ProxyForge 创建且身份未变化的 xray 专用系统用户和组")
+	}
 	c.printConfirmationPanel(
 		"危险操作确认：卸载内核并清理数据",
 		[]string{"目标内核：" + core},
@@ -110,10 +117,7 @@ func (c *commandSet) confirmUninstall(core string) (bool, error) {
 			"卸载内核并核验卸载结果",
 			"卸载成功后自动清理全部残留",
 		}},
-		confirmationSection{title: "永久删除", items: []string{
-			"服务端配置、运行数据和文件日志",
-			"ProxyForge 状态、信任记录和历史备份",
-		}},
+		confirmationSection{title: "永久删除", items: permanentDeletes},
 		confirmationSection{title: "重要影响", items: []string{
 			"现有客户端将立即失效",
 			"卸载或核验失败时不会执行自动清理",

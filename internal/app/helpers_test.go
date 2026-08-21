@@ -39,6 +39,8 @@ type fakeRunner struct {
 	keyGeneration    int
 	serviceStopped   bool
 	serviceEnabled   bool
+	xrayUserExists   bool
+	xrayGroupExists  bool
 }
 
 func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
@@ -46,6 +48,28 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte
 	defer f.mu.Unlock()
 	call := name + " " + strings.Join(args, " ")
 	f.calls = append(f.calls, call)
+	if name == "getent" && len(args) == 2 && args[1] == XrayDedicatedServiceUser {
+		if args[0] == "passwd" {
+			if !f.xrayUserExists {
+				return nil, errors.New("unknown user")
+			}
+			return []byte("xray:x:999:999:Xray Service:/nonexistent:/usr/sbin/nologin\n"), nil
+		}
+		if args[0] == "group" {
+			if !f.xrayGroupExists {
+				return nil, errors.New("unknown group")
+			}
+			return []byte("xray:x:999:\n"), nil
+		}
+	}
+	if name == "userdel" && len(args) == 1 && args[0] == XrayDedicatedServiceUser {
+		f.xrayUserExists = false
+		return nil, nil
+	}
+	if name == "groupdel" && len(args) == 1 && args[0] == XrayDedicatedServiceUser {
+		f.xrayGroupExists = false
+		return nil, nil
+	}
 	if name == "sing-box" && len(args) > 0 && args[0] == "version" {
 		if f.missingBinary {
 			return nil, errors.New("sing-box not found")

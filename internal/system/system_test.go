@@ -561,7 +561,7 @@ func TestRemovePackageUsesDistributionNativeDatabase(t *testing.T) {
 		name, osRelease, command string
 		args                     []string
 	}{
-		{name: "debian", osRelease: "ID=ubuntu\nID_LIKE=debian\n", command: "dpkg", args: []string{"--remove", "sing-box"}},
+		{name: "debian", osRelease: "ID=ubuntu\nID_LIKE=debian\n", command: "dpkg", args: []string{"--purge", "sing-box"}},
 		{name: "rhel", osRelease: "ID=rocky\nID_LIKE=\"rhel centos fedora\"\n", command: "rpm", args: []string{"-e", "sing-box"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

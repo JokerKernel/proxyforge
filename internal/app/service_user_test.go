@@ -20,6 +20,7 @@ type serviceUserRunner struct {
 	unitPath        string
 	user            string
 	accountExists   bool
+	groupExists     bool
 	invalidAccount  bool
 	failUserCheck   bool
 	failRunuser     bool
@@ -70,21 +71,34 @@ func (r *serviceUserRunner) Run(_ context.Context, name string, args ...string) 
 		}
 	}
 	if name == "getent" && len(args) == 2 {
-		if !r.accountExists || r.failUserCheck {
-			return nil, errors.New("unknown user")
+		if r.failUserCheck {
+			return nil, errors.New("identity lookup failed")
 		}
 		if args[0] == "passwd" {
+			if !r.accountExists {
+				return nil, errors.New("unknown user")
+			}
 			if r.invalidAccount {
 				return []byte("xray:x:1000:1000:Xray User:/home/xray:/bin/bash\n"), nil
 			}
 			return []byte("xray:x:999:999:Xray Service:/nonexistent:/usr/sbin/nologin\n"), nil
 		}
 		if args[0] == "group" {
+			if !r.groupExists && !r.accountExists {
+				return nil, errors.New("unknown group")
+			}
 			return []byte("xray:x:999:\n"), nil
 		}
 	}
 	if name == "systemd-sysusers" {
 		r.accountExists = true
+		r.groupExists = true
+	}
+	if name == "userdel" {
+		r.accountExists = false
+	}
+	if name == "groupdel" {
+		r.groupExists = false
 	}
 	if name == "runuser" && r.failRunuser {
 		return nil, errors.New("injected permission failure")
@@ -187,6 +201,13 @@ func TestUseDedicatedXrayServiceUserMigratesOfficialUnits(t *testing.T) {
 	}
 	if string(sysusers) != string(xraySysusersContent) {
 		t.Fatalf("sysusers config=%q", sysusers)
+	}
+	marker, err := os.ReadFile(a.Layout.XrayServiceAccountMarkerPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(marker), `"uid":"999"`) || !strings.Contains(string(marker), `"gid":"999"`) {
+		t.Fatalf("unexpected service-account marker: %s", marker)
 	}
 	restartsBefore := strings.Count(strings.Join(runner.calls, "\n"), "systemctl restart xray.service")
 	second, err := a.UseDedicatedXrayServiceUser(context.Background())

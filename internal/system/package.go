@@ -20,7 +20,7 @@ func RemovePackage(ctx context.Context, runner provider.Runner, layout Layout, p
 	var args []string
 	switch family {
 	case "debian":
-		command, args = "dpkg", []string{"--remove", packageName}
+		command, args = "dpkg", []string{"--purge", packageName}
 	case "rhel":
 		command, args = "rpm", []string{"-e", packageName}
 	default:

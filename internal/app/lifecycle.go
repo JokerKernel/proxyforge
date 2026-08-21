@@ -302,6 +302,14 @@ func (a *App) Cleanup(ctx context.Context, target string) error {
 
 	var cleanupErrors []error
 	for _, p := range providers {
+		if p.Name() == domain.CoreXray {
+			a.progressf("清理 ProxyForge 创建的 Xray 专用系统账号")
+			if err := a.cleanupOwnedXrayServiceAccount(ctx); err != nil {
+				return fmt.Errorf("清理 Xray 专用系统账号失败；尚未删除其他残留: %w", err)
+			}
+		}
+	}
+	for _, p := range providers {
 		paths := []string{
 			a.Layout.StatePath(p.Name()),
 			a.Layout.TrustPath(p.Name()),
@@ -325,6 +333,10 @@ func (a *App) Cleanup(ctx context.Context, target string) error {
 		}
 	} else if err := a.removeEmptyProxyForgeRoot(); err != nil {
 		cleanupErrors = append(cleanupErrors, err)
+	}
+	a.progressf("刷新 systemd unit 缓存")
+	if err := a.Services.DaemonReload(ctx); err != nil {
+		cleanupErrors = append(cleanupErrors, fmt.Errorf("清理后刷新 systemd: %w", err))
 	}
 	if len(cleanupErrors) != 0 {
 		return fmt.Errorf("清理未完全完成: %w", errors.Join(cleanupErrors...))

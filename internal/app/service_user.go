@@ -3,10 +3,12 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"proxyforge/internal/domain"
@@ -19,6 +21,12 @@ const xrayServiceUserDropIn = "/etc/systemd/system/xray.service.d/20-proxyforge-
 const xraySysusersConfig = "/usr/lib/sysusers.d/proxyforge-xray.conf"
 
 var xraySysusersContent = []byte("# Managed by ProxyForge.\nu xray - \"Xray Service\" /nonexistent -\n")
+
+type xrayServiceAccountOwnership struct {
+	Version int    `json:"version"`
+	UID     string `json:"uid"`
+	GID     string `json:"gid"`
+}
 
 var xraySystemdUnits = []string{
 	"/etc/systemd/system/xray.service",
@@ -126,6 +134,11 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 	if err != nil {
 		return change, rollback(err)
 	}
+	if created {
+		if err := a.recordXrayServiceAccountOwnership(ctx); err != nil {
+			return change, rollback(fmt.Errorf("记录新建的 xray 专用账号所有权: %w", err))
+		}
+	}
 	if err := a.secureXrayFilesForDedicatedUser(ctx, p.ConfigPath()); err != nil {
 		return change, rollback(err)
 	}
@@ -174,32 +187,115 @@ func (a *App) ensureXrayServiceAccount(ctx context.Context) (bool, error) {
 }
 
 func (a *App) validateXrayServiceAccount(ctx context.Context) error {
+	_, err := a.inspectXrayServiceAccount(ctx)
+	return err
+}
+
+func (a *App) inspectXrayServiceAccount(ctx context.Context) (xrayServiceAccountOwnership, error) {
+	var identity xrayServiceAccountOwnership
 	passwdOutput, err := a.Runner.Run(ctx, "getent", "passwd", XrayDedicatedServiceUser)
 	if err != nil {
-		return fmt.Errorf("systemd-sysusers 未创建系统用户 %s: %w", XrayDedicatedServiceUser, err)
+		return identity, fmt.Errorf("未找到系统用户 %s: %w", XrayDedicatedServiceUser, err)
 	}
 	fields := strings.Split(strings.TrimSpace(string(passwdOutput)), ":")
 	if len(fields) != 7 || fields[0] != XrayDedicatedServiceUser {
-		return fmt.Errorf("系统用户 %s 的 passwd 记录格式无效", XrayDedicatedServiceUser)
+		return identity, fmt.Errorf("系统用户 %s 的 passwd 记录格式无效", XrayDedicatedServiceUser)
 	}
-	if fields[2] == "0" {
-		return fmt.Errorf("拒绝使用 UID 0 的 %s 用户运行 Xray", XrayDedicatedServiceUser)
+	uid, uidErr := strconv.ParseUint(fields[2], 10, 32)
+	_, gidErr := strconv.ParseUint(fields[3], 10, 32)
+	if uidErr != nil || gidErr != nil {
+		return identity, fmt.Errorf("系统用户 %s 的 UID/GID 无效", XrayDedicatedServiceUser)
+	}
+	if uid == 0 {
+		return identity, fmt.Errorf("拒绝使用 UID 0 的 %s 用户运行 Xray", XrayDedicatedServiceUser)
 	}
 	home := filepath.Clean(fields[5])
 	if home != "/nonexistent" {
-		return fmt.Errorf("已存在的 %s 用户不是 ProxyForge 专用服务账号：home=%s，要求 /nonexistent", XrayDedicatedServiceUser, fields[5])
+		return identity, fmt.Errorf("已存在的 %s 用户不是 ProxyForge 专用服务账号：home=%s，要求 /nonexistent", XrayDedicatedServiceUser, fields[5])
 	}
 	shellBase := filepath.Base(strings.TrimSpace(fields[6]))
 	if shellBase != "nologin" && shellBase != "false" {
-		return fmt.Errorf("已存在的 %s 用户允许登录：shell=%s", XrayDedicatedServiceUser, fields[6])
+		return identity, fmt.Errorf("已存在的 %s 用户允许登录：shell=%s", XrayDedicatedServiceUser, fields[6])
 	}
 	groupOutput, err := a.Runner.Run(ctx, "getent", "group", XrayDedicatedServiceUser)
 	if err != nil {
-		return fmt.Errorf("未找到系统组 %s: %w", XrayDedicatedServiceUser, err)
+		return identity, fmt.Errorf("未找到系统组 %s: %w", XrayDedicatedServiceUser, err)
 	}
 	groupFields := strings.Split(strings.TrimSpace(string(groupOutput)), ":")
 	if len(groupFields) < 3 || groupFields[0] != XrayDedicatedServiceUser || groupFields[2] != fields[3] {
-		return fmt.Errorf("系统用户 %s 的主组不是同名专用组", XrayDedicatedServiceUser)
+		return identity, fmt.Errorf("系统用户 %s 的主组不是同名专用组", XrayDedicatedServiceUser)
+	}
+	identity.Version = 1
+	identity.UID = fields[2]
+	identity.GID = fields[3]
+	return identity, nil
+}
+
+func (a *App) recordXrayServiceAccountOwnership(ctx context.Context) error {
+	identity, err := a.inspectXrayServiceAccount(ctx)
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(identity)
+	if err != nil {
+		return err
+	}
+	return system.AtomicWrite(a.Layout.XrayServiceAccountMarkerPath(), append(data, '\n'), 0600)
+}
+
+// cleanupOwnedXrayServiceAccount removes only an account whose creation was
+// recorded by ProxyForge and whose numeric identity is unchanged. Older
+// installations without the ownership marker are deliberately left alone.
+func (a *App) cleanupOwnedXrayServiceAccount(ctx context.Context) error {
+	markerPath := a.Layout.XrayServiceAccountMarkerPath()
+	data, err := os.ReadFile(markerPath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("读取 Xray 专用账号所有权标记: %w", err)
+	}
+	var recorded xrayServiceAccountOwnership
+	if err := json.Unmarshal(data, &recorded); err != nil || recorded.Version != 1 || recorded.UID == "" || recorded.GID == "" {
+		return fmt.Errorf("Xray 专用账号所有权标记无效，拒绝删除账号")
+	}
+
+	passwdOutput, passwdErr := a.Runner.Run(ctx, "getent", "passwd", XrayDedicatedServiceUser)
+	groupOutput, groupErr := a.Runner.Run(ctx, "getent", "group", XrayDedicatedServiceUser)
+	if passwdErr == nil {
+		current, inspectErr := a.inspectXrayServiceAccount(ctx)
+		if inspectErr != nil {
+			return fmt.Errorf("核验待删除的 Xray 专用账号: %w", inspectErr)
+		}
+		if current.UID != recorded.UID || current.GID != recorded.GID {
+			return fmt.Errorf("xray 账号身份已变化（当前 UID:GID=%s:%s，记录=%s:%s），拒绝删除",
+				current.UID, current.GID, recorded.UID, recorded.GID)
+		}
+		if _, err := a.Runner.Run(ctx, "userdel", XrayDedicatedServiceUser); err != nil {
+			return fmt.Errorf("删除 ProxyForge 创建的 xray 系统用户: %w", err)
+		}
+		if _, err := a.Runner.Run(ctx, "getent", "passwd", XrayDedicatedServiceUser); err == nil {
+			return fmt.Errorf("删除 xray 系统用户后账号仍存在")
+		}
+		groupOutput, groupErr = a.Runner.Run(ctx, "getent", "group", XrayDedicatedServiceUser)
+	} else if strings.TrimSpace(string(passwdOutput)) != "" {
+		return fmt.Errorf("无法可靠确认 xray 系统用户是否存在，拒绝删除")
+	}
+
+	if groupErr == nil {
+		fields := strings.Split(strings.TrimSpace(string(groupOutput)), ":")
+		if len(fields) < 3 || fields[0] != XrayDedicatedServiceUser || fields[2] != recorded.GID {
+			return fmt.Errorf("xray 系统组身份与所有权标记不符，拒绝删除")
+		}
+		if _, err := a.Runner.Run(ctx, "groupdel", XrayDedicatedServiceUser); err != nil {
+			return fmt.Errorf("删除 ProxyForge 创建的 xray 系统组: %w", err)
+		}
+		if _, err := a.Runner.Run(ctx, "getent", "group", XrayDedicatedServiceUser); err == nil {
+			return fmt.Errorf("删除 xray 系统组后组仍存在")
+		}
+	}
+	if err := os.Remove(markerPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("删除 Xray 专用账号所有权标记: %w", err)
 	}
 	return nil
 }

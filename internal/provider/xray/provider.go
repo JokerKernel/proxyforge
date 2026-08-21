@@ -151,12 +151,18 @@ func (*Provider) ScriptProxyArgs(proxyURL string) []string {
 	return []string{"--proxy", proxyURL}
 }
 func (*Provider) PackageName() string     { return "" }
-func (*Provider) UninstallArgs() []string { return []string{"remove"} }
+func (*Provider) UninstallArgs() []string { return []string{"remove", "--purge"} }
 func (*Provider) CleanupPaths() []string {
 	return []string{
+		"/usr/local/bin/xray",
 		"/usr/local/etc/xray",
+		"/usr/local/share/xray",
 		"/var/log/xray",
-		"/etc/systemd/system/xray.service.d/20-proxyforge-user.conf",
+		"/etc/logrotate.d/xray",
+		"/etc/systemd/system/xray.service",
+		"/etc/systemd/system/xray@.service",
+		"/etc/systemd/system/xray.service.d",
+		"/etc/systemd/system/xray@.service.d",
 		"/usr/lib/sysusers.d/proxyforge-xray.conf",
 	}
 }

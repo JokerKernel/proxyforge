@@ -23,3 +23,7 @@ func (l Layout) TrustPath(core string) string {
 func (l Layout) BackupRoot(core string) string {
 	return l.Resolve("/var/lib/proxyforge/backups/" + core)
 }
+
+func (l Layout) XrayServiceAccountMarkerPath() string {
+	return l.Resolve("/var/lib/proxyforge/state/xray-service-account.json")
+}

@@ -246,8 +246,8 @@ func TestUninstallRunsXrayOfficialRemoveAction(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if runner.command != "bash" || len(runner.args) != 2 || runner.args[1] != "remove" {
-		t.Fatalf("command=%q args=%v, want bash <script> remove", runner.command, runner.args)
+	if runner.command != "bash" || len(runner.args) != 3 || runner.args[1] != "remove" || runner.args[2] != "--purge" {
+		t.Fatalf("command=%q args=%v, want bash <script> remove --purge", runner.command, runner.args)
 	}
 }
 

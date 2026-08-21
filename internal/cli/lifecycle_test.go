@@ -101,7 +101,7 @@ func TestUninstallConfirmationDescribesAutomaticCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"自动清理", "历史备份", "永久删除", "卸载或核验失败时不会"} {
+	for _, want := range []string{"自动清理", "历史备份", "永久删除", "卸载或核验失败时不会", "xray 专用系统用户和组"} {
 		if !ok || !strings.Contains(out.String(), want) {
 			t.Fatalf("confirmed=%v output missing %q: %q", ok, want, out.String())
 		}

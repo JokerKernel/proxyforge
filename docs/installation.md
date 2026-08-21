@@ -80,7 +80,9 @@ sudo proxyforge uninstall sing-box --yes
 sudo proxyforge uninstall xray --yes --trust-script-sha256 <64位哈希>
 ```
 
-卸载前会临时备份服务端配置。官方卸载完成后，ProxyForge 会核验二进制、systemd unit、服务状态和开机启用状态；仅在核验通过后清理配置目录、运行数据、文件日志、状态、信任记录和历史备份。失败时不会自动清理。
+卸载前会临时备份服务端配置。官方卸载完成后，ProxyForge 会核验二进制、systemd unit、服务状态和开机启用状态；仅在核验通过后清理配置目录、运行数据、文件日志、状态、信任记录和历史备份。Debian 系的 sing-box 使用软件包 purge，Xray 使用官方 `remove --purge`，并额外清理 geodata、主/模板 unit 与 drop-in 等已知残留。失败时不会自动清理。
+
+如果“专用运行用户”功能新建了 `xray` 系统用户和组，ProxyForge 会记录当时的 UID/GID，并在卸载 Xray 时核验身份后删除。预先存在的账号、旧版本未记录所有权的账号，以及身份后来发生变化的账号都不会被盲目删除。
 
 Xray 非交互卸载通常还需提供当前官方脚本哈希。若内核已经完全不存在，则跳过重复卸载并直接清理残留。
 
@@ -93,7 +95,7 @@ sudo proxyforge cleanup sing-box
 sudo proxyforge cleanup all --yes
 ```
 
-只有确认目标内核的二进制、systemd unit、运行状态和开机启用状态均已清除后，命令才会删除残留数据。它不会删除 systemd journal，也不会处理此前导出到用户指定位置的客户端配置。
+只有确认目标内核的二进制、systemd unit、运行状态和开机启用状态均已清除后，命令才会删除残留数据，并在删除 unit 兜底文件后再次刷新 systemd。它不会删除 systemd journal，也不会处理此前导出到用户指定位置的客户端配置。
 
 ## 安装脚本安全检查
 
