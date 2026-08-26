@@ -591,6 +591,36 @@ func TestGenerateRejectsManagedPortConflict(t *testing.T) {
 	}
 }
 
+func TestFirewallHintUsesQuietExecutableLookup(t *testing.T) {
+	baseRunner := &fakeRunner{}
+	var commandLog bytes.Buffer
+	var output bytes.Buffer
+	lookedUp := make([]string, 0, 2)
+	a := &App{
+		Runner: &system.LoggingRunner{Runner: baseRunner, Out: &commandLog},
+		Out:    &output,
+		LookPath: func(name string) (string, error) {
+			lookedUp = append(lookedUp, name)
+			if name == "firewall-cmd" {
+				return "/usr/bin/firewall-cmd", nil
+			}
+			return "", errors.New("not found")
+		},
+	}
+
+	a.firewallHint(443)
+
+	if got, want := strings.Join(lookedUp, ","), "ufw,firewall-cmd"; got != want {
+		t.Fatalf("lookups=%q, want %q", got, want)
+	}
+	if commandLog.Len() != 0 || baseRunner.callLog() != "" {
+		t.Fatalf("firewall lookup ran as a logged command: log=%q calls=%q", commandLog.String(), baseRunner.callLog())
+	}
+	if got := output.String(); !strings.Contains(got, "检测到 firewall-cmd") || !strings.Contains(got, "TCP/443") {
+		t.Fatalf("hint=%q", got)
+	}
+}
+
 func TestGenerateRejectsManagedFallbackPortConflicts(t *testing.T) {
 	tests := []struct {
 		name  string

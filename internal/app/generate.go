@@ -408,7 +408,7 @@ func validateGenerate(o domain.GenerateOptions) error {
 
 func (a *App) firewallHint(port int) {
 	for _, name := range []string{"ufw", "firewall-cmd"} {
-		if _, err := a.Runner.Run(context.Background(), "sh", "-c", "command -v "+name); err == nil {
+		if _, err := a.lookPath(name); err == nil {
 			fmt.Fprintf(a.Out, "[提示] 检测到 %s，请确认已放行 TCP/%d；ProxyForge 不会自动修改防火墙。\n", name, port)
 			return
 		}
