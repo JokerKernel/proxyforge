@@ -1,12 +1,36 @@
 package app
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"net"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestNetworkTargetValidatorReportsProbeStages(t *testing.T) {
+	var progress []string
+	validator := NetworkTargetValidator{Progress: func(message string) {
+		progress = append(progress, message)
+	}}
+	_, err := validator.Validate(context.Background(), "127.0.0.1:443", "www.example.com", "203.0.113.10")
+	if err == nil || !strings.Contains(err.Error(), "私网/本机/保留地址") {
+		t.Fatalf("error=%v", err)
+	}
+	got := strings.Join(progress, "\n")
+	for _, want := range []string{
+		"检查 REALITY target 格式：127.0.0.1:443",
+		"解析 REALITY target DNS：127.0.0.1",
+		"DNS 解析完成：127.0.0.1 -> 127.0.0.1",
+		"检查 REALITY target 是否为公网地址",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("progress missing %q: %q", want, got)
+		}
+	}
+}
 
 func TestIPFamiliesSplitsResolvedAddresses(t *testing.T) {
 	has4, has6 := ipFamilies([]net.IPAddr{

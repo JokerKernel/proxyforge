@@ -78,6 +78,9 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		opts.Target = net.JoinHostPort(opts.SNI, "443")
 	}
 	a.progressf("验证服务地址、端口、SNI 和 REALITY target")
+	a.progressf("服务地址格式通过：%s", opts.Server)
+	a.progressf("监听端口范围通过：TCP/%d", opts.Port)
+	a.progressf("SNI 格式通过：%s", opts.SNI)
 	warnings, err := a.Targets.Validate(ctx, opts.Target, opts.SNI, opts.Server)
 	if err != nil {
 		return domain.NodeSpec{}, err

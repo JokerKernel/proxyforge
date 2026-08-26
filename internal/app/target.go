@@ -16,7 +16,12 @@ type TargetValidator interface {
 	Validate(context.Context, string, string, string) ([]string, error)
 }
 
-type NetworkTargetValidator struct{ Timeout time.Duration }
+type NetworkTargetValidator struct {
+	Timeout  time.Duration
+	Progress func(string)
+}
+
+type targetProgressFunc func(string, ...any)
 
 type targetTLSInspection struct {
 	TLSVersion      uint16
@@ -29,7 +34,7 @@ type targetTLSInspection struct {
 }
 
 func (v NetworkTargetValidator) Validate(ctx context.Context, target, sni, server string) ([]string, error) {
-	inspection, err := inspectNetworkTarget(ctx, target, sni, server, v.Timeout)
+	inspection, err := inspectNetworkTargetWithProgress(ctx, target, sni, server, v.Timeout, v.Progress)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +46,26 @@ func (v NetworkTargetValidator) Validate(ctx context.Context, target, sni, serve
 }
 
 func inspectNetworkTarget(ctx context.Context, target, sni, server string, timeout time.Duration) (targetTLSInspection, error) {
+	return inspectNetworkTargetWithProgress(ctx, target, sni, server, timeout, nil)
+}
+
+func inspectNetworkTargetWithProgress(
+	ctx context.Context,
+	target, sni, server string,
+	timeout time.Duration,
+	progress func(string),
+) (targetTLSInspection, error) {
 	var inspection targetTLSInspection
+	var progressMu sync.Mutex
+	report := targetProgressFunc(func(format string, args ...any) {
+		if progress == nil {
+			return
+		}
+		progressMu.Lock()
+		defer progressMu.Unlock()
+		progress(fmt.Sprintf(format, args...))
+	})
+	report("检查 REALITY target 格式：%s", target)
 	if err := system.ValidateTarget(target); err != nil {
 		return inspection, err
 	}
@@ -53,6 +77,7 @@ func inspectNetworkTarget(ctx context.Context, target, sni, server string, timeo
 	defer cancel()
 	ctx = probeCtx
 	r := net.Resolver{}
+	report("解析 REALITY target DNS：%s", host)
 	ips, err := r.LookupIPAddr(ctx, host)
 	if err != nil {
 		return inspection, fmt.Errorf("解析 REALITY target %s: %w", host, err)
@@ -61,6 +86,8 @@ func inspectNetworkTarget(ctx context.Context, target, sni, server string, timeo
 		return inspection, fmt.Errorf("REALITY target 未解析到地址")
 	}
 	inspection.IPs = ips
+	report("DNS 解析完成：%s -> %s", host, resolvedAddressSummary(ips))
+	report("检查 REALITY target 是否为公网地址、非本机且非服务器自身地址")
 	serverIPs, _ := r.LookupIPAddr(ctx, server)
 	local := localIPs()
 	for _, item := range ips {
@@ -79,6 +106,7 @@ func inspectNetworkTarget(ctx context.Context, target, sni, server string, timeo
 			}
 		}
 	}
+	report("REALITY target 地址安全检查通过")
 	hasIPv4, hasIPv6 := ipFamilies(ips)
 	inspection.IPv4.Present = hasIPv4
 	inspection.IPv6.Present = hasIPv6
@@ -90,18 +118,24 @@ func inspectNetworkTarget(ctx context.Context, target, sni, server string, timeo
 	}
 	var v4, v6 familyResult
 	var wg sync.WaitGroup
+	if !hasIPv4 {
+		report("IPv4 TCP/TLS 探测跳过：target 未解析到 IPv4 地址")
+	}
+	if !hasIPv6 {
+		report("IPv6 TCP/TLS 探测跳过：target 未解析到 IPv6 地址")
+	}
 	if hasIPv4 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			v4.latency, v4.state, v4.err = probeTLSFamily(ctx, "tcp4", target, sni, timeout)
+			v4.latency, v4.state, v4.err = probeTLSFamily(ctx, "tcp4", "IPv4", target, sni, timeout, report)
 		}()
 	}
 	if hasIPv6 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			v6.latency, v6.state, v6.err = probeTLSFamily(ctx, "tcp6", target, sni, timeout)
+			v6.latency, v6.state, v6.err = probeTLSFamily(ctx, "tcp6", "IPv6", target, sni, timeout, report)
 		}()
 	}
 	wg.Wait()
@@ -130,16 +164,25 @@ func inspectNetworkTarget(ctx context.Context, target, sni, server string, timeo
 	if canonicalName, lookupErr := r.LookupCNAME(ctx, host); lookupErr == nil {
 		inspection.CanonicalName = strings.TrimSuffix(strings.ToLower(canonicalName), ".")
 	}
+	report("REALITY target 验证通过：至少一个地址族已完成 TCP、TLS 和 SNI 证书校验")
 	return inspection, nil
 }
 
-func probeTLSFamily(ctx context.Context, network, target, sni string, timeout time.Duration) (time.Duration, *tls.ConnectionState, error) {
+func probeTLSFamily(
+	ctx context.Context,
+	network, family, target, sni string,
+	timeout time.Duration,
+	report targetProgressFunc,
+) (time.Duration, *tls.ConnectionState, error) {
 	started := time.Now()
+	report("开始 %s TCP 连接：%s", family, target)
 	dialer := &net.Dialer{Timeout: timeout}
 	rawConn, err := dialer.DialContext(ctx, network, target)
 	if err != nil {
+		report("%s TCP 连接失败：%v", family, err)
 		return 0, nil, fmt.Errorf("REALITY target TCP 连接失败: %w", err)
 	}
+	report("%s TCP 连接成功，开始 TLS 握手和 SNI 证书校验：%s", family, sni)
 	conn := tls.Client(rawConn, &tls.Config{
 		ServerName: sni,
 		MinVersion: tls.VersionTLS12,
@@ -147,13 +190,36 @@ func probeTLSFamily(ctx context.Context, network, target, sni string, timeout ti
 	})
 	defer conn.Close()
 	if err := conn.HandshakeContext(ctx); err != nil {
+		report("%s TLS/证书校验失败：%v", family, err)
 		return 0, nil, fmt.Errorf("REALITY target TLS/证书名称校验失败: %w", err)
 	}
 	if err := conn.VerifyHostname(sni); err != nil {
+		report("%s 证书不包含 SNI %s：%v", family, sni, err)
 		return 0, nil, fmt.Errorf("REALITY target 证书不包含 SNI %s: %w", sni, err)
 	}
 	state := conn.ConnectionState()
-	return time.Since(started), &state, nil
+	latency := time.Since(started)
+	alpn := state.NegotiatedProtocol
+	if alpn == "" {
+		alpn = "未协商"
+	}
+	report("%s TLS/证书校验通过：%s，ALPN %s，耗时 %s", family, tlsVersionLabel(state.Version), alpn, latency.Round(time.Millisecond))
+	return latency, &state, nil
+}
+
+func resolvedAddressSummary(ips []net.IPAddr) string {
+	const displayLimit = 6
+	values := make([]string, 0, min(len(ips), displayLimit))
+	for index, item := range ips {
+		if index == displayLimit {
+			break
+		}
+		values = append(values, item.IP.String())
+	}
+	if len(ips) > displayLimit {
+		values = append(values, fmt.Sprintf("另有 %d 个地址", len(ips)-displayLimit))
+	}
+	return strings.Join(values, ", ")
 }
 
 func ipFamilies(ips []net.IPAddr) (hasIPv4, hasIPv6 bool) {

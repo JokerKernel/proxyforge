@@ -31,12 +31,14 @@ type App struct {
 }
 
 func New(reg *provider.Registry, runner provider.Runner, layout system.Layout, out io.Writer) *App {
-	return &App{
+	a := &App{
 		Registry: reg, Runner: runner, Layout: layout, Store: system.StateStore{Layout: layout},
 		Services: system.ServiceManager{Runner: runner}, Installer: install.Installer{Runner: runner, Layout: layout, Output: out},
-		Targets: NetworkTargetValidator{}, Out: out, Progress: out, Now: time.Now,
+		Out: out, Progress: out, Now: time.Now,
 		RootCheck: RequireRoot, LookPath: exec.LookPath, PortFree: checkPortFree, Listening: waitListening,
 	}
+	a.Targets = NetworkTargetValidator{Progress: func(message string) { a.progressf("%s", message) }}
+	return a
 }
 
 func (a *App) progressf(format string, args ...any) {
