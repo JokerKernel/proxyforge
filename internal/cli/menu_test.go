@@ -69,7 +69,10 @@ func TestServerConfigMenuShowsStatusCard(t *testing.T) {
 	}
 	var out bytes.Buffer
 	c := &commandSet{
-		app:    &app.App{Registry: provider.NewRegistry(p), Layout: layout, Store: store},
+		app: &app.App{
+			Registry: provider.NewRegistry(p), Layout: layout, Store: store,
+			Services: system.ServiceManager{Runner: installedUnitRunner{}},
+		},
 		reader: bufio.NewReader(strings.NewReader("0\n")),
 		out:    &out,
 	}
@@ -77,11 +80,14 @@ func TestServerConfigMenuShowsStatusCard(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := out.String()
+	if userAt, dnsAt := strings.Index(got, "运行用户"), strings.Index(got, "DNS 设置"); userAt < 0 || dnsAt < 0 || userAt > dnsAt {
+		t.Fatalf("running user should be the first config row: %q", got)
+	}
 	for _, text := range []string{
 		"服务端配置", "╭─ 当前配置",
 		"DNS 设置", "系统 DNS",
 		"出站 IP", "默认（先 IPv4，300ms 后竞速 IPv6）",
-		"回落 IP", "SNI", "www.example.com",
+		"回落 IP", "运行用户", "xray", "SNI", "www.example.com",
 	} {
 		if !strings.Contains(got, text) {
 			t.Fatalf("server config card missing %q: %q", text, got)

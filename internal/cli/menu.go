@@ -103,7 +103,7 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 	for {
 		c.clearScreen()
 		c.printPageHeader(core, "服务端配置")
-		c.printModifyConfigCard(core)
+		c.printModifyConfigCard(ctx, core)
 		c.printMenuChoice("1", "生成/更新配置（完整覆盖现有配置，不合并原配置）")
 		c.printMenuChoice("2", "修改配置（DNS、出站 IP、回落 IP、重置节点与 SNI 检测）")
 		c.printMenuChoice("3", "查看配置")
@@ -184,7 +184,7 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 	for {
 		c.clearScreen()
 		c.printPageHeader(core, "修改配置")
-		c.printModifyConfigCard(core)
+		c.printModifyConfigCard(ctx, core)
 		c.printMenuChoice("1", "DNS 设置")
 		c.printMenuChoice("2", "出站 IP（优先或仅使用 IPv4 / IPv6）")
 		next := 3
@@ -269,15 +269,23 @@ func (c *commandSet) printCoreMenu(ctx context.Context, core string) {
 	c.printMenuChoice("0/q", "返回")
 }
 
-func (c *commandSet) printModifyConfigCard(core string) {
+func (c *commandSet) printModifyConfigCard(ctx context.Context, core string) {
 	var status app.ModifyConfigStatus
 	if c.app != nil {
-		status = c.app.ModifyConfigStatus(core)
+		status = c.app.ModifyConfigStatus(ctx, core)
 	}
-	rows := [][2]string{
-		{"DNS 设置", modifyConfigValue(status.HasConfig, status.DNS, func() string { return dnsCardDisplay(core, status.DNS, status.DNSServers) })},
-		{"出站 IP", modifyConfigValue(status.HasConfig, status.OutboundIP, func() string { return outboundIPCardDisplay(core, status.OutboundIP) })},
+	var rows [][2]string
+	if core == domain.CoreXray {
+		serviceUser := strings.TrimSpace(status.ServiceUser)
+		if serviceUser == "" {
+			serviceUser = "无法读取"
+		}
+		rows = append(rows, [2]string{"运行用户", serviceUser})
 	}
+	rows = append(rows,
+		[2]string{"DNS 设置", modifyConfigValue(status.HasConfig, status.DNS, func() string { return dnsCardDisplay(core, status.DNS, status.DNSServers) })},
+		[2]string{"出站 IP", modifyConfigValue(status.HasConfig, status.OutboundIP, func() string { return outboundIPCardDisplay(core, status.OutboundIP) })},
+	)
 	if status.HasFallback {
 		rows = append(rows, [2]string{
 			"回落 IP", modifyConfigValue(status.HasConfig, status.FallbackIP, func() string { return outboundIPCardDisplay(core, status.FallbackIP) }),

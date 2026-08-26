@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"os"
 	"strings"
 
@@ -16,13 +17,14 @@ type ModifyConfigStatus struct {
 	DNSServers  []string
 	OutboundIP  string
 	FallbackIP  string
+	ServiceUser string
 	HasFallback bool
 	HasConfig   bool
 }
 
 var lookupSystemResolvers = system.ResolverAddresses
 
-func (a *App) ModifyConfigStatus(core string) ModifyConfigStatus {
+func (a *App) ModifyConfigStatus(ctx context.Context, core string) ModifyConfigStatus {
 	var status ModifyConfigStatus
 	if a == nil {
 		return status
@@ -37,6 +39,11 @@ func (a *App) ModifyConfigStatus(core string) ModifyConfigStatus {
 	p, err := a.Registry.Get(core)
 	if err != nil {
 		return status
+	}
+	if a.Services.Runner != nil {
+		if user, err := a.Services.UserState(ctx, p.ServiceName()); err == nil {
+			status.ServiceUser = user
+		}
 	}
 	config, err := os.ReadFile(a.Layout.Resolve(p.ConfigPath()))
 	if err != nil {

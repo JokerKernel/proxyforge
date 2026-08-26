@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"io"
+	"strings"
 
 	"proxyforge/internal/app"
 	"proxyforge/internal/system"
@@ -17,6 +18,9 @@ type installedUnitRunner struct{}
 
 func (installedUnitRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
 	if name == "systemctl" && len(args) > 0 && args[0] == "show" {
+		if strings.Contains(strings.Join(args, " "), "-p User") {
+			return []byte("xray\n"), nil
+		}
 		return []byte("loaded\n"), nil
 	}
 	return nil, nil
