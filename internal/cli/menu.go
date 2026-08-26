@@ -275,13 +275,11 @@ func (c *commandSet) printModifyConfigCard(ctx context.Context, core string) {
 		status = c.app.ModifyConfigStatus(ctx, core)
 	}
 	var rows [][2]string
-	if core == domain.CoreXray {
-		serviceUser := strings.TrimSpace(status.ServiceUser)
-		if serviceUser == "" {
-			serviceUser = "无法读取"
-		}
-		rows = append(rows, [2]string{"运行用户", serviceUser})
+	serviceUser := strings.TrimSpace(status.ServiceUser)
+	if serviceUser == "" {
+		serviceUser = "无法读取"
 	}
+	rows = append(rows, [2]string{"运行用户", serviceUser})
 	rows = append(rows,
 		[2]string{"DNS 设置", modifyConfigValue(status.HasConfig, status.DNS, func() string { return dnsCardDisplay(core, status.DNS, status.DNSServers) })},
 		[2]string{"出站 IP", modifyConfigValue(status.HasConfig, status.OutboundIP, func() string { return outboundIPCardDisplay(core, status.OutboundIP) })},

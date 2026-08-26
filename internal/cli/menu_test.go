@@ -108,7 +108,7 @@ func TestXrayServerConfigMenuOffersDedicatedServiceUser(t *testing.T) {
 	if !strings.Contains(xrayOut.String(), "专用运行用户") || !strings.Contains(xrayOut.String(), "nobody 安全警告") {
 		t.Fatalf("xray menu output=%q", xrayOut.String())
 	}
-	for _, text := range []string{"╭─ 当前配置", "DNS 设置", "出站 IP", "SNI"} {
+	for _, text := range []string{"╭─ 当前配置", "运行用户", "DNS 设置", "出站 IP", "SNI"} {
 		if !strings.Contains(xrayOut.String(), text) || !strings.Contains(singBoxOut.String(), text) {
 			t.Fatalf("server config card missing %q: xray=%q sing-box=%q", text, xrayOut.String(), singBoxOut.String())
 		}
