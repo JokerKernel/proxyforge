@@ -57,6 +57,8 @@ chmod +x ~/proxyforge-test-reality-sni.sh
 
 允许 SNI、错误 SNI 和无 SNI 决定 TLS SNI 结论。允许项的子域、证书 SAN 域名以及后续 HTTP/HTTPS 探测仅作附加报告，不改变 TLS SNI 判定。
 
+脚本还会根据允许 SNI、证书名称和 CNAME 做 CDN 启发式识别，覆盖 Cloudflare、Akamai、CloudFront、Fastly、Google、Apple，以及阿里云、腾讯云、字节跳动、网宿等常见国内外 CDN。若识别为 Cloudflare 且错误 SNI 仍能拿到证书，结论会给出「严重错误：流量可能被刷」；其他已识别 CDN，或 Cloudflare 且 SNI 过滤已经生效时，提示「当前有 CDN 风险」。CDN 识别不是权威归属判断。
+
 证书 SAN 域名会排除当前允许 SNI、已测试域名、重复项和通配符项，然后随机选取两个，同时用于 TLS SNI 和 HTTP/HTTPS Host 探测。这些探测的标题会标注「证书 SAN」，以区别于固定的 `example.com` 和 `www.google.com`。如果证书中没有足够的其他域名，脚本使用其他内置域名补足两项，标题标注「补充域名」。每项 HTTP Host 探测都会显示域名来源。
 
 ## TLS 判定
@@ -98,7 +100,7 @@ HTTP 请求没有 TLS SNI，因此 HTTP 探测只作为附加信息：
 | `2` | 无法确认，或填写的允许 SNI 可能与服务端配置不一致 |
 | `64` | 命令参数错误 |
 
-HTTP 附加探测收到响应不会单独改变退出码。
+HTTP 附加探测收到响应不会单独改变退出码。Cloudflare / CDN 提示也不单独改变退出码：过滤未生效时仍为 `1`，过滤已生效时仍为 `0`。
 
 ## 排障与限制
 

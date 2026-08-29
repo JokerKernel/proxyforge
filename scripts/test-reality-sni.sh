@@ -13,6 +13,7 @@ usage() {
   -h, --help        显示帮助
 
 脚本会自动探测 www.<允许的SNI> 作为允许项的子域，并从允许项证书 SAN 中选取域名做 TLS 探测；这些结果只作附加报告，不纳入 SNI 拦截判定。
+允许 SNI 若识别为 Cloudflare，SNI 过滤未生效时会提示严重错误（流量可能被刷）；过滤已生效时仍提示当前有 CDN 风险。
 
 示例：
   ./scripts/test-reality-sni.sh \
@@ -156,6 +157,145 @@ print_source_line() {
   printf '    来源: %s\n' "${source}"
 }
 
+domain_has_suffix() {
+  local host=${1,,}
+  local suffix=${2,,}
+  host=${host%.}
+  suffix=${suffix%.}
+  [[ -n ${host} && -n ${suffix} ]] || return 1
+  [[ ${host} == "${suffix}" || ${host} == *."${suffix}" ]]
+}
+
+match_cdn_provider() {
+  local name=$1
+  local provider suffixes suffix
+  while IFS=$'\t' read -r provider suffixes; do
+    [[ -n ${provider} ]] || continue
+    for suffix in ${suffixes}; do
+      if domain_has_suffix "${name}" "${suffix}"; then
+        printf '%s' "${provider}"
+        return 0
+      fi
+    done
+  done <<'EOF'
+Cloudflare	cloudflare.com cloudflare.net cdn.cloudflare.net pages.dev trycloudflare.com workers.dev r2.dev
+Akamai	akamai.net akamaiedge.net akamaihd.net akamaized.net edgekey.net edgesuite.net akadns.net akamaitech.net akamai.com
+AWS CloudFront	cloudfront.net
+Fastly	fastly.net fastlylb.net fastly.com
+Microsoft/Azure CDN	azureedge.net azurefd.net msedge.net trafficmanager.net gallerycdn.vsassets.io aspnetcdn.com office.net
+Google CDN	gstatic.com googleusercontent.com 1e100.net googlehosted.com googlevideo.com
+Apple CDN	mzstatic.com cdn-apple.com apple-dns.net icloud-content.com
+阿里云 CDN	alicdn.com kunlun.com kunlunar.com kunlunle.com kunlunpi.com cdngslb.com taobaocdn.com tbcdn.cn
+腾讯云 CDN	qcloudcdn.com cdn.dnsv1.com tcdn.qq.com gdtimg.com qpic.cn myqcloud.com
+百度云 CDN	bdstatic.com bcebos.com bdydns.com
+华为云 CDN	hwcdrn.com cdn.myhuaweicloud.com
+字节跳动 CDN	bytecdn.cn byteimg.com pstatp.com bytescm.com douyincdn.com ibytedtos.com
+网宿	wscdns.com lxdns.com ourglb0.com wscloudcdn.com chinacache.net
+七牛	qiniucdn.com qnssl.com clouddn.com qiniudn.com
+又拍云	upaiyun.com upyun.com
+金山云 CDN	ks-cdn.com ksyuncdn.com
+CDN77	cdn77.org cdn77.com
+Bunny CDN	b-cdn.net
+Imperva	incapdns.net
+Sucuri	sucuri.net
+KeyCDN	kxcdn.com
+StackPath	stackpathcdn.com stackpathdns.com
+CacheFly	cachefly.net
+Gcore	gcdn.co
+QUIC.cloud	quic.cloud
+Edgio	llnwd.net llnw.net edgecastcdn.net
+jsDelivr	jsdelivr.net
+Facebook CDN	fbcdn.net
+X CDN	twimg.com
+Cloudinary	cloudinary.com
+Imgix	imgix.net
+Shopify CDN	shopifycdn.com shopifycloud.com
+GitHub CDN	githubassets.com
+Amazon 图片 CDN	images-amazon.com ssl-images-amazon.com media-amazon.com
+Vercel	vercel-dns.com vercel.app
+Netlify	netlify.app netlify.com
+EOF
+  return 1
+}
+
+lookup_cname() {
+  local domain=$1
+  local record=''
+  if command -v dig >/dev/null 2>&1; then
+    record=$(timeout --signal=TERM 3s dig +short +time=2 +tries=1 CNAME "${domain}" 2>/dev/null | awk 'NF && $1 !~ /^;/ {print $1; exit}' || true)
+  elif command -v host >/dev/null 2>&1; then
+    record=$(timeout --signal=TERM 3s host -t CNAME "${domain}" 2>/dev/null | awk '/alias for/{print $NF; exit}' || true)
+  fi
+  record=${record%.}
+  printf '%s' "${record}"
+}
+
+classify_allowed_cdn() {
+  local candidate matched cname
+  local -a names=("${allowed_sni}")
+  detected_cdn=''
+  if ((${#probe_certificate_dns_names[@]} > 0)); then
+    names+=("${probe_certificate_dns_names[@]}")
+  fi
+  for candidate in "${names[@]}"; do
+    if matched=$(match_cdn_provider "${candidate}"); then
+      detected_cdn=${matched}
+      return
+    fi
+  done
+  if [[ ${probe_certificate_info,,} == *cloudflare* ]]; then
+    detected_cdn='Cloudflare'
+    return
+  fi
+  cname=$(lookup_cname "${allowed_sni}")
+  if [[ -n ${cname} ]] && matched=$(match_cdn_provider "${cname}"); then
+    detected_cdn=${matched}
+  fi
+}
+
+print_allowed_cdn_finding() {
+  classify_allowed_cdn
+  if [[ ${detected_cdn} == Cloudflare ]]; then
+    printf '    %s● CDN：Cloudflare%s\n' "${color_red}" "${color_reset}"
+  elif [[ -n ${detected_cdn} ]]; then
+    printf '    %s● CDN：%s%s\n' "${color_yellow}" "${detected_cdn}" "${color_reset}"
+  else
+    printf '    %s● CDN：未发现明显特征%s\n' "${color_dim}" "${color_reset}"
+  fi
+}
+
+print_conclusion_cdn_box_line() {
+  [[ -n ${detected_cdn} ]] || return 0
+  if [[ ${detected_cdn} == Cloudflare ]] && ((rejected_sni_certificate_count > 0)); then
+    printf '%s│  ✗ Cloudflare 严重错误：流量可能被刷%s     %s│%s\n' \
+      "${color_red}" "${color_reset}" "${color_red}" "${color_reset}"
+    return
+  fi
+  if [[ ${detected_cdn} == Cloudflare ]]; then
+    printf '%s│  △ 当前有 CDN 风险（Cloudflare）%s         %s│%s\n' \
+      "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
+    return
+  fi
+  printf '%s│  △ 当前有 CDN 风险%s                       %s│%s\n' \
+    "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
+}
+
+print_cdn_summary() {
+  [[ -n ${detected_cdn} ]] || return 0
+  if [[ ${detected_cdn} == Cloudflare ]] && ((rejected_sni_certificate_count > 0)); then
+    printf '%s严重错误：允许 SNI 使用 Cloudflare CDN，且 SNI 过滤未生效。未认证回落可能导致流量被刷。%s\n' \
+      "${color_red}" "${color_reset}"
+    return
+  fi
+  if [[ ${detected_cdn} == Cloudflare ]]; then
+    printf '%s当前有 CDN 风险：允许 SNI 使用 Cloudflare。即使 SNI 过滤已生效，未认证回落仍可能到达 Cloudflare。%s\n' \
+      "${color_yellow}" "${color_reset}"
+    return
+  fi
+  printf '%s当前有 CDN 风险：允许 SNI 检测到 %s。%s\n' \
+    "${color_yellow}" "${detected_cdn}" "${color_reset}"
+}
+
 print_probe_header() {
   local number=$1
   local title=$2
@@ -242,6 +382,7 @@ probe_certificate_info=''
 declare -a probe_certificate_dns_names=()
 probe_exit=0
 probe_output=''
+detected_cdn=''
 
 run_probe() {
   local label=$1
@@ -318,6 +459,9 @@ run_probe() {
     printf '    %s● 未收到 TLS 响应%s 连接超时\n' "${color_red}" "${color_reset}"
   else
     printf '    %s● 未收到 TLS 响应%s 退出码=%d\n' "${color_red}" "${color_reset}" "${probe_exit}"
+  fi
+  if [[ ${label} == '允许项' ]]; then
+    print_allowed_cdn_finding
   fi
 
   if ${verbose}; then
@@ -485,38 +629,32 @@ print_conclusion_strict_box_line() {
   if ! ${probe_allowed_subdomain}; then
     printf '%s│  ? 子域名严格匹配未检测%s                   %s│%s\n' \
       "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
-    return
-  fi
-  if ! ${allowed_has_certificate}; then
+  elif ! ${allowed_has_certificate}; then
     printf '%s│  ? 子域名严格匹配无法确认%s                 %s│%s\n' \
       "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
-    return
-  fi
-  if ${allowed_subdomain_has_certificate}; then
+  elif ${allowed_subdomain_has_certificate}; then
     printf '%s│  △ 子域名严格匹配未开启%s                   %s│%s\n' \
       "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
   else
     printf '%s│  ✓ 子域名严格匹配已开启%s                   %s│%s\n' \
       "${color_green}" "${color_reset}" "${color_green}" "${color_reset}"
   fi
+  print_conclusion_cdn_box_line
 }
 
 print_strict_match_summary() {
   if ! ${probe_allowed_subdomain}; then
     printf '子域名严格匹配：未检测（允许 SNI 过长，无法构造子域）\n'
-    return
-  fi
-  if ! ${allowed_has_certificate}; then
+  elif ! ${allowed_has_certificate}; then
     printf '子域名严格匹配：无法确认（允许项未获得证书，子域探测不足以下结论）\n'
-    return
-  fi
-  if ${allowed_subdomain_has_certificate}; then
+  elif ${allowed_subdomain_has_certificate}; then
     printf '%s子域名严格匹配：未开启%s（允许项的子域 %s 获得了证书）；该结果不改变 TLS SNI 判定。\n' \
       "${color_yellow}" "${color_reset}" "${allowed_subdomain}"
   else
     printf '%s子域名严格匹配：已开启%s（允许项的子域 %s 未获得证书）\n' \
       "${color_green}" "${color_reset}" "${allowed_subdomain}"
   fi
+  print_cdn_summary
 }
 
 tls_extra_probe_title() {

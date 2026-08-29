@@ -112,6 +112,15 @@ func TestDetectCDNUsesProviderAndHeuristicSignals(t *testing.T) {
 	if got := detectCDN("a1.example.akamaiedge.net", "www.example.com", 2); got != "Akamai（CNAME）" {
 		t.Fatalf("known CDN=%q", got)
 	}
+	if got := detectCDN("", "img.alicdn.com", 1); got != "阿里云 CDN" {
+		t.Fatalf("alibaba CDN=%q", got)
+	}
+	if got := detectCDN("d111.cloudfront.net", "static.example.com", 2); got != "AWS CloudFront（CNAME）" {
+		t.Fatalf("cloudfront CDN=%q", got)
+	}
+	if got := detectCDN("", "speed.cloudflare.com", 1); got != "Cloudflare" {
+		t.Fatalf("cloudflare domain=%q", got)
+	}
 	if got := detectCDN("origin.example.net", "assets.example.com", 3); got != "疑似（CNAME、3 个地址、资源域名）" {
 		t.Fatalf("heuristic CDN=%q", got)
 	}
