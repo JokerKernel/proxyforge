@@ -365,10 +365,15 @@ func (c *commandSet) readSNIPageChoice(total, page, pages int, opts sniPageChoic
 		if err != nil && len(line) == 0 {
 			return "", 0, err
 		}
+		pasted := c.discardBufferedInput()
 		value := strings.TrimSpace(line)
 		if value == "" {
 			if c.interactiveUI() {
 				eraseChoiceRetry(c.out, false)
+			}
+			if pasted && !invalidShown {
+				fmt.Fprintln(c.out, "检测到粘贴了多行内容，已忽略多余输入。")
+				invalidShown = true
 			}
 			continue
 		}
@@ -378,6 +383,11 @@ func (c *commandSet) readSNIPageChoice(total, page, pages int, opts sniPageChoic
 		}
 		if c.interactiveUI() {
 			eraseChoiceRetry(c.out, false)
+		}
+		if pasted {
+			fmt.Fprintln(c.out, "检测到粘贴了多行内容，已忽略多余输入。")
+			invalidShown = true
+			continue
 		}
 		if invalidShown {
 			continue

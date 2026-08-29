@@ -20,6 +20,21 @@ func TestConfirmAcceptsGlobalAffirmativeForms(t *testing.T) {
 			}
 		})
 	}
+	t.Run("pasted lines are discarded", func(t *testing.T) {
+		var out bytes.Buffer
+		c := &commandSet{
+			reader:       bufio.NewReader(strings.NewReader("nope\nyes\n1\n")),
+			out:          &out,
+			discardBurst: true,
+		}
+		_, err := c.confirm("confirm")
+		if !errors.Is(err, io.EOF) {
+			t.Fatalf("error=%v, want EOF after discarding the rest of the paste", err)
+		}
+		if !strings.Contains(out.String(), "检测到粘贴了多行内容，已忽略多余输入。") {
+			t.Fatalf("paste hint missing: %q", out.String())
+		}
+	})
 	t.Run("invalid input retries", func(t *testing.T) {
 		var out bytes.Buffer
 		c := &commandSet{reader: bufio.NewReader(strings.NewReader("n\n\nx\ny\n")), out: &out}
@@ -70,6 +85,44 @@ func TestSNIConfirmationDefaultsToYes(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Y/1=确认") || !strings.Contains(out.String(), "Q/0=返回") || !strings.Contains(out.String(), "回车=确认") {
 		t.Fatalf("default confirmation prompt=%q", out.String())
+	}
+}
+
+func TestChooseNumberDiscardsPastedLines(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{
+		reader:       bufio.NewReader(strings.NewReader("copied text\n2\n3\n4\n")),
+		out:          &out,
+		discardBurst: true,
+	}
+	_, err := c.chooseNumber("请选择", 0, 5, 0)
+	if !errors.Is(err, io.EOF) {
+		t.Fatalf("error=%v, want EOF after discarding the rest of the paste", err)
+	}
+	if count := strings.Count(out.String(), "❯ 请选择"); count != 2 {
+		t.Fatalf("prompt count=%d, want 2 (original + one retry): %q", count, out.String())
+	}
+	if !strings.Contains(out.String(), "检测到粘贴了多行内容，已忽略多余输入。") {
+		t.Fatalf("paste hint missing: %q", out.String())
+	}
+}
+
+func TestChooseNumberKeepsFirstValidPastedChoice(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{
+		reader:       bufio.NewReader(strings.NewReader("2\nleftover\n3\n")),
+		out:          &out,
+		discardBurst: true,
+	}
+	choice, err := c.chooseNumber("请选择", 0, 5, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if choice != 2 {
+		t.Fatalf("choice=%d, want first pasted line", choice)
+	}
+	if strings.Contains(out.String(), "检测到粘贴") {
+		t.Fatalf("valid first line should not warn about paste: %q", out.String())
 	}
 }
 

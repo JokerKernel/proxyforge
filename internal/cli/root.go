@@ -36,6 +36,7 @@ type commandSet struct {
 	selfUpdate       func(context.Context, selfupdate.Options) error
 	lookPath         func(string) (string, error)
 	runEditor        func(editor, path string) error
+	discardBurst     bool
 }
 
 func New(version string) *cobra.Command {

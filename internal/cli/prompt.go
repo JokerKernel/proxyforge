@@ -44,6 +44,7 @@ func (c *commandSet) chooseNumberInput(label string, min, max, def int, cancelab
 		if err != nil && len(line) == 0 {
 			return 0, err
 		}
+		pasted := c.discardBufferedInput()
 		value := strings.TrimSpace(line)
 		if cancelable && (strings.EqualFold(value, "q") || (value == "0" && min > 0)) {
 			return 0, errReturnToMenu
@@ -60,6 +61,11 @@ func (c *commandSet) chooseNumberInput(label string, min, max, def int, cancelab
 		}
 		if c.interactiveUI() {
 			eraseChoiceRetry(c.out, false)
+		}
+		if pasted {
+			fmt.Fprintln(c.out, "检测到粘贴了多行内容，已忽略多余输入。")
+			invalidShown = true
+			continue
 		}
 		if value == "" || invalidShown {
 			continue
@@ -101,6 +107,7 @@ func (c *commandSet) askDefaultInput(label, def string, cancelable bool) (string
 		fmt.Fprintf(c.out, "%s: ", label)
 	}
 	line, err := c.reader.ReadString('\n')
+	c.discardBufferedInput()
 	if err == nil || len(line) > 0 {
 		v := strings.TrimSpace(line)
 		if cancelable && strings.EqualFold(v, "q") {
@@ -157,6 +164,7 @@ func (c *commandSet) confirmInput(message string, cancelable, defaultYes bool) (
 		if err != nil && len(line) == 0 {
 			return false, err
 		}
+		pasted := c.discardBufferedInput()
 		value := strings.TrimSpace(line)
 		if strings.EqualFold(value, "q") || value == "0" {
 			return false, errReturnToMenu
@@ -169,6 +177,11 @@ func (c *commandSet) confirmInput(message string, cancelable, defaultYes bool) (
 		}
 		if c.interactiveUI() {
 			eraseChoiceRetry(c.out, false)
+		}
+		if pasted {
+			fmt.Fprintln(c.out, "检测到粘贴了多行内容，已忽略多余输入。")
+			invalidShown = true
+			continue
 		}
 		if value == "" || invalidShown {
 			continue
@@ -214,6 +227,22 @@ func (c *commandSet) pauseForMenu() {
 	}
 	fmt.Fprint(c.out, "\n按 Enter 返回菜单……")
 	_, _ = c.reader.ReadString('\n')
+	c.discardBufferedInput()
+}
+
+func (c *commandSet) discardBufferedInput() bool {
+	if c.reader == nil || !(c.interactiveUI() || c.discardBurst) {
+		return false
+	}
+	discarded := false
+	for n := c.reader.Buffered(); n > 0; n = c.reader.Buffered() {
+		buf := make([]byte, n)
+		if _, err := io.ReadFull(c.reader, buf); err != nil {
+			return discarded
+		}
+		discarded = true
+	}
+	return discarded
 }
 
 func netJoinHostPort(host, port string) string {
