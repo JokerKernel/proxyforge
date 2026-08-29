@@ -96,8 +96,9 @@ grep -Fq '✓ SNI 过滤生效' "${success_output}"
 grep -Fq '证书 / TLS SNI 探测' "${success_output}"
 grep -Fq 'HTTP 明文与 Host 探测' "${success_output}"
 grep -Fq 'HTTPS Host 探测' "${success_output}"
-grep -Fq '允许项的子域名（应拒绝）' "${success_output}"
-grep -Fq '2 个应拒绝 SNI（含允许项子域名）均未获得证书' "${success_output}"
+grep -Fq '未严格匹配域名' "${success_output}"
+grep -Fq '1 个错误 SNI 均未获得证书' "${success_output}"
+grep -Fq '未严格匹配域名 www.se-edge.itunes.apple.com 未获得证书' "${success_output}"
 grep -Fq '收到 TLS 数据但未获得证书' "${success_output}"
 grep -Fq '无 SNI 探测仍获得了证书' "${success_output}"
 grep -Fq '状态码=400（错误的请求）' "${success_output}"
@@ -120,13 +121,18 @@ run_probe 1 1 1 1 0 0 "${failure_output}"
 grep -Fq '✗ SNI 过滤未生效' "${failure_output}"
 grep -Fq '1 个错误 SNI 获得了 TLS 证书' "${failure_output}"
 
-subdomain_failure_output="${test_tmp}/subdomain-failure.log"
-run_probe 0 1 1 1 0 1 "${subdomain_failure_output}"
-[[ ${probe_status} -eq 1 ]]
-grep -Fq '允许项的子域名（应拒绝）' "${subdomain_failure_output}"
-grep -Fq '✗ SNI 过滤未生效' "${subdomain_failure_output}"
-grep -Fq '1 个错误 SNI 获得了 TLS 证书' "${subdomain_failure_output}"
-grep -Fq '允许项子域名 www.se-edge.itunes.apple.com 被放行' "${subdomain_failure_output}"
+subdomain_loose_output="${test_tmp}/subdomain-loose.log"
+run_probe 0 1 1 1 0 1 "${subdomain_loose_output}"
+[[ ${probe_status} -eq 0 ]]
+grep -Fq '未严格匹配域名' "${subdomain_loose_output}"
+grep -Fq '✓ SNI 过滤生效' "${subdomain_loose_output}"
+grep -Fq '1 个错误 SNI 均未获得证书' "${subdomain_loose_output}"
+grep -Fq '未严格匹配域名 www.se-edge.itunes.apple.com 获得了证书' "${subdomain_loose_output}"
+grep -Fq '该结果不改变 TLS SNI 判定' "${subdomain_loose_output}"
+if grep -Fq '✗ SNI 过滤未生效' "${subdomain_loose_output}"; then
+  printf 'subdomain probe must not fail SNI filtering\n' >&2
+  exit 1
+fi
 
 mismatch_output="${test_tmp}/mismatch.log"
 run_probe 0 0 1 1 1 0 "${mismatch_output}"

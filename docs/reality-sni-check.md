@@ -41,7 +41,7 @@ chmod +x ~/proxyforge-test-reality-sni.sh
 默认执行十二项探测（域名重复时会自动去重）：
 
 1. 使用允许 SNI 建立 TLS 连接，并检查证书 SAN 是否匹配。
-2. 使用常见的 `www.<允许 SNI>` 检查允许项的子域名是否也被错误放行。
+2. 使用常见的 `www.<允许 SNI>` 作为未严格匹配域名，只报告是否启用严格匹配。
 3. 使用 `www.cloudflare.com` 作为错误 SNI。
 4. 使用 `example.com` 作为错误 SNI。
 5. 不发送 SNI 建立 TLS 连接。
@@ -53,7 +53,7 @@ chmod +x ~/proxyforge-test-reality-sni.sh
 11. 从允许项证书 SAN 中随机挑选一个其他域名作为 HTTP `Host` 请求头。
 12. 从允许项证书 SAN 中再随机挑选一个其他域名作为 HTTP `Host` 请求头。
 
-前五项决定 TLS SNI 结论，后七项仅报告 HTTP/HTTPS 回落暴露面，不改变 TLS SNI 判定。允许项的子域名会按错误 SNI 处理：若它获得证书，脚本返回过滤未生效。
+允许 SNI、错误 SNI 和无 SNI 决定 TLS SNI 结论。未严格匹配域名（`www.<允许 SNI>`）以及后续 HTTP/HTTPS 探测仅作附加报告，不改变 TLS SNI 判定。
 
 证书 SAN 域名会排除当前允许 SNI、已测试域名、重复项和通配符项，然后随机选取两个。固定的 `example.com` 和 `www.google.com` 探测仍会保留。如果证书中没有足够的其他域名，脚本使用其他内置域名补足两项。每项 HTTP Host 探测都会显示域名来源。
 
@@ -70,6 +70,8 @@ chmod +x ~/proxyforge-test-reality-sni.sh
 | 任意 | 任一有证书 | 任意 | 错误 SNI 被放行，过滤未生效或不完整 |
 
 如果允许项收到证书但 SAN 不匹配，脚本也会返回“无法确认”，需要检查 REALITY target 和允许域名。
+
+`www.<允许 SNI>` 只用于观察是否启用严格域名匹配（例如 Xray 的 `full:<SNI>`）。它获得证书时脚本会报告未严格匹配，但不会因此判定 SNI 拦截失败。
 
 ## HTTP 状态
 
