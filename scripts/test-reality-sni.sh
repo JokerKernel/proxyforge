@@ -122,6 +122,13 @@ print_header() {
   printf '%s╰────────────────────────────────────────────╯%s\n' "${color_cyan}" "${color_reset}"
 }
 
+print_section() {
+  printf '\n%s┌─ %s ────────────────────────────────────────┐%s\n' \
+    "${color_cyan}" "$1" "${color_reset}"
+  printf '%s└──────────────────────────────────────────────┘%s\n' \
+    "${color_cyan}" "${color_reset}"
+}
+
 print_probe_header() {
   local number=$1
   local title=$2
@@ -487,6 +494,7 @@ printf '%s节点地址%s  %s%s%s\n' "${color_dim}" "${color_reset}" "${color_bol
 printf '%s允许 SNI%s  %s%s%s\n' "${color_dim}" "${color_reset}" "${color_bold}" "${allowed_sni}" "${color_reset}"
 printf '%s检测模式%s  未认证 TLS 回落探测\n' "${color_dim}" "${color_reset}"
 
+print_section '证书 / TLS SNI 探测'
 run_probe '允许项' "${allowed_sni}"
 allowed_has_certificate=${probe_has_certificate}
 allowed_certificate_matches_sni=${probe_certificate_matches_sni}
@@ -525,6 +533,7 @@ fi
 
 http_response_count=0
 https_response_count=0
+print_section 'HTTP 明文与 Host 探测'
 run_http_probe
 if ${http_received}; then
   http_response_count=$((http_response_count + 1))
@@ -536,6 +545,7 @@ for http_host_index in "${!http_host_probes[@]}"; do
     http_response_count=$((http_response_count + 1))
   fi
 done
+print_section 'HTTPS Host 探测'
 for http_host_index in "${!http_host_probes[@]}"; do
   run_https_host_probe "${http_host_probes[http_host_index]}" "${http_host_sources[http_host_index]}"
 done

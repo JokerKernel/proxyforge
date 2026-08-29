@@ -27,6 +27,7 @@ type NodeSpec struct {
 	XrayFallbackGuard         bool      `json:"xray_fallback_guard,omitempty"`
 	XrayFallbackPort          int       `json:"xray_fallback_port,omitempty"`
 	XrayFallbackHTTPDomain    bool      `json:"xray_fallback_http_domain,omitempty"`
+	XrayFallbackExactDomain   bool      `json:"xray_fallback_exact_domain,omitempty"`
 	UUID                      string    `json:"uuid"`
 	PrivateKey                string    `json:"private_key"`
 	PublicKey                 string    `json:"public_key"`
@@ -51,6 +52,7 @@ type GenerateOptions struct {
 	XrayFallbackGuard         bool
 	XrayFallbackPort          int
 	XrayFallbackHTTPDomain    bool
+	XrayFallbackExactDomain   bool
 	RotateCredentials         bool
 	NonInteractive            bool
 }

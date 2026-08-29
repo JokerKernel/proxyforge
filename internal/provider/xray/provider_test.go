@@ -227,13 +227,13 @@ func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 		InboundTag: "xray-one", Server: "203.0.113.10", Port: 443, SNI: "speed.cloudflare.com",
 		Target: "speed.cloudflare.com:443", UserName: "one", UUID: "old-uuid", PrivateKey: "old-private",
 		PublicKey: "old-public", ShortID: "old-short", XrayFallbackGuard: true, XrayFallbackPort: 61431,
-		XrayFallbackHTTPDomain: true,
+		XrayFallbackHTTPDomain: true, XrayFallbackExactDomain: true,
 	}
 	config, err := p.RenderServer(old)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertFallbackGuardConfig(t, config, "speed.cloudflare.com", 443, "127.0.0.1:61431", "old-uuid", "old-private", "old-short", true)
+	assertFallbackGuardConfig(t, config, "speed.cloudflare.com", 443, "127.0.0.1:61431", "old-uuid", "old-private", "old-short", true, true)
 
 	next := old
 	next.SNI = "www.example.com"
@@ -243,7 +243,7 @@ func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertFallbackGuardConfig(t, patched, "origin.example.com", 8443, "127.0.0.1:61431", "new-uuid", "new-private", "new-short", true)
+	assertFallbackGuardConfig(t, patched, "origin.example.com", 8443, "127.0.0.1:61431", "new-uuid", "new-private", "new-short", true, true)
 	assertFieldsInOrder(t, patched, `"log"`, `"dns"`, `"inbounds"`, `"outbounds"`, `"routing"`)
 	dokodemoStart := bytes.Index(patched, []byte(`"listen": "127.0.0.1"`))
 	vlessStart := bytes.Index(patched, []byte(`"listen": "0.0.0.0"`))
@@ -264,7 +264,7 @@ func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 	}
 }
 
-func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, targetPort int, realityTarget, uuid, privateKey, shortID string, restrictHTTP bool) {
+func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, targetPort int, realityTarget, uuid, privateKey, shortID string, restrictHTTP, exactDomain bool) {
 	t.Helper()
 	var root map[string]any
 	if err := json.Unmarshal(config, &root); err != nil {
@@ -296,13 +296,17 @@ func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, t
 	}
 	rules := root["routing"].(map[string]any)["rules"].([]any)
 	serverName := root["inbounds"].([]any)[1].(map[string]any)["streamSettings"].(map[string]any)["realitySettings"].(map[string]any)["serverNames"].([]any)[0].(string)
+	wantDomain := serverName
+	if exactDomain {
+		wantDomain = "full:" + serverName
+	}
 	if !restrictHTTP {
 		if len(rules) != 3 || rules[0].(map[string]any)["outboundTag"] != fallbackDirectOutboundTag ||
 			rules[1].(map[string]any)["outboundTag"] != "blocked-private" {
 			t.Fatalf("routing rules=%#v", rules)
 		}
 		allowRule := rules[0].(map[string]any)
-		if _, hasProtocol := allowRule["protocol"]; hasProtocol || !reflect.DeepEqual(allowRule["domain"], []any{serverName}) {
+		if _, hasProtocol := allowRule["protocol"]; hasProtocol || !reflect.DeepEqual(allowRule["domain"], []any{wantDomain}) {
 			t.Fatalf("default fallback allow rule=%#v", allowRule)
 		}
 		return
@@ -314,24 +318,38 @@ func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, t
 	tlsRule := rules[0].(map[string]any)
 	httpRule := rules[1].(map[string]any)
 	if !reflect.DeepEqual(tlsRule["protocol"], []any{"tls"}) ||
-		!reflect.DeepEqual(tlsRule["domain"], []any{"full:" + serverName}) ||
+		!reflect.DeepEqual(tlsRule["domain"], []any{wantDomain}) ||
 		!reflect.DeepEqual(httpRule["protocol"], []any{"http"}) ||
-		!reflect.DeepEqual(httpRule["domain"], []any{"full:" + serverName}) {
+		!reflect.DeepEqual(httpRule["domain"], []any{wantDomain}) {
 		t.Fatalf("restricted fallback protocol rules=%#v", rules[:2])
 	}
 }
 
-func TestFallbackGuardHTTPDomainDefaultsToUnrestricted(t *testing.T) {
+func TestFallbackGuardDomainOptionsAreIndependent(t *testing.T) {
 	p := New()
-	config, err := p.RenderServer(domain.NodeSpec{
-		InboundTag: "xray-one", Server: "203.0.113.10", Port: 443, SNI: "example.com", Target: "example.com:443",
-		UserName: "one", UUID: "uuid", PrivateKey: "private", ShortID: "short",
-		XrayFallbackGuard: true, XrayFallbackPort: 61431,
-	})
-	if err != nil {
-		t.Fatal(err)
+	for _, tt := range []struct {
+		name         string
+		restrictHTTP bool
+		exactDomain  bool
+	}{
+		{name: "unrestricted HTTP ordinary domain"},
+		{name: "unrestricted HTTP exact domain", exactDomain: true},
+		{name: "restricted HTTP ordinary domain", restrictHTTP: true},
+		{name: "restricted HTTP exact domain", restrictHTTP: true, exactDomain: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			config, err := p.RenderServer(domain.NodeSpec{
+				InboundTag: "xray-one", Server: "203.0.113.10", Port: 443, SNI: "example.com", Target: "example.com:443",
+				UserName: "one", UUID: "uuid", PrivateKey: "private", ShortID: "short",
+				XrayFallbackGuard: true, XrayFallbackPort: 61431,
+				XrayFallbackHTTPDomain: tt.restrictHTTP, XrayFallbackExactDomain: tt.exactDomain,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertFallbackGuardConfig(t, config, "example.com", 443, "127.0.0.1:61431", "uuid", "private", "short", tt.restrictHTTP, tt.exactDomain)
+		})
 	}
-	assertFallbackGuardConfig(t, config, "example.com", 443, "127.0.0.1:61431", "uuid", "private", "short", false)
 }
 
 func TestPatchFallbackGuardPreservesOriginalDefaultRule(t *testing.T) {

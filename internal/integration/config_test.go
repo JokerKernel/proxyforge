@@ -77,6 +77,7 @@ func TestRealStableBinariesValidateAllConfigs(t *testing.T) {
 					n.XrayFallbackGuard = true
 					n.XrayFallbackPort = 61431
 					n.XrayFallbackHTTPDomain = true
+					n.XrayFallbackExactDomain = true
 					return p.RenderServer(n)
 				}})
 			}

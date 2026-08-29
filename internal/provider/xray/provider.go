@@ -265,16 +265,19 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 		StreamSettings: &stream, Tag: n.InboundTag, Sniffing: &sniffing,
 	}
 	routing := privateNetworkRouting()
+	fallbackDomain := n.SNI
+	if n.XrayFallbackExactDomain {
+		fallbackDomain = xrayFullDomain(n.SNI)
+	}
 	fallbackRules := []routingRule{
-		// Keep the original Xray fallback-guard rule as the default. Without
-		// HTTP sniffing, routing uses the configured dokodemo destination and
-		// does not restrict the plaintext HTTP Host header.
-		{InboundTag: []string{fallbackGuardInboundTag}, Domain: []string{n.SNI}, OutboundTag: fallbackDirectOutboundTag},
+		// Without HTTP sniffing, routing uses the configured dokodemo
+		// destination and does not restrict the plaintext HTTP Host header.
+		{InboundTag: []string{fallbackGuardInboundTag}, Domain: []string{fallbackDomain}, OutboundTag: fallbackDirectOutboundTag},
 	}
 	if n.XrayFallbackHTTPDomain {
 		fallbackRules = []routingRule{
-			{InboundTag: []string{fallbackGuardInboundTag}, Protocol: []string{"tls"}, Domain: []string{xrayFullDomain(n.SNI)}, OutboundTag: fallbackDirectOutboundTag},
-			{InboundTag: []string{fallbackGuardInboundTag}, Protocol: []string{"http"}, Domain: []string{xrayFullDomain(n.SNI)}, OutboundTag: fallbackDirectOutboundTag},
+			{InboundTag: []string{fallbackGuardInboundTag}, Protocol: []string{"tls"}, Domain: []string{fallbackDomain}, OutboundTag: fallbackDirectOutboundTag},
+			{InboundTag: []string{fallbackGuardInboundTag}, Protocol: []string{"http"}, Domain: []string{fallbackDomain}, OutboundTag: fallbackDirectOutboundTag},
 		}
 	}
 	fallbackRules = append(fallbackRules, routingRule{InboundTag: []string{fallbackGuardInboundTag}, OutboundTag: "blocked-private"})
