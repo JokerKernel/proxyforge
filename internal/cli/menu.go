@@ -281,6 +281,7 @@ func (c *commandSet) printModifyConfigCard(ctx context.Context, core string) {
 	}
 	rows = append(rows, [2]string{"运行用户", serviceUser})
 	rows = append(rows,
+		[2]string{"日志级别", modifyConfigValue(status.HasConfig, status.LogLevel, func() string { return logLevelDisplay(core, status.LogLevel) })},
 		[2]string{"DNS 设置", modifyConfigValue(status.HasConfig, status.DNS, func() string { return dnsCardDisplay(core, status.DNS, status.DNSServers) })},
 		[2]string{"出站 IP", modifyConfigValue(status.HasConfig, status.OutboundIP, func() string { return outboundIPCardDisplay(core, status.OutboundIP) })},
 	)
@@ -289,6 +290,10 @@ func (c *commandSet) printModifyConfigCard(ctx context.Context, core string) {
 			"回落 IP", modifyConfigValue(status.HasConfig, status.FallbackIP, func() string { return outboundIPCardDisplay(core, status.FallbackIP) }),
 		})
 	}
+	rows = append(rows,
+		[2]string{"SNI 防护", enabledCardDisplay(status.HasConfig || status.SNI != "", status.HasFallback)},
+		[2]string{"严格模式", enabledCardDisplay(status.HasConfig || status.SNI != "", status.HasFallback && status.StrictMatch)},
+	)
 	sni := strings.TrimSpace(status.SNI)
 	if sni == "" {
 		sni = "未生成"
@@ -316,6 +321,16 @@ func modifyConfigValue(hasConfig bool, raw string, display func() string) string
 		return "未生成"
 	}
 	return display()
+}
+
+func enabledCardDisplay(hasNode bool, enabled bool) string {
+	if !hasNode {
+		return "未生成"
+	}
+	if enabled {
+		return "已开启"
+	}
+	return "未开启"
 }
 
 func dnsCardDisplay(core, profile string, servers []string) string {

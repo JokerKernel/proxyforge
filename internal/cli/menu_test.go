@@ -88,6 +88,7 @@ func TestServerConfigMenuShowsStatusCard(t *testing.T) {
 		"DNS 设置", "系统 DNS",
 		"出站 IP", "默认（先 IPv4，300ms 后竞速 IPv6）",
 		"回落 IP", "运行用户", "xray", "SNI", "www.example.com",
+		"日志级别", "warning", "SNI 防护", "已开启", "严格模式", "未开启",
 	} {
 		if !strings.Contains(got, text) {
 			t.Fatalf("server config card missing %q: %q", text, got)

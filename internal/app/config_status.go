@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"proxyforge/internal/domain"
 	"proxyforge/internal/provider"
 	"proxyforge/internal/system"
 )
@@ -18,7 +19,9 @@ type ModifyConfigStatus struct {
 	OutboundIP  string
 	FallbackIP  string
 	ServiceUser string
+	LogLevel    string
 	HasFallback bool
+	StrictMatch bool
 	HasConfig   bool
 }
 
@@ -32,6 +35,11 @@ func (a *App) ModifyConfigStatus(ctx context.Context, core string) ModifyConfigS
 	if current, err := a.Store.Load(core); err == nil {
 		status.SNI = strings.TrimSpace(current.SNI)
 		status.HasFallback = a.HasFallback(core)
+		if current.Core == domain.CoreXray {
+			status.StrictMatch = current.XrayFallbackExactDomain
+		} else {
+			status.StrictMatch = current.SingBoxFallbackExactDomain
+		}
 	}
 	if a.Registry == nil {
 		return status
@@ -50,6 +58,11 @@ func (a *App) ModifyConfigStatus(ctx context.Context, core string) ModifyConfigS
 		return status
 	}
 	status.HasConfig = true
+	if logProvider, ok := p.(provider.LogLevelProvider); ok {
+		if current, err := logProvider.CurrentLogLevel(config); err == nil {
+			status.LogLevel = current
+		}
+	}
 	if dnsProvider, ok := p.(provider.DNSProfileProvider); ok {
 		if current, err := dnsProvider.CurrentDNSProfile(config); err == nil {
 			status.DNS = current
