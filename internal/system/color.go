@@ -214,6 +214,9 @@ func decorateConfigCardValue(label, value string) string {
 	if label == "SNI" {
 		return wrapANSI(ansiBoldOrange, value)
 	}
+	if label == "运行用户" && (value == "xray" || value == "sing-box") {
+		return wrapANSI(ansiOrange, value)
+	}
 	return value
 }
 
