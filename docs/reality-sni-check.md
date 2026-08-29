@@ -71,7 +71,7 @@ chmod +x ~/proxyforge-test-reality-sni.sh
 
 如果允许项收到证书但 SAN 不匹配，脚本也会返回“无法确认”，需要检查 REALITY target 和允许域名。
 
-`www.<允许 SNI>` 只用于观察是否启用严格域名匹配（例如 Xray 的 `full:<SNI>`）。它获得证书时脚本会报告未严格匹配，但不会因此判定 SNI 拦截失败。
+`www.<允许 SNI>` 只用于观察是否启用严格域名匹配（例如 Xray 的 `full:<SNI>`，sing-box 的 `domain`）。它获得证书时脚本会报告未严格匹配，但不会因此判定 SNI 拦截失败。
 
 ## HTTP 状态
 

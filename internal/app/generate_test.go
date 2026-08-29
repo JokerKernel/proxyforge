@@ -360,20 +360,21 @@ func TestGenerateSingBoxFallbackGuardAndResetPreservesMode(t *testing.T) {
 	}
 	o := domain.GenerateOptions{
 		Server: "server.example.com", Port: r.port, SNI: "speed.cloudflare.com", Target: "speed.cloudflare.com:443",
-		SingBoxFallbackGuard: true, SingBoxFallbackPort: 15445, SingBoxFallbackHTTPDomain: true, NonInteractive: true,
+		SingBoxFallbackGuard: true, SingBoxFallbackPort: 15445, SingBoxFallbackHTTPDomain: true,
+		SingBoxFallbackExactDomain: true, NonInteractive: true,
 	}
 	n, err := a.Generate(context.Background(), domain.CoreSingBox, o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !n.SingBoxFallbackGuard || n.SingBoxFallbackPort != 15445 || !n.SingBoxFallbackHTTPDomain || checkedPorts[r.port] != 1 || checkedPorts[15445] != 1 {
+	if !n.SingBoxFallbackGuard || n.SingBoxFallbackPort != 15445 || !n.SingBoxFallbackHTTPDomain || !n.SingBoxFallbackExactDomain || checkedPorts[r.port] != 1 || checkedPorts[15445] != 1 {
 		t.Fatalf("node=%#v checkedPorts=%v", n, checkedPorts)
 	}
 	config, err := os.ReadFile(a.Layout.Resolve(singbox.New().ConfigPath()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"type": "direct"`, `"override_address": "speed.cloudflare.com"`, `"server": "127.0.0.1"`, `"server_port": 15445`} {
+	for _, want := range []string{`"type": "direct"`, `"override_address": "speed.cloudflare.com"`, `"server": "127.0.0.1"`, `"server_port": 15445`, `"domain": [`} {
 		if !strings.Contains(string(config), want) {
 			t.Fatalf("fallback guard config missing %s: %s", want, config)
 		}
@@ -383,7 +384,7 @@ func TestGenerateSingBoxFallbackGuardAndResetPreservesMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reset.SingBoxFallbackGuard || reset.SingBoxFallbackPort != 15445 || !reset.SingBoxFallbackHTTPDomain {
+	if !reset.SingBoxFallbackGuard || reset.SingBoxFallbackPort != 15445 || !reset.SingBoxFallbackHTTPDomain || !reset.SingBoxFallbackExactDomain {
 		t.Fatalf("reset node=%#v", reset)
 	}
 	config, err = os.ReadFile(a.Layout.Resolve(singbox.New().ConfigPath()))
@@ -431,8 +432,15 @@ func TestGenerateRejectsInvalidSingBoxFallbackGuardOptions(t *testing.T) {
 			o.SingBoxFallbackHTTPDomain = true
 			return o
 		}(), "必须与回落防偷跑配置同时启用"},
+		{"exact domain without fallback mode", domain.CoreSingBox, func() domain.GenerateOptions {
+			o := base
+			o.SimplifiedConfig = true
+			o.SingBoxFallbackExactDomain = true
+			return o
+		}(), "必须与回落防偷跑配置同时启用"},
 		{"unsupported core", domain.CoreXray, func() domain.GenerateOptions { o := base; o.SingBoxFallbackGuard = true; return o }(), "仅支持 sing-box"},
 		{"HTTP domain unsupported core", domain.CoreXray, func() domain.GenerateOptions { o := base; o.SingBoxFallbackHTTPDomain = true; return o }(), "仅支持 sing-box"},
+		{"exact domain unsupported core", domain.CoreXray, func() domain.GenerateOptions { o := base; o.SingBoxFallbackExactDomain = true; return o }(), "仅支持 sing-box"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

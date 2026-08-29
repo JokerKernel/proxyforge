@@ -57,6 +57,7 @@ func (c *commandSet) generateCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&o.SingBoxFallbackGuard, "sing-box-fallback-guard", false, "sing-box 使用 direct 入站限制 REALITY 未认证回落流量")
 	cmd.Flags().IntVar(&o.SingBoxFallbackPort, "sing-box-fallback-port", 0, "sing-box 防偷跑回落入站端口（默认 30000-65000 随机；已有配置则沿用）")
 	cmd.Flags().BoolVar(&o.SingBoxFallbackHTTPDomain, "sing-box-fallback-http-domain", false, "sing-box HTTP 回落仅放行与 SNI 一致的域名（默认不限制）")
+	cmd.Flags().BoolVar(&o.SingBoxFallbackExactDomain, "sing-box-fallback-exact-domain", false, "sing-box 回落域名使用 domain 完整匹配（默认使用 domain_suffix）")
 	cmd.Flags().BoolVar(&o.XrayFallbackGuard, "xray-fallback-guard", false, "Xray 使用 dokodemo-door 限制 REALITY 未认证回落流量")
 	cmd.Flags().IntVar(&o.XrayFallbackPort, "xray-fallback-port", 0, "Xray 防偷跑回落入站端口（默认 30000-65000 随机；已有配置则沿用）")
 	cmd.Flags().BoolVar(&o.XrayFallbackHTTPDomain, "xray-fallback-http-domain", false, "Xray HTTP 回落仅放行与 SNI 一致的域名（默认不限制）")
@@ -95,6 +96,7 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		if !o.SingBoxFallbackGuard {
 			o.SingBoxFallbackPort = 0
 			o.SingBoxFallbackHTTPDomain = false
+			o.SingBoxFallbackExactDomain = false
 		} else {
 			fmt.Fprintln(c.out, "\nHTTP 回落域名限制")
 			c.printMenuChoice("1", "不限制 Host（默认）")
@@ -108,6 +110,19 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 				return err
 			}
 			o.SingBoxFallbackHTTPDomain = choice == 2
+
+			fmt.Fprintln(c.out, "\n严格匹配回落域名")
+			c.printMenuChoice("1", "不使用 domain 完整匹配（默认）")
+			c.printMenuChoice("2", "使用 domain 完整匹配（严格匹配）")
+			defaultDomainChoice := 1
+			if o.SingBoxFallbackExactDomain {
+				defaultDomainChoice = 2
+			}
+			choice, err = c.chooseNumberCancelable("是否使用严格域名匹配", 1, 2, defaultDomainChoice)
+			if err != nil {
+				return err
+			}
+			o.SingBoxFallbackExactDomain = choice == 2
 		}
 	} else if core == domain.CoreXray {
 		fmt.Fprintln(c.out, "\n配置模式")
@@ -456,7 +471,11 @@ func printGenerateSuccess(w io.Writer, n domain.NodeSpec) {
 			if n.SingBoxFallbackHTTPDomain {
 				httpPolicy = "HTTP Host 仅限 SNI"
 			}
-			mode = fmt.Sprintf("回落防偷跑配置（direct 127.0.0.1:%d；%s）", n.SingBoxFallbackPort, httpPolicy)
+			domainPolicy := "不使用 domain 完整匹配"
+			if n.SingBoxFallbackExactDomain {
+				domainPolicy = "使用 domain 完整匹配"
+			}
+			mode = fmt.Sprintf("回落防偷跑配置（direct 127.0.0.1:%d；%s；%s）", n.SingBoxFallbackPort, httpPolicy, domainPolicy)
 		} else if n.SimplifiedConfig {
 			mode = "简化配置（系统 DNS）"
 		}

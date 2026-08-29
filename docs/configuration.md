@@ -42,6 +42,7 @@ sing-box 和 Xray 默认生成回落防偷跑配置。可用 `--standard-config`
 - sing-box 防偷跑模式在 `127.0.0.1` 创建 `direct` 入站，将 REALITY handshake 指向该入站，通过 TLS sniff 和域名规则把合法回落转到独立的 `fallback-direct`（默认双栈）；内部端口默认在 30000-65000 间随机分配，已有配置则沿用。
 - sing-box 和 Xray 的明文 HTTP 回落默认不限制 Host。分别使用 `--sing-box-fallback-http-domain`、`--xray-fallback-http-domain`（或交互菜单中的对应开关）后，才会按当前 SNI 限制 HTTP Host。
 - Xray 防偷跑模式在 `127.0.0.1` 创建 `dokodemo-door` 入站，将 REALITY target 指向该入站。HTTP Host 不受限时沿用 TLS sniff 和单条域名放行规则；要求 Host 匹配 SNI 时改用 TLS/HTTP sniff，并为两种协议分别写入域名规则。其余流量进入 blackhole，内部端口默认在 30000-65000 间随机分配，已有配置则沿用。
+- sing-box 的域名匹配方式是独立选项，默认写入 `domain_suffix`；使用 `--sing-box-fallback-exact-domain` 或在交互菜单中启用严格匹配后，所有回落放行规则都会改写为 `domain` 完整匹配，不受 HTTP Host 策略影响。
 - Xray 的域名匹配方式是独立选项，默认写入普通的 `<SNI>`；使用 `--xray-fallback-exact-domain` 或在交互菜单中启用严格匹配后，所有回落放行规则都会改写为 `full:<SNI>`，不受 HTTP Host 策略影响。
 - `--sing-box-fallback-port` 和 `--xray-fallback-port` 可修改内部端口。端口不能与公网监听端口或另一个受管节点冲突。
 - 原有的 `--sing-box-fallback-guard` 和 `--xray-fallback-guard` 参数继续兼容，但默认模式不需要显式提供。

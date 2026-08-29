@@ -103,18 +103,34 @@ func patchFallbackDomain(root map[string]any, oldSNI, nextSNI string, restrictHT
 				!stringListContains(rule["protocol"], protocol) {
 				continue
 			}
-			if stringListContains(rule["domain"], oldSNI) {
+			if _, count := fallbackDomainField(rule, oldSNI); count > 0 {
 				matches = append(matches, rule)
 			}
 		}
 		if len(matches) != 1 {
 			return fmt.Errorf("现有 sing-box 配置中 %s 回落放行规则数量为 %d，无法安全定点重置", protocol, len(matches))
 		}
-		if err := replaceManagedString(matches[0], "domain", oldSNI, nextSNI, "sing-box "+protocol+" 回落放行域名"); err != nil {
+		field, fieldMatches := fallbackDomainField(matches[0], oldSNI)
+		if fieldMatches != 1 {
+			return fmt.Errorf("现有 sing-box 配置中 %s 回落放行域名字段匹配数量为 %d，无法安全定点重置", protocol, fieldMatches)
+		}
+		if err := replaceManagedString(matches[0], field, oldSNI, nextSNI, "sing-box "+protocol+" 回落放行域名"); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func fallbackDomainField(rule map[string]any, sni string) (string, int) {
+	field := ""
+	matches := 0
+	for _, candidate := range []string{"domain", "domain_suffix", "domain_keyword"} {
+		if stringListContains(rule[candidate], sni) {
+			field = candidate
+			matches++
+		}
+	}
+	return field, matches
 }
 
 func stringListContains(value any, want string) bool {

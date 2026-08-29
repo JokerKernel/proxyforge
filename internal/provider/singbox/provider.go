@@ -125,9 +125,10 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 	}
 	route := privateNetworkRoute(true, "direct")
 	rules := route["rules"].([]any)
+	fallbackDomainField := fallbackDomainMatchField(n.SingBoxFallbackExactDomain)
 	route["rules"] = append([]any{
 		map[string]any{"inbound": []string{fallbackGuardInboundTag}, "action": "sniff"},
-		map[string]any{"inbound": []string{fallbackGuardInboundTag}, "protocol": []string{"tls"}, "domain": []string{n.SNI}, "action": "route", "outbound": fallbackDirectOutboundTag},
+		map[string]any{"inbound": []string{fallbackGuardInboundTag}, "protocol": []string{"tls"}, fallbackDomainField: []string{n.SNI}, "action": "route", "outbound": fallbackDirectOutboundTag},
 		// 明文 HTTP 也转发到同一回落目标；目标端口通常为 443，目标站点
 		// 可能返回 400（明文请求访问 HTTPS 端口），但不会在本地直接拒绝。
 		httpFallbackRule(n),
@@ -153,9 +154,16 @@ func httpFallbackRule(n domain.NodeSpec) map[string]any {
 		"action": "route", "outbound": fallbackDirectOutboundTag,
 	}
 	if n.SingBoxFallbackHTTPDomain {
-		rule["domain"] = []string{n.SNI}
+		rule[fallbackDomainMatchField(n.SingBoxFallbackExactDomain)] = []string{n.SNI}
 	}
 	return rule
+}
+
+func fallbackDomainMatchField(exact bool) string {
+	if exact {
+		return "domain"
+	}
+	return "domain_suffix"
 }
 
 func (*Provider) RenderClient(n domain.NodeSpec) ([]byte, error) {
