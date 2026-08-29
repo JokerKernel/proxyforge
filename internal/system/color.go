@@ -180,7 +180,6 @@ func decorateConfigCardLine(value string) string {
 	labels := []string{
 		"HTTP Host", "DNS 设置", "SNI 防护", "严格模式", "服务状态", "日志级别", "运行用户", "出站 IP", "回落 IP", "SNI",
 	}
-	head := value[:start+len(prefix)]
 	rest := value[start+len(prefix):]
 	for _, label := range labels {
 		if !strings.HasPrefix(rest, label) {
@@ -196,7 +195,7 @@ func decorateConfigCardLine(value string) string {
 		}
 		spaces := after[:valueStart]
 		field := after[valueStart:]
-		return head + wrapANSI(ansiDim, label) + spaces + decorateConfigCardValue(label, field)
+		return value[:start] + wrapANSI(ansiOrange, "│") + " " + label + spaces + decorateConfigCardValue(label, field)
 	}
 	return value
 }
@@ -205,11 +204,11 @@ func decorateConfigCardValue(label, value string) string {
 	switch value {
 	case "运行中", "已开启", "仅限 SNI":
 		return wrapANSI(ansiOrange, value)
-	case "已停止", "不限制":
+	case "已停止":
 		return wrapANSI(ansiBoldYellow, value)
 	case "已失败", "无法读取":
 		return wrapANSI(ansiBoldRed, value)
-	case "未开启", "未生成":
+	case "未开启", "未生成", "不限制":
 		return wrapANSI(ansiBrightBlack, value)
 	}
 	if label == "SNI" {
