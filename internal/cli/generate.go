@@ -75,24 +75,22 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 	fmt.Fprintln(c.out, "提示：输入 q 或 0 可取消并返回上级菜单。")
 	if core == domain.CoreSingBox {
 		fmt.Fprintln(c.out, "\n配置模式")
-		c.printMenuChoice("1", "标准安全（内部 DNS 解析后拦截私网和保留地址）")
-		c.printMenuChoice("2", "简化模式（使用系统 DNS；DNS 日志较少，私网域名可能绕过拦截）")
-		c.printMenuChoice("3", "回落防护（默认；direct 入站仅放行与 SNI 一致的 TLS 流量）")
-		defaultChoice := 3
-		if o.SingBoxFallbackGuard {
+		c.printMenuChoice("1", "回落防护（默认；direct 入站仅放行与 SNI 一致的 TLS 流量）")
+		c.printMenuChoice("2", "标准安全（内部 DNS 解析后拦截私网和保留地址）")
+		c.printMenuChoice("3", "简化模式（使用系统 DNS；DNS 日志较少，私网域名可能绕过拦截）")
+		defaultChoice := 1
+		if o.SimplifiedConfig {
 			defaultChoice = 3
-		} else if o.SimplifiedConfig {
-			defaultChoice = 2
 		} else if o.StandardConfig {
-			defaultChoice = 1
+			defaultChoice = 2
 		}
 		choice, err := c.chooseNumberCancelable("请选择配置模式", 1, 3, defaultChoice)
 		if err != nil {
 			return err
 		}
-		o.StandardConfig = choice == 1
-		o.SimplifiedConfig = choice == 2
-		o.SingBoxFallbackGuard = choice == 3
+		o.SingBoxFallbackGuard = choice == 1
+		o.StandardConfig = choice == 2
+		o.SimplifiedConfig = choice == 3
 		if !o.SingBoxFallbackGuard {
 			o.SingBoxFallbackPort = 0
 			o.SingBoxFallbackHTTPDomain = false
@@ -126,18 +124,18 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		}
 	} else if core == domain.CoreXray {
 		fmt.Fprintln(c.out, "\n配置模式")
-		c.printMenuChoice("1", "标准模式（REALITY 未认证流量直接转发到 target）")
-		c.printMenuChoice("2", "回落防护（默认；dokodemo-door 仅放行与 SNI 一致的 TLS 流量）")
-		defaultChoice := 2
+		c.printMenuChoice("1", "回落防护（默认；dokodemo-door 仅放行与 SNI 一致的 TLS 流量）")
+		c.printMenuChoice("2", "标准模式（REALITY 未认证流量直接转发到 target）")
+		defaultChoice := 1
 		if o.StandardConfig {
-			defaultChoice = 1
+			defaultChoice = 2
 		}
 		choice, err := c.chooseNumberCancelable("请选择配置模式", 1, 2, defaultChoice)
 		if err != nil {
 			return err
 		}
-		o.StandardConfig = choice == 1
-		o.XrayFallbackGuard = choice == 2
+		o.XrayFallbackGuard = choice == 1
+		o.StandardConfig = choice == 2
 		if !o.XrayFallbackGuard {
 			o.XrayFallbackPort = 0
 			o.XrayFallbackHTTPDomain = false

@@ -216,7 +216,7 @@ func TestFillGenerateCanSkipExistingSNIAndSpeedTest(t *testing.T) {
 func TestFillGenerateSelectsSimplifiedSingBoxConfig(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("2\n\n\nyes\nyes\n")),
+		reader: bufio.NewReader(strings.NewReader("3\n\n\nyes\nyes\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
 			return []app.SNICandidate{{Domain: candidates[0], Latency: 5 * time.Millisecond, TLSVersion: "1.3", ALPN: "h2", CertificateSANs: []string{candidates[0]}, CDN: "未发现明显特征"}}, nil
