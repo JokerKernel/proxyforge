@@ -38,24 +38,26 @@ chmod +x ~/proxyforge-test-reality-sni.sh
 
 ## 探测内容
 
-默认执行十二项探测（域名重复时会自动去重）：
+默认执行下列探测（域名重复时会自动去重）：
 
 1. 使用允许 SNI 建立 TLS 连接，并检查证书 SAN 是否匹配。
-2. 使用常见的 `www.<允许 SNI>` 作为未严格匹配域名，只报告是否启用严格匹配。
-3. 使用 `www.cloudflare.com` 作为错误 SNI。
-4. 使用 `example.com` 作为错误 SNI。
-5. 不发送 SNI 建立 TLS 连接。
-6. 向 REALITY 端口发送普通 HTTP 请求。
-7. 使用允许域名作为 HTTP `Host` 请求头。
-8. 使用错误域名作为 HTTP `Host` 请求头。
-9. 使用 `example.com` 作为 HTTP `Host` 请求头。
-10. 使用 `www.google.com` 作为 HTTP `Host` 请求头。
-11. 从允许项证书 SAN 中随机挑选一个其他域名作为 HTTP `Host` 请求头。
-12. 从允许项证书 SAN 中再随机挑选一个其他域名作为 HTTP `Host` 请求头。
+2. 使用常见的 `www.<允许 SNI>` 作为允许项的子域，只报告是否启用严格匹配。
+3. 从允许项证书 SAN 中随机挑选一个其他域名做 TLS 探测，标题标注为「证书 SAN」。
+4. 再挑选一个证书 SAN 域名做 TLS 探测，标题同样标注为「证书 SAN」。
+5. 使用 `www.cloudflare.com` 作为错误 SNI。
+6. 使用 `example.com` 作为错误 SNI。
+7. 不发送 SNI 建立 TLS 连接。
+8. 向 REALITY 端口发送普通 HTTP 请求。
+9. 使用允许域名作为 HTTP `Host` 请求头。
+10. 使用错误域名作为 HTTP `Host` 请求头。
+11. 使用 `example.com` 作为 HTTP `Host` 请求头。
+12. 使用 `www.google.com` 作为 HTTP `Host` 请求头。
+13. 使用上述证书 SAN 域名作为 HTTP `Host` 请求头，标题标注为「证书 SAN」。
+14. 再使用另一个证书 SAN 域名作为 HTTP `Host` 请求头。
 
-允许 SNI、错误 SNI 和无 SNI 决定 TLS SNI 结论。未严格匹配域名（`www.<允许 SNI>`）以及后续 HTTP/HTTPS 探测仅作附加报告，不改变 TLS SNI 判定。
+允许 SNI、错误 SNI 和无 SNI 决定 TLS SNI 结论。允许项的子域、证书 SAN 域名以及后续 HTTP/HTTPS 探测仅作附加报告，不改变 TLS SNI 判定。
 
-证书 SAN 域名会排除当前允许 SNI、已测试域名、重复项和通配符项，然后随机选取两个。固定的 `example.com` 和 `www.google.com` 探测仍会保留。如果证书中没有足够的其他域名，脚本使用其他内置域名补足两项。每项 HTTP Host 探测都会显示域名来源。
+证书 SAN 域名会排除当前允许 SNI、已测试域名、重复项和通配符项，然后随机选取两个，同时用于 TLS SNI 和 HTTP/HTTPS Host 探测。这些探测的标题会标注「证书 SAN」，以区别于固定的 `example.com` 和 `www.google.com`。如果证书中没有足够的其他域名，脚本使用其他内置域名补足两项，标题标注「补充域名」。每项 HTTP Host 探测都会显示域名来源。
 
 ## TLS 判定
 
@@ -71,7 +73,7 @@ chmod +x ~/proxyforge-test-reality-sni.sh
 
 如果允许项收到证书但 SAN 不匹配，脚本也会返回“无法确认”，需要检查 REALITY target 和允许域名。
 
-`www.<允许 SNI>` 只用于观察是否启用严格域名匹配（例如 Xray 的 `full:<SNI>`，sing-box 的 `domain`）。它获得证书时脚本会报告未严格匹配，但不会因此判定 SNI 拦截失败。
+`www.<允许 SNI>` 作为允许项的子域，只用于观察是否启用严格域名匹配（例如 Xray 的 `full:<SNI>`，sing-box 的 `domain`）。结论框会单独给出「子域名严格匹配」：子域未获得证书视为已开启，子域获得证书视为未开启。允许项本身未获得证书时，状态为无法确认。从允许项证书 SAN 取出的其他域名同样只作附加 TLS 探测。它们获得证书时脚本会报告，但不会因此判定 SNI 拦截失败。
 
 ## HTTP 状态
 

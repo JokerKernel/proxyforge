@@ -96,9 +96,11 @@ grep -Fq '✓ SNI 过滤生效' "${success_output}"
 grep -Fq '证书 / TLS SNI 探测' "${success_output}"
 grep -Fq 'HTTP 明文与 Host 探测' "${success_output}"
 grep -Fq 'HTTPS Host 探测' "${success_output}"
-grep -Fq '未严格匹配域名' "${success_output}"
+grep -Fq '允许项的子域' "${success_output}"
 grep -Fq '1 个错误 SNI 均未获得证书' "${success_output}"
-grep -Fq '未严格匹配域名 www.se-edge.itunes.apple.com 未获得证书' "${success_output}"
+grep -Fq '子域名严格匹配：已开启' "${success_output}"
+grep -Fq '✓ 子域名严格匹配已开启' "${success_output}"
+grep -Fq '允许项的子域 www.se-edge.itunes.apple.com 未获得证书' "${success_output}"
 grep -Fq '收到 TLS 数据但未获得证书' "${success_output}"
 grep -Fq '无 SNI 探测仍获得了证书' "${success_output}"
 grep -Fq '状态码=400（错误的请求）' "${success_output}"
@@ -111,7 +113,18 @@ for certificate_host in assets.itunes.apple.com init.itunes.apple.com store.itun
   fi
 done
 [[ ${selected_certificate_host_count} -eq 2 ]]
-[[ $(grep -Fc '来源: 允许项证书 SAN' "${success_output}") -eq 4 ]]
+selected_certificate_sni_count=0
+for certificate_host in assets.itunes.apple.com init.itunes.apple.com store.itunes.apple.com; do
+  if grep -Fq "SNI: ${certificate_host}" "${success_output}"; then
+    selected_certificate_sni_count=$((selected_certificate_sni_count + 1))
+  fi
+done
+[[ ${selected_certificate_sni_count} -eq 2 ]]
+[[ $(grep -cE '\[[0-9]+/[0-9]+\] 证书 SAN$' "${success_output}") -eq 2 ]]
+[[ $(grep -Fc '来源: 允许项证书 SAN' "${success_output}") -eq 6 ]]
+[[ $(grep -Fc 'HTTP Host 伪装测试（证书 SAN）' "${success_output}") -eq 2 ]]
+[[ $(grep -Fc 'HTTPS Host 访问（证书 SAN）' "${success_output}") -eq 2 ]]
+grep -Fq '证书 SAN 探测均未获得证书' "${success_output}"
 grep -Fq 'HTTP 附加探测中有 7 个请求收到了响应' "${success_output}"
 grep -Fq 'HTTPS Host 附加探测中有 6 个请求收到了响应' "${success_output}"
 
@@ -124,10 +137,12 @@ grep -Fq '1 个错误 SNI 获得了 TLS 证书' "${failure_output}"
 subdomain_loose_output="${test_tmp}/subdomain-loose.log"
 run_probe 0 1 1 1 0 1 "${subdomain_loose_output}"
 [[ ${probe_status} -eq 0 ]]
-grep -Fq '未严格匹配域名' "${subdomain_loose_output}"
+grep -Fq '允许项的子域' "${subdomain_loose_output}"
 grep -Fq '✓ SNI 过滤生效' "${subdomain_loose_output}"
 grep -Fq '1 个错误 SNI 均未获得证书' "${subdomain_loose_output}"
-grep -Fq '未严格匹配域名 www.se-edge.itunes.apple.com 获得了证书' "${subdomain_loose_output}"
+grep -Fq '子域名严格匹配：未开启' "${subdomain_loose_output}"
+grep -Fq '△ 子域名严格匹配未开启' "${subdomain_loose_output}"
+grep -Fq '允许项的子域 www.se-edge.itunes.apple.com 获得了证书' "${subdomain_loose_output}"
 grep -Fq '该结果不改变 TLS SNI 判定' "${subdomain_loose_output}"
 if grep -Fq '✗ SNI 过滤未生效' "${subdomain_loose_output}"; then
   printf 'subdomain probe must not fail SNI filtering\n' >&2
@@ -139,11 +154,15 @@ run_probe 0 0 1 1 1 0 "${mismatch_output}"
 [[ ${probe_status} -eq 2 ]]
 grep -Fq '△ 检测到 SNI 过滤行为' "${mismatch_output}"
 grep -Fq '填写的 SNI 不是当前允许回落域名' "${mismatch_output}"
+grep -Fq '子域名严格匹配：无法确认' "${mismatch_output}"
+grep -Fq '? 子域名严格匹配无法确认' "${mismatch_output}"
 
 enhanced_output="${test_tmp}/enhanced.log"
 run_probe 0 1 0 0 1 0 "${enhanced_output}"
 [[ ${probe_status} -eq 0 ]]
 grep -Fq '✓ 增强 SNI 过滤生效' "${enhanced_output}"
+grep -Fq '✓ 子域名严格匹配已开启' "${enhanced_output}"
+grep -Fq '子域名严格匹配：已开启' "${enhanced_output}"
 grep -Fq '无 SNI 访问已被增强过滤拒绝' "${enhanced_output}"
 grep -Fq 'curl退出码=52' "${enhanced_output}"
 grep -Fq '具体错误：curl: (52) Empty reply from server' "${enhanced_output}"
@@ -153,5 +172,7 @@ run_probe 0 0 0 0 0 0 "${unreachable_output}"
 [[ ${probe_status} -eq 2 ]]
 grep -Fq '? 未获得任何 TLS 证书' "${unreachable_output}"
 grep -Fq '节点端口可能无法访问' "${unreachable_output}"
+grep -Fq '子域名严格匹配：无法确认' "${unreachable_output}"
+grep -Fq '? 子域名严格匹配无法确认' "${unreachable_output}"
 
 printf 'test-reality-sni: ok\n'

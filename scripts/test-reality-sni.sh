@@ -12,7 +12,7 @@ usage() {
   --verbose         显示每次 openssl 的原始输出
   -h, --help        显示帮助
 
-脚本会自动探测 www.<允许的SNI> 作为未严格匹配域名；该结果只报告是否启用严格匹配，不纳入 SNI 拦截判定。
+脚本会自动探测 www.<允许的SNI> 作为允许项的子域，并从允许项证书 SAN 中选取域名做 TLS 探测；这些结果只作附加报告，不纳入 SNI 拦截判定。
 
 示例：
   ./scripts/test-reality-sni.sh \
@@ -87,7 +87,7 @@ allowed_subdomain="www.${allowed_sni}"
 probe_allowed_subdomain=true
 if ((${#allowed_subdomain} > 253)); then
   probe_allowed_subdomain=false
-  printf '[跳过] 允许 SNI 已过长，无法构造未严格匹配域名：%s\n' "${allowed_sni}" >&2
+  printf '[跳过] 允许 SNI 已过长，无法构造允许项的子域：%s\n' "${allowed_sni}" >&2
 fi
 
 command -v openssl >/dev/null 2>&1 || die '未找到 openssl'
@@ -150,7 +150,7 @@ for candidate in "${rejected_snis[@]}"; do
     continue
   fi
   if ${probe_allowed_subdomain} && [[ ${candidate,,} == "${allowed_subdomain,,}" ]]; then
-    printf '[跳过] 该 SNI 已由未严格匹配域名探测覆盖：%s\n' "${candidate}" >&2
+    printf '[跳过] 该 SNI 已由允许项的子域探测覆盖：%s\n' "${candidate}" >&2
     continue
   fi
   filtered_rejected_snis+=("${candidate}")
@@ -175,6 +175,9 @@ declare -a http_host_candidate_sources=(
 )
 declare -a http_host_probes=()
 declare -a http_host_sources=()
+declare -a tls_extra_snis=()
+declare -a tls_extra_sources=()
+declare -a tls_extra_got_certificate=()
 for http_host_candidate_index in "${!http_host_candidates[@]}"; do
   candidate=${http_host_candidates[http_host_candidate_index]}
   duplicate=false
@@ -189,7 +192,7 @@ for http_host_candidate_index in "${!http_host_candidates[@]}"; do
     http_host_sources+=("${http_host_candidate_sources[http_host_candidate_index]}")
   fi
 done
-total_probes=$((3 + rejected_sni_probe_count + (2 * (${#http_host_probes[@]} + certificate_http_host_count))))
+total_probes=$((3 + rejected_sni_probe_count + certificate_http_host_count + (2 * (${#http_host_probes[@]} + certificate_http_host_count))))
 if ${probe_allowed_subdomain}; then
   total_probes=$((total_probes + 1))
 fi
@@ -216,6 +219,7 @@ probe_output=''
 run_probe() {
   local label=$1
   local server_name=$2
+  local source=${3-}
   local output_file
   local -a command
 
@@ -229,6 +233,9 @@ run_probe() {
   fi
 
   print_probe_header "${probe_number}" "${label}" "${server_name:-<无 SNI>}"
+  if [[ -n ${source} ]]; then
+    printf '    来源: %s\n' "${source}"
+  fi
 
   set +e
   "${command[@]}" </dev/null >"${output_file}" 2>&1
@@ -371,14 +378,33 @@ print_http_result() {
     "${result_color}" "${color_reset}" "${http_code}" "${description}"
 }
 
+http_host_probe_title() {
+  local kind=$1
+  local source=$2
+  local title
+  if [[ ${kind} == https ]]; then
+    title='HTTPS Host 访问'
+  else
+    title='HTTP Host 伪装测试'
+  fi
+  if [[ ${source} == '允许项证书 SAN' ]]; then
+    title+='（证书 SAN）'
+  elif [[ ${source} == '证书 SAN 不足时的补充域名' ]]; then
+    title+='（补充域名）'
+  fi
+  printf '%s' "${title}"
+}
+
 run_http_host_probe() {
   local host=$1
   local source=$2
+  local title
   local output_file error_file http_code http_exit http_url="http://${endpoint}/"
   probe_number=$((probe_number + 1))
   output_file="${probe_tmp}/probe-${probe_number}-http-host.log"
   error_file="${output_file}.err"
-  printf '\n%s[%s/%s]%s %sHTTP Host 伪装测试%s\n' "${color_blue}" "${probe_number}" "${total_probes}" "${color_reset}" "${color_bold}" "${color_reset}"
+  title=$(http_host_probe_title http "${source}")
+  printf '\n%s[%s/%s]%s %s%s%s\n' "${color_blue}" "${probe_number}" "${total_probes}" "${color_reset}" "${color_bold}" "${title}" "${color_reset}"
   printf '    Host: %s%s%s\n' "${color_cyan}" "${host}" "${color_reset}"
   printf '    来源: %s\n' "${source}"
   set +e
@@ -399,6 +425,7 @@ run_http_host_probe() {
 run_https_host_probe() {
   local host=$1
   local source=$2
+  local title
   local output_file error_file http_code http_exit resolve_address
   local https_url="https://${host}:${node_port}/"
 
@@ -407,7 +434,8 @@ run_https_host_probe() {
   probe_number=$((probe_number + 1))
   output_file="${probe_tmp}/probe-${probe_number}-https-host.log"
   error_file="${output_file}.err"
-  printf '\n%s[%s/%s]%s %sHTTPS Host 访问%s\n' "${color_blue}" "${probe_number}" "${total_probes}" "${color_reset}" "${color_bold}" "${color_reset}"
+  title=$(http_host_probe_title https "${source}")
+  printf '\n%s[%s/%s]%s %s%s%s\n' "${color_blue}" "${probe_number}" "${total_probes}" "${color_reset}" "${color_bold}" "${title}" "${color_reset}"
   printf '    URL: %s%s%s\n' "${color_cyan}" "${https_url}" "${color_reset}"
   printf '    来源: %s\n' "${source}"
   set +e
@@ -426,16 +454,89 @@ run_https_host_probe() {
   fi
 }
 
-print_strict_match_summary() {
+print_conclusion_strict_box_line() {
   if ! ${probe_allowed_subdomain}; then
-    printf '未严格匹配域名因域名长度限制未检测；该结果不改变 TLS SNI 判定。\n'
+    printf '%s│  ? 子域名严格匹配未检测%s                   %s│%s\n' \
+      "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
+    return
+  fi
+  if ! ${allowed_has_certificate}; then
+    printf '%s│  ? 子域名严格匹配无法确认%s                 %s│%s\n' \
+      "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
     return
   fi
   if ${allowed_subdomain_has_certificate}; then
-    printf '%s未严格匹配域名 %s 获得了证书；该结果不改变 TLS SNI 判定。%s\n' \
-      "${color_yellow}" "${allowed_subdomain}" "${color_reset}"
+    printf '%s│  △ 子域名严格匹配未开启%s                   %s│%s\n' \
+      "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
   else
-    printf '未严格匹配域名 %s 未获得证书。\n' "${allowed_subdomain}"
+    printf '%s│  ✓ 子域名严格匹配已开启%s                   %s│%s\n' \
+      "${color_green}" "${color_reset}" "${color_green}" "${color_reset}"
+  fi
+}
+
+print_strict_match_summary() {
+  if ! ${probe_allowed_subdomain}; then
+    printf '子域名严格匹配：未检测（允许 SNI 过长，无法构造子域）\n'
+    return
+  fi
+  if ! ${allowed_has_certificate}; then
+    printf '子域名严格匹配：无法确认（允许项未获得证书，子域探测不足以下结论）\n'
+    return
+  fi
+  if ${allowed_subdomain_has_certificate}; then
+    printf '%s子域名严格匹配：未开启%s（允许项的子域 %s 获得了证书）；该结果不改变 TLS SNI 判定。\n' \
+      "${color_yellow}" "${color_reset}" "${allowed_subdomain}"
+  else
+    printf '%s子域名严格匹配：已开启%s（允许项的子域 %s 未获得证书）\n' \
+      "${color_green}" "${color_reset}" "${allowed_subdomain}"
+  fi
+}
+
+tls_extra_probe_title() {
+  local source=$1
+  case ${source} in
+    '允许项证书 SAN') printf '证书 SAN' ;;
+    '证书 SAN 不足时的补充域名') printf '补充域名' ;;
+    *) printf '证书 SAN' ;;
+  esac
+}
+
+print_extra_tls_summary() {
+  local index source
+  local san_total=0
+  local san_certs=0
+  local fallback_total=0
+  local fallback_certs=0
+
+  for index in "${!tls_extra_snis[@]}"; do
+    source=${tls_extra_sources[index]}
+    if [[ ${source} == '允许项证书 SAN' ]]; then
+      san_total=$((san_total + 1))
+      if [[ ${tls_extra_got_certificate[index]} == true ]]; then
+        san_certs=$((san_certs + 1))
+      fi
+    else
+      fallback_total=$((fallback_total + 1))
+      if [[ ${tls_extra_got_certificate[index]} == true ]]; then
+        fallback_certs=$((fallback_certs + 1))
+      fi
+    fi
+  done
+  if ((san_total > 0)); then
+    if ((san_certs > 0)); then
+      printf '%s证书 SAN 探测中有 %d 个获得了证书；该结果不改变 TLS SNI 判定。%s\n' \
+        "${color_yellow}" "${san_certs}" "${color_reset}"
+    else
+      printf '证书 SAN 探测均未获得证书。\n'
+    fi
+  fi
+  if ((fallback_total > 0)); then
+    if ((fallback_certs > 0)); then
+      printf '%s补充域名探测中有 %d 个获得了证书；该结果不改变 TLS SNI 判定。%s\n' \
+        "${color_yellow}" "${fallback_certs}" "${color_reset}"
+    else
+      printf '补充域名探测均未获得证书。\n'
+    fi
   fi
 }
 
@@ -489,6 +590,8 @@ select_additional_http_hosts() {
 
   for certificate_dns_name in "${shuffled_dns_names[@]}"; do
     if append_http_host_probe "${certificate_dns_name}" '允许项证书 SAN'; then
+      tls_extra_snis+=("${certificate_dns_name}")
+      tls_extra_sources+=('允许项证书 SAN')
       selected_count=$((selected_count + 1))
       ((selected_count >= certificate_http_host_count)) && break
     fi
@@ -497,6 +600,8 @@ select_additional_http_hosts() {
   for fallback_host in 'www.microsoft.com' 'github.com' 'www.wikipedia.org' 'www.amazon.com'; do
     ((selected_count >= certificate_http_host_count)) && break
     if append_http_host_probe "${fallback_host}" '证书 SAN 不足时的补充域名'; then
+      tls_extra_snis+=("${fallback_host}")
+      tls_extra_sources+=('证书 SAN 不足时的补充域名')
       selected_count=$((selected_count + 1))
     fi
   done
@@ -519,12 +624,25 @@ select_additional_http_hosts
 rejected_sni_certificate_count=0
 allowed_subdomain_has_certificate=false
 if ${probe_allowed_subdomain}; then
-  run_probe '未严格匹配域名' "${allowed_subdomain}"
+  run_probe '允许项的子域' "${allowed_subdomain}"
   allowed_subdomain_has_certificate=${probe_has_certificate}
   if ${probe_connected}; then
     tls_connection_seen=true
   fi
 fi
+tls_extra_certificate_count=0
+tls_extra_got_certificate=()
+for tls_extra_index in "${!tls_extra_snis[@]}"; do
+  run_probe "$(tls_extra_probe_title "${tls_extra_sources[tls_extra_index]}")" \
+    "${tls_extra_snis[tls_extra_index]}" "${tls_extra_sources[tls_extra_index]}"
+  tls_extra_got_certificate+=("${probe_has_certificate}")
+  if ${probe_has_certificate}; then
+    tls_extra_certificate_count=$((tls_extra_certificate_count + 1))
+  fi
+  if ${probe_connected}; then
+    tls_connection_seen=true
+  fi
+done
 for rejected_sni in "${filtered_rejected_snis[@]}"; do
   run_probe '错误项' "${rejected_sni}"
   if ${probe_has_certificate}; then
@@ -570,11 +688,13 @@ fi
 if ${allowed_subdomain_has_certificate}; then
   tls_certificate_count=$((tls_certificate_count + 1))
 fi
+tls_certificate_count=$((tls_certificate_count + tls_extra_certificate_count))
 
 printf '\n'
 if ((tls_certificate_count == 0)); then
   printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_yellow}" "${color_reset}"
   printf '%s│  ? 未获得任何 TLS 证书%s                   %s│%s\n' "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
+  print_conclusion_strict_box_line
   printf '%s╰────────────────────────────────────────────╯%s\n' "${color_yellow}" "${color_reset}"
   printf '允许 SNI、错误 SNI 和无 SNI 探测均未获得证书。\n'
   if ${tls_connection_seen} || ((http_response_count > 0)); then
@@ -583,6 +703,7 @@ if ((tls_certificate_count == 0)); then
     printf '节点端口可能无法访问，也可能所有探测都被防火墙或增强过滤静默丢弃。\n'
   fi
   print_strict_match_summary
+  print_extra_tls_summary
   print_http_summary
   printf '允许项原始输出：\n'
   sed -n '1,40p' "${allowed_output}"
@@ -592,9 +713,11 @@ fi
 if ((rejected_sni_certificate_count > 0)); then
   printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_red}" "${color_reset}"
   printf '%s│  ✗ SNI 过滤未生效%s                         %s│%s\n' "${color_red}" "${color_reset}" "${color_red}" "${color_reset}"
+  print_conclusion_strict_box_line
   printf '%s╰────────────────────────────────────────────╯%s\n' "${color_red}" "${color_reset}"
   printf '检测到 %d 个错误 SNI 获得了 TLS 证书。\n' "${rejected_sni_certificate_count}"
   print_strict_match_summary
+  print_extra_tls_summary
   print_http_summary
   printf '%s请检查当前运行配置、路由规则和服务是否已重启。%s\n' "${color_yellow}" "${color_reset}"
   exit 1
@@ -604,16 +727,19 @@ if ! ${allowed_has_certificate}; then
   if ${no_sni_has_certificate}; then
     printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_yellow}" "${color_reset}"
     printf '%s│  △ 检测到 SNI 过滤行为%s                   %s│%s\n' "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
+    print_conclusion_strict_box_line
     printf '%s╰────────────────────────────────────────────╯%s\n' "${color_yellow}" "${color_reset}"
     printf '带 SNI 的允许项和错误项均未获得证书，但无 SNI 探测获得了证书。\n'
     printf '这与 SNI 过滤已经启用、但填写的 SNI 不是当前允许回落域名的情况一致。\n'
   else
     printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_yellow}" "${color_reset}"
     printf '%s│  ? 无法确认 SNI 过滤状态%s                 %s│%s\n' "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
+    print_conclusion_strict_box_line
     printf '%s╰────────────────────────────────────────────╯%s\n' "${color_yellow}" "${color_reset}"
     printf '允许 SNI 和错误 SNI 均未获得证书。\n'
   fi
   print_strict_match_summary
+  print_extra_tls_summary
   print_http_summary
   print_log_hint
   exit 2
@@ -622,9 +748,11 @@ fi
 if ! ${allowed_certificate_matches_sni}; then
   printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_yellow}" "${color_reset}"
   printf '%s│  ? 无法确认 SNI 过滤状态%s                 %s│%s\n' "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
+  print_conclusion_strict_box_line
   printf '%s╰────────────────────────────────────────────╯%s\n' "${color_yellow}" "${color_reset}"
   printf '允许 SNI 收到了证书，但证书 SAN 不包含该 SNI。请确认 target 是否允许 SNI 与证书域名不同。\n'
   print_strict_match_summary
+  print_extra_tls_summary
   print_http_summary
   exit 2
 fi
@@ -635,6 +763,7 @@ if ${no_sni_has_certificate}; then
 else
   printf '%s│  ✓ 增强 SNI 过滤生效%s                      %s│%s\n' "${color_green}" "${color_reset}" "${color_green}" "${color_reset}"
 fi
+print_conclusion_strict_box_line
 printf '%s╰────────────────────────────────────────────╯%s\n' "${color_green}" "${color_reset}"
 printf '允许 SNI 收到匹配证书，%d 个错误 SNI 均未获得证书。\n' "${rejected_sni_probe_count}"
 if ${no_sni_has_certificate}; then
@@ -643,5 +772,6 @@ else
   printf '无 SNI 探测也未获得证书，说明无 SNI 访问已被增强过滤拒绝。\n'
 fi
 print_strict_match_summary
+print_extra_tls_summary
 print_http_summary
 print_log_hint
