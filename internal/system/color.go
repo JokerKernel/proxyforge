@@ -137,8 +137,12 @@ func decorateOutputFragment(fragment string, atLineStart bool) string {
 		switch {
 		case strings.HasPrefix(trimmed, "╭─ "), strings.HasPrefix(trimmed, "╰─"):
 			body = wrapANSI(ansiBoldOrange, body)
-		case strings.HasPrefix(trimmed, "│ ") && strings.Contains(trimmed, "[版本 "):
-			body = decorateHomeSubtitle(body)
+		case strings.HasPrefix(trimmed, "│ "):
+			if strings.Contains(trimmed, "[版本 ") {
+				body = decorateHomeSubtitle(body)
+			} else {
+				body = decorateConfigCardLine(body)
+			}
 		case isRepeated(trimmed, '='):
 			body = wrapANSI(ansiBoldOrange, body)
 		case isRepeated(trimmed, '-'):
@@ -165,6 +169,53 @@ func decorateOutputFragment(fragment string, atLineStart bool) string {
 	body = decorateMenuDescription(body)
 	body = decorateSourceLabels(body)
 	return body + lineEnding
+}
+
+func decorateConfigCardLine(value string) string {
+	const prefix = "│ "
+	start := strings.Index(value, prefix)
+	if start < 0 {
+		return value
+	}
+	labels := []string{
+		"HTTP Host", "DNS 设置", "SNI 防护", "严格模式", "服务状态", "日志级别", "运行用户", "出站 IP", "回落 IP", "SNI",
+	}
+	head := value[:start+len(prefix)]
+	rest := value[start+len(prefix):]
+	for _, label := range labels {
+		if !strings.HasPrefix(rest, label) {
+			continue
+		}
+		after := rest[len(label):]
+		valueStart := 0
+		for valueStart < len(after) && after[valueStart] == ' ' {
+			valueStart++
+		}
+		if valueStart == 0 {
+			return value
+		}
+		spaces := after[:valueStart]
+		field := after[valueStart:]
+		return head + wrapANSI(ansiDim, label) + spaces + decorateConfigCardValue(label, field)
+	}
+	return value
+}
+
+func decorateConfigCardValue(label, value string) string {
+	switch value {
+	case "运行中", "已开启", "仅限 SNI":
+		return wrapANSI(ansiBoldGreen, value)
+	case "已停止", "不限制":
+		return wrapANSI(ansiBoldYellow, value)
+	case "已失败", "无法读取":
+		return wrapANSI(ansiBoldRed, value)
+	case "未开启", "未生成":
+		return wrapANSI(ansiBrightBlack, value)
+	}
+	if label == "SNI" {
+		return wrapANSI(ansiBoldOrange, value)
+	}
+	return value
 }
 
 func decorateHomeSubtitle(value string) string {

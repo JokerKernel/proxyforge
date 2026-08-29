@@ -195,6 +195,13 @@ func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
 		" 1) example.com  [默认]\n",
 		"请选择 [1]: ",
 		"请输入 yes/y 确认；其他输入取消： ",
+		"│ 运行用户  xray\n",
+		"│ 日志级别  info  -- 常规运行信息\n",
+		"│ 服务状态  运行中\n",
+		"│ SNI 防护  已开启\n",
+		"│ HTTP Host 不限制\n",
+		"│ 严格模式  未开启\n",
+		"│ SNI       is1-ssl.mzstatic.com\n",
 	} {
 		if _, err := io.WriteString(w, line); err != nil {
 			t.Fatal(err)
@@ -233,6 +240,13 @@ func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
 		"\x1b[34m1\x1b[0m \x1b[1;38;5;208mexample.com\x1b[0m  \x1b[1;33m[默认]\x1b[0m",
 		"\x1b[34m请选择 [1]: \x1b[0m",
 		"\x1b[1;33m请输入 yes/y 确认；其他输入取消： \x1b[0m",
+		"│ \x1b[2m运行用户\x1b[0m  xray",
+		"│ \x1b[2m日志级别\x1b[0m  info  \x1b[90m-- 常规运行信息\x1b[0m",
+		"│ \x1b[2m服务状态\x1b[0m  \x1b[1;32m运行中\x1b[0m",
+		"│ \x1b[2mSNI 防护\x1b[0m  \x1b[1;32m已开启\x1b[0m",
+		"│ \x1b[2mHTTP Host\x1b[0m \x1b[1;33m不限制\x1b[0m",
+		"│ \x1b[2m严格模式\x1b[0m  \x1b[90m未开启\x1b[0m",
+		"│ \x1b[2mSNI\x1b[0m       \x1b[1;38;5;208mis1-ssl.mzstatic.com\x1b[0m",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("colored output missing %q: %q", want, got)
