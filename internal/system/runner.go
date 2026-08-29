@@ -94,7 +94,15 @@ func redactCommandArgs(args []string) []string {
 }
 
 func shouldLogCommand(name string, args []string) bool {
-	return name != "systemctl" || len(args) == 0 || args[0] != "show"
+	if name != "systemctl" || len(args) == 0 {
+		return true
+	}
+	switch args[0] {
+	case "show", "is-active", "is-enabled":
+		return false
+	default:
+		return true
+	}
 }
 
 func proxyAddressForLog(raw string) string {

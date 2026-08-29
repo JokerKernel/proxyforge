@@ -389,6 +389,20 @@ func TestLoggingRunnerDisplaysProxyAddressWithoutCredentials(t *testing.T) {
 	if log.Len() != 0 {
 		t.Fatalf("systemctl show was logged: %s", log.String())
 	}
+	log.Reset()
+	if _, err := runner.Run(context.Background(), "systemctl", "is-active", "xray.service"); err != nil {
+		t.Fatal(err)
+	}
+	if log.Len() != 0 {
+		t.Fatalf("systemctl is-active was logged: %s", log.String())
+	}
+	log.Reset()
+	if _, err := runner.Run(context.Background(), "systemctl", "is-enabled", "xray.service"); err != nil {
+		t.Fatal(err)
+	}
+	if log.Len() != 0 {
+		t.Fatalf("systemctl is-enabled was logged: %s", log.String())
+	}
 	if got := strings.Join(redactCommandArgs([]string{"show", "xray.service", "-p", "LoadState", "--value"}), " "); got != "show xray.service -p LoadState --value" {
 		t.Fatalf("systemctl -p was redacted: %q", got)
 	}
