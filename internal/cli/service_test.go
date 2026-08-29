@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -64,7 +65,15 @@ func TestServiceMenuOffersLogLevelSettings(t *testing.T) {
 	if got := logLevelDisplay(domain.CoreXray, "warning"); got != "warning（警告及错误）" {
 		t.Fatalf("xray warning display=%q", got)
 	}
-	if got := logLevelCardDisplay(domain.CoreXray, "warning"); got != "warning -- 警告及错误" {
+	if got := logLevelCardDisplay(domain.CoreXray, "warning"); got != "warning  -- 警告及错误" {
 		t.Fatalf("xray warning card display=%q", got)
+	}
+	if got := logLevelCardDisplay(domain.CoreSingBox, "info"); got != "info  -- 常规运行信息" {
+		t.Fatalf("sing-box info card display=%q", got)
+	}
+	var colored bytes.Buffer
+	fmt.Fprintln(system.NewColorWriter(&colored, true), "当前级别："+logLevelCardDisplay(domain.CoreSingBox, "info"))
+	if !strings.Contains(colored.String(), "当前级别：info") || !strings.Contains(colored.String(), "\x1b[90m-- 常规运行信息\x1b[0m") {
+		t.Fatalf("current level description is not gray: %q", colored.String())
 	}
 }

@@ -93,7 +93,7 @@ func (c *commandSet) logLevelMenu(ctx context.Context, core string) error {
 	}
 	c.clearScreen()
 	c.printPageHeader(core, "服务端配置", "服务管理", "日志级别")
-	fmt.Fprintf(c.out, "当前级别：%s\n\n", logLevelDisplay(core, settings.Current))
+	fmt.Fprintf(c.out, "当前级别：%s\n\n", logLevelCardDisplay(core, settings.Current))
 	defaultChoice := 1
 	for index, level := range settings.Levels {
 		c.printMenuChoice(strconv.Itoa(index+1), logLevelDisplay(core, level))
@@ -111,7 +111,7 @@ func (c *commandSet) logLevelMenu(ctx context.Context, core string) error {
 	}
 	selected := settings.Levels[choice-1]
 	if selected == settings.Current {
-		fmt.Fprintf(c.out, "[提示] 日志级别已经是 %s，无需修改。\n", logLevelDisplay(core, selected))
+		fmt.Fprintf(c.out, "[提示] 日志级别已经是 %s，无需修改。\n", logLevelCardDisplay(core, selected))
 		return nil
 	}
 
@@ -130,8 +130,8 @@ func (c *commandSet) logLevelMenu(ctx context.Context, core string) error {
 		"操作确认：设置日志级别",
 		[]string{
 			"目标内核：" + core,
-			"当前级别：" + logLevelDisplay(core, settings.Current),
-			"新的级别：" + logLevelDisplay(core, selected),
+			"当前级别：" + logLevelCardDisplay(core, settings.Current),
+			"新的级别：" + logLevelCardDisplay(core, selected),
 		},
 		sections...,
 	)
@@ -148,7 +148,7 @@ func (c *commandSet) logLevelMenu(ctx context.Context, core string) error {
 		return err
 	}
 	if !change.Changed {
-		fmt.Fprintf(c.out, "[提示] 日志级别已经是 %s，无需修改。\n", logLevelDisplay(core, change.Current))
+		fmt.Fprintf(c.out, "[提示] 日志级别已经是 %s，无需修改。\n", logLevelCardDisplay(core, change.Current))
 		return nil
 	}
 	effect := "服务当前未运行，将在下次启动时生效"
@@ -156,7 +156,7 @@ func (c *commandSet) logLevelMenu(ctx context.Context, core string) error {
 		effect = "服务已重启，设置已生效"
 	}
 	fmt.Fprintf(c.out, "[结果] %s 日志级别已从 %s 修改为 %s；%s。\n",
-		core, logLevelDisplay(core, change.Previous), logLevelDisplay(core, change.Current), effect)
+		core, logLevelCardDisplay(core, change.Previous), logLevelCardDisplay(core, change.Current), effect)
 	return nil
 }
 

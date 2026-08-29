@@ -162,6 +162,7 @@ func decorateOutputFragment(fragment string, atLineStart bool) string {
 			body = decorateNumberedChoice(body)
 		}
 	}
+	body = decorateMenuDescription(body)
 	body = decorateSourceLabels(body)
 	return body + lineEnding
 }

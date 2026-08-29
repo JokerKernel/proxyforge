@@ -331,7 +331,7 @@ func logLevelCardDisplay(core, level string) string {
 	if description == "" {
 		return title
 	}
-	return title + " -- " + description
+	return title + "  -- " + description
 }
 
 func enabledCardDisplay(hasNode bool, enabled bool) string {
