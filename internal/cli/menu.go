@@ -358,7 +358,7 @@ func httpHostCardDisplay(hasNode, hasFallback, restrict bool) string {
 		return "未开启"
 	}
 	if restrict {
-		return "仅限 SNI"
+		return "已开启"
 	}
 	return "不限制"
 }

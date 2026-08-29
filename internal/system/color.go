@@ -202,7 +202,7 @@ func decorateConfigCardLine(value string) string {
 
 func decorateConfigCardValue(label, value string) string {
 	switch value {
-	case "运行中", "已开启", "仅限 SNI":
+	case "运行中", "已开启":
 		return wrapANSI(ansiOrange, value)
 	case "已停止":
 		return wrapANSI(ansiBoldYellow, value)
