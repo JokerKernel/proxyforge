@@ -90,6 +90,7 @@ func TestServerConfigMenuShowsStatusCard(t *testing.T) {
 		"回落 IP", "运行用户", "xray", "SNI", "www.example.com",
 		"日志级别", "warning  -- 警告及错误（默认）", "服务状态", "运行中",
 		"SNI 防护", "已开启", "严格模式", "未开启", "HTTP Host", "不限制",
+		"端口", "443",
 	} {
 		if !strings.Contains(got, text) {
 			t.Fatalf("server config card missing %q: %q", text, got)
@@ -207,72 +208,6 @@ func TestServiceManagementIsNestedUnderServerConfig(t *testing.T) {
 		if !strings.Contains(serverOut.String(), want) {
 			t.Fatalf("nested service menu missing %q: %q", want, serverOut.String())
 		}
-	}
-}
-
-func TestCoreMenuShowsListenPortBadge(t *testing.T) {
-	layout := system.Layout{Root: t.TempDir()}
-	store := system.StateStore{Layout: layout}
-	node := domain.NodeSpec{
-		ManagedBy: "proxyforge", Core: domain.CoreXray, InboundTag: "xray-one", UserName: "one",
-		Server: "203.0.113.10", Port: 8443, SNI: "www.example.com", Target: "www.example.com:443",
-		UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private", PublicKey: "public", ShortID: "abcd",
-	}
-	if err := store.Save(node); err != nil {
-		t.Fatal(err)
-	}
-	a := &app.App{
-		Registry: provider.NewRegistry(singbox.New(), xray.New()),
-		Runner:   installedVersionRunner{},
-		Layout:   layout,
-		Store:    store,
-	}
-	var out bytes.Buffer
-	c := &commandSet{app: a, out: &out}
-	c.printCoreMenu(context.Background(), domain.CoreXray)
-	if !strings.Contains(out.String(), "[已安装] [端口 8443]") {
-		t.Fatalf("core menu missing listen port badge: %q", out.String())
-	}
-}
-
-func TestSelectCoreShowsListenPortForInstalledCore(t *testing.T) {
-	layout := system.Layout{Root: t.TempDir()}
-	store := system.StateStore{Layout: layout}
-	node := domain.NodeSpec{
-		ManagedBy: "proxyforge", Core: domain.CoreXray, InboundTag: "xray-one", UserName: "one",
-		Server: "203.0.113.10", Port: 443, SNI: "www.example.com", Target: "www.example.com:443",
-		UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private", PublicKey: "public", ShortID: "abcd",
-	}
-	if err := store.Save(node); err != nil {
-		t.Fatal(err)
-	}
-	a := &app.App{
-		Registry: provider.NewRegistry(singbox.New(), xray.New()),
-		Layout:   layout,
-		Store:    store,
-		RootCheck: func() error { return nil },
-		LookPath: func(name string) (string, error) {
-			if name == "xray" {
-				return "/usr/bin/xray", nil
-			}
-			return "", exec.ErrNotFound
-		},
-		Services: system.ServiceManager{Runner: installedUnitRunner{}},
-	}
-	var out bytes.Buffer
-	c := &commandSet{
-		app:    a,
-		reader: bufio.NewReader(strings.NewReader("q\n")),
-		out:    &out,
-	}
-	if _, _, err := c.selectCore(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out.String(), "Xray-core") || !strings.Contains(out.String(), "[已安装] [端口 443]") {
-		t.Fatalf("selector missing xray listen port: %q", out.String())
-	}
-	if !strings.Contains(out.String(), "sing-box") || !strings.Contains(out.String(), "[未安装]") {
-		t.Fatalf("selector missing sing-box status: %q", out.String())
 	}
 }
 

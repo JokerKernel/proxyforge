@@ -37,7 +37,7 @@ func TestModifyConfigStatusReadsGeneratedXray(t *testing.T) {
 	lookupSystemResolvers = func() []string { return []string{"9.9.9.9", "1.0.0.1"} }
 	t.Cleanup(func() { lookupSystemResolvers = orig })
 	got := a.ModifyConfigStatus(context.Background(), domain.CoreXray)
-	if !got.HasConfig || !got.HasFallback || got.SNI != "www.example.com" ||
+	if !got.HasConfig || !got.HasFallback || got.SNI != "www.example.com" || got.Port != 443 ||
 		got.DNS != provider.DNSProfileSystem || got.OutboundIP != provider.OutboundIPUnset ||
 		got.FallbackIP != provider.OutboundIPUnset || got.ServiceUser != "xray" ||
 		got.LogLevel != "warning" || got.StrictMatch || got.HTTPHostRestrict ||

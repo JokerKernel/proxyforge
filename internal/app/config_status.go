@@ -14,6 +14,7 @@ import (
 // It does not require root, an installed core, or emit progress.
 type ModifyConfigStatus struct {
 	SNI              string
+	Port             int
 	DNS              string
 	DNSServers       []string
 	OutboundIP       string
@@ -38,6 +39,7 @@ func (a *App) ModifyConfigStatus(ctx context.Context, core string) ModifyConfigS
 	}
 	if current, err := a.Store.Load(core); err == nil {
 		status.SNI = strings.TrimSpace(current.SNI)
+		status.Port = current.Port
 		status.HasFallback = a.HasFallback(core)
 		if current.Core == domain.CoreXray {
 			status.StrictMatch = current.XrayFallbackExactDomain

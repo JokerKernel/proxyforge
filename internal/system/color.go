@@ -178,7 +178,7 @@ func decorateConfigCardLine(value string) string {
 		return value
 	}
 	labels := []string{
-		"HTTP Host", "DNS 设置", "SNI 防护", "严格模式", "服务状态", "日志级别", "运行用户", "出站 IP", "回落 IP", "SNI",
+		"HTTP Host", "DNS 设置", "SNI 防护", "严格模式", "服务状态", "日志级别", "运行用户", "出站 IP", "回落 IP", "端口", "SNI",
 	}
 	rest := value[start+len(prefix):]
 	for _, label := range labels {
@@ -211,7 +211,7 @@ func decorateConfigCardValue(label, value string) string {
 	case "未开启", "未生成", "不限制":
 		return wrapANSI(ansiBrightBlack, value)
 	}
-	if label == "SNI" {
+	if label == "SNI" || label == "端口" {
 		return wrapANSI(ansiBoldOrange, value)
 	}
 	if label == "运行用户" && (value == "xray" || value == "sing-box") {
@@ -253,7 +253,6 @@ func decorateSourceLabels(value string) string {
 		value = colorizeLabel(value, label.text, label.color)
 	}
 	value = colorizeLabel(value, "[Bash]", ansiBlue)
-	value = colorizeBracketPrefix(value, "[端口 ", ansiOrange)
 	for start := strings.Index(value, "[服务日志/"); start >= 0; {
 		relativeEnd := strings.IndexByte(value[start:], ']')
 		if relativeEnd < 0 {
@@ -275,26 +274,6 @@ func decorateSourceLabels(value string) string {
 
 func colorizeLabel(value, label, color string) string {
 	return strings.ReplaceAll(value, label, wrapANSI(color, label))
-}
-
-func colorizeBracketPrefix(value, prefix, color string) string {
-	for start := strings.Index(value, prefix); start >= 0; {
-		relativeEnd := strings.IndexByte(value[start:], ']')
-		if relativeEnd < 0 {
-			break
-		}
-		end := start + relativeEnd + 1
-		label := value[start:end]
-		colored := wrapANSI(color, label)
-		value = value[:start] + colored + value[end:]
-		next := start + len(colored)
-		relativeStart := strings.Index(value[next:], prefix)
-		if relativeStart < 0 {
-			break
-		}
-		start = next + relativeStart
-	}
-	return value
 }
 
 func commandLabelColor(value string) string {

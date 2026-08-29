@@ -241,8 +241,8 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 func (c *commandSet) selectCore(ctx context.Context) (string, bool, error) {
 	c.clearScreen()
 	c.printProxyForgeHeader()
-	c.printMenuBadgeChoice("1", "Xray-core", c.coreInstallBadge(ctx, domain.CoreXray))
-	c.printMenuBadgeChoice("2", "sing-box", c.coreInstallBadge(ctx, domain.CoreSingBox))
+	c.printMenuStatusChoice("1", "Xray-core", c.coreInstalled(ctx, domain.CoreXray))
+	c.printMenuStatusChoice("2", "sing-box", c.coreInstalled(ctx, domain.CoreSingBox))
 	c.printMenuChoice("0/q", "退出")
 	choice, err := c.chooseNumber("请选择", 0, 2, 1)
 	if err != nil {
@@ -307,6 +307,7 @@ func (c *commandSet) printModifyConfigCard(ctx context.Context, core string) {
 	if sni == "" {
 		sni = "未生成"
 	}
+	rows = append(rows, [2]string{"端口", portCardDisplay(status)})
 	rows = append(rows, [2]string{"SNI", sni})
 
 	const labelWidth = 10
@@ -348,6 +349,16 @@ func enabledCardDisplay(hasNode bool, enabled bool) string {
 		return "已开启"
 	}
 	return "未开启"
+}
+
+func portCardDisplay(status app.ModifyConfigStatus) string {
+	if status.Port < 1 || status.Port > 65535 {
+		if status.HasConfig || status.SNI != "" {
+			return "无法读取"
+		}
+		return "未生成"
+	}
+	return strconv.Itoa(status.Port)
 }
 
 func httpHostCardDisplay(hasNode, hasFallback, restrict bool) string {
@@ -422,38 +433,17 @@ func (c *commandSet) printCoreStatusCard(ctx context.Context, core string) {
 	if padding < 2 {
 		padding = 2
 	}
+	status := "[未安装]"
+	if installed {
+		status = "[已安装]"
+	}
 	fmt.Fprintln(c.out, "╭─ 当前内核")
-	fmt.Fprintf(c.out, "│ %s%s%s\n", name, strings.Repeat(" ", padding), coreInstallBadge(installed, c.coreListenPort(core)))
+	fmt.Fprintf(c.out, "│ %s%s%s\n", name, strings.Repeat(" ", padding), status)
 	if installed {
 		fmt.Fprintf(c.out, "│ %s\n", version)
 	}
 	fmt.Fprintln(c.out, proxyForgeHeaderRule)
 	fmt.Fprintln(c.out)
-}
-
-func (c *commandSet) coreInstallBadge(ctx context.Context, core string) string {
-	return coreInstallBadge(c.coreInstalled(ctx, core), c.coreListenPort(core))
-}
-
-func coreInstallBadge(installed bool, port int) string {
-	if !installed {
-		return "[未安装]"
-	}
-	if port < 1 || port > 65535 {
-		return "[已安装]"
-	}
-	return "[已安装] [端口 " + strconv.Itoa(port) + "]"
-}
-
-func (c *commandSet) coreListenPort(core string) int {
-	if c.app == nil {
-		return 0
-	}
-	current, err := c.app.Store.Load(core)
-	if err != nil {
-		return 0
-	}
-	return current.Port
 }
 
 func (c *commandSet) coreVersionLabel(ctx context.Context, core string) string {
@@ -509,6 +499,14 @@ func (c *commandSet) printMenuChoice(key, label string) {
 		fmt.Fprintf(&line, "%s-- %s", strings.Repeat(" ", padding), description)
 	}
 	fmt.Fprintln(c.out, line.String())
+}
+
+func (c *commandSet) printMenuStatusChoice(key, title string, installed bool) {
+	status := "[未安装]"
+	if installed {
+		status = "[已安装]"
+	}
+	c.printMenuBadgeChoice(key, title, status)
 }
 
 func (c *commandSet) printMenuBadgeChoice(key, title, badge string) {
