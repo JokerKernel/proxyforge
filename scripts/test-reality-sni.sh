@@ -657,19 +657,6 @@ if ${probe_allowed_subdomain}; then
     tls_connection_seen=true
   fi
 fi
-tls_extra_certificate_count=0
-tls_extra_got_certificate=()
-for tls_extra_index in "${!tls_extra_snis[@]}"; do
-  run_probe "$(tls_extra_probe_title "${tls_extra_sources[tls_extra_index]}")" \
-    "${tls_extra_snis[tls_extra_index]}" "${tls_extra_sources[tls_extra_index]}"
-  tls_extra_got_certificate+=("${probe_has_certificate}")
-  if ${probe_has_certificate}; then
-    tls_extra_certificate_count=$((tls_extra_certificate_count + 1))
-  fi
-  if ${probe_connected}; then
-    tls_connection_seen=true
-  fi
-done
 for rejected_sni in "${filtered_rejected_snis[@]}"; do
   run_probe '错误项' "${rejected_sni}"
   if ${probe_has_certificate}; then
@@ -685,6 +672,19 @@ no_sni_has_certificate=${probe_has_certificate}
 if ${probe_connected}; then
   tls_connection_seen=true
 fi
+tls_extra_certificate_count=0
+tls_extra_got_certificate=()
+for tls_extra_index in "${!tls_extra_snis[@]}"; do
+  run_probe "$(tls_extra_probe_title "${tls_extra_sources[tls_extra_index]}")" \
+    "${tls_extra_snis[tls_extra_index]}" "${tls_extra_sources[tls_extra_index]}"
+  tls_extra_got_certificate+=("${probe_has_certificate}")
+  if ${probe_has_certificate}; then
+    tls_extra_certificate_count=$((tls_extra_certificate_count + 1))
+  fi
+  if ${probe_connected}; then
+    tls_connection_seen=true
+  fi
+done
 
 http_response_count=0
 https_response_count=0

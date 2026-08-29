@@ -121,6 +121,10 @@ for certificate_host in assets.itunes.apple.com init.itunes.apple.com store.itun
 done
 [[ ${selected_certificate_sni_count} -eq 2 ]]
 [[ $(grep -cE '\[[0-9]+/[0-9]+\] 证书 SAN$' "${success_output}") -eq 2 ]]
+awk '
+  /\[[0-9]+\/[0-9]+\] 无 SNI$/ { seen_no_sni=1 }
+  /\[[0-9]+\/[0-9]+\] 证书 SAN$/ { if (!seen_no_sni) exit 1 }
+' "${success_output}"
 [[ $(grep -Fc '来源: 允许项证书 SAN' "${success_output}") -eq 6 ]]
 [[ $(grep -Fc 'HTTP Host 伪装测试（证书 SAN）' "${success_output}") -eq 2 ]]
 [[ $(grep -Fc 'HTTPS Host 访问（证书 SAN）' "${success_output}") -eq 2 ]]

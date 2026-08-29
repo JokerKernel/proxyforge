@@ -42,17 +42,17 @@ chmod +x ~/proxyforge-test-reality-sni.sh
 
 1. 使用允许 SNI 建立 TLS 连接，并检查证书 SAN 是否匹配。
 2. 使用常见的 `www.<允许 SNI>` 作为允许项的子域，只报告是否启用严格匹配。
-3. 从允许项证书 SAN 中随机挑选一个其他域名做 TLS 探测，标题标注为「证书 SAN」。
-4. 再挑选一个证书 SAN 域名做 TLS 探测，标题同样标注为「证书 SAN」。
-5. 使用 `www.cloudflare.com` 作为错误 SNI。
-6. 使用 `example.com` 作为错误 SNI。
-7. 不发送 SNI 建立 TLS 连接。
+3. 使用 `www.cloudflare.com` 作为错误 SNI。
+4. 使用 `example.com` 作为错误 SNI。
+5. 不发送 SNI 建立 TLS 连接。
+6. 从允许项证书 SAN 中随机挑选一个其他域名做 TLS 探测，标题标注为「证书 SAN」，放在 TLS 组末尾。
+7. 再挑选一个证书 SAN 域名做 TLS 探测，标题同样标注为「证书 SAN」。
 8. 向 REALITY 端口发送普通 HTTP 请求。
 9. 使用允许域名作为 HTTP `Host` 请求头。
 10. 使用错误域名作为 HTTP `Host` 请求头。
 11. 使用 `example.com` 作为 HTTP `Host` 请求头。
 12. 使用 `www.google.com` 作为 HTTP `Host` 请求头。
-13. 使用上述证书 SAN 域名作为 HTTP `Host` 请求头，标题标注为「证书 SAN」。
+13. 使用上述证书 SAN 域名作为 HTTP `Host` 请求头，标题标注为「证书 SAN」，放在 HTTP Host 组末尾。
 14. 再使用另一个证书 SAN 域名作为 HTTP `Host` 请求头。
 
 允许 SNI、错误 SNI 和无 SNI 决定 TLS SNI 结论。允许项的子域、证书 SAN 域名以及后续 HTTP/HTTPS 探测仅作附加报告，不改变 TLS SNI 判定。
