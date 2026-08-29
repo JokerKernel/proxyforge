@@ -40,7 +40,8 @@ func TestModifyConfigStatusReadsGeneratedXray(t *testing.T) {
 	if !got.HasConfig || !got.HasFallback || got.SNI != "www.example.com" ||
 		got.DNS != provider.DNSProfileSystem || got.OutboundIP != provider.OutboundIPUnset ||
 		got.FallbackIP != provider.OutboundIPUnset || got.ServiceUser != "xray" ||
-		got.LogLevel != "warning" || got.StrictMatch {
+		got.LogLevel != "warning" || got.StrictMatch || got.HTTPHostRestrict ||
+		!got.ServiceKnown || !got.ServiceActive {
 		t.Fatalf("status=%#v", got)
 	}
 	if len(got.DNSServers) != 2 || got.DNSServers[0] != "9.9.9.9" || got.DNSServers[1] != "1.0.0.1" {
@@ -50,6 +51,9 @@ func TestModifyConfigStatusReadsGeneratedXray(t *testing.T) {
 
 type configStatusRunner struct{}
 
-func (configStatusRunner) Run(context.Context, string, ...string) ([]byte, error) {
+func (configStatusRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
+	if name == "systemctl" && len(args) > 0 && args[0] == "is-active" {
+		return []byte("active\n"), nil
+	}
 	return []byte("xray\n"), nil
 }

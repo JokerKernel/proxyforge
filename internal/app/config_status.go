@@ -13,16 +13,20 @@ import (
 // ModifyConfigStatus is a quiet snapshot for the interactive modify-config card.
 // It does not require root, an installed core, or emit progress.
 type ModifyConfigStatus struct {
-	SNI         string
-	DNS         string
-	DNSServers  []string
-	OutboundIP  string
-	FallbackIP  string
-	ServiceUser string
-	LogLevel    string
-	HasFallback bool
-	StrictMatch bool
-	HasConfig   bool
+	SNI              string
+	DNS              string
+	DNSServers       []string
+	OutboundIP       string
+	FallbackIP       string
+	ServiceUser      string
+	LogLevel         string
+	ServiceActive    bool
+	ServiceDetail    string
+	ServiceKnown     bool
+	HasFallback      bool
+	StrictMatch      bool
+	HTTPHostRestrict bool
+	HasConfig        bool
 }
 
 var lookupSystemResolvers = system.ResolverAddresses
@@ -37,8 +41,10 @@ func (a *App) ModifyConfigStatus(ctx context.Context, core string) ModifyConfigS
 		status.HasFallback = a.HasFallback(core)
 		if current.Core == domain.CoreXray {
 			status.StrictMatch = current.XrayFallbackExactDomain
+			status.HTTPHostRestrict = current.XrayFallbackHTTPDomain
 		} else {
 			status.StrictMatch = current.SingBoxFallbackExactDomain
+			status.HTTPHostRestrict = current.SingBoxFallbackHTTPDomain
 		}
 	}
 	if a.Registry == nil {
@@ -51,6 +57,11 @@ func (a *App) ModifyConfigStatus(ctx context.Context, core string) ModifyConfigS
 	if a.Services.Runner != nil {
 		if user, err := a.Services.UserState(ctx, p.ServiceName()); err == nil {
 			status.ServiceUser = user
+		}
+		if svc, err := a.Services.IsActive(ctx, p.ServiceName()); err == nil || svc.Detail != "" {
+			status.ServiceKnown = true
+			status.ServiceActive = svc.Active
+			status.ServiceDetail = svc.Detail
 		}
 	}
 	config, err := os.ReadFile(a.Layout.Resolve(p.ConfigPath()))

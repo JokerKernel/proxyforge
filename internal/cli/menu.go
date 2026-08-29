@@ -282,6 +282,7 @@ func (c *commandSet) printModifyConfigCard(ctx context.Context, core string) {
 	rows = append(rows, [2]string{"运行用户", serviceUser})
 	rows = append(rows,
 		[2]string{"日志级别", modifyConfigValue(status.HasConfig, status.LogLevel, func() string { return logLevelDisplay(core, status.LogLevel) })},
+		[2]string{"服务状态", serviceStatusCardDisplay(status)},
 		[2]string{"DNS 设置", modifyConfigValue(status.HasConfig, status.DNS, func() string { return dnsCardDisplay(core, status.DNS, status.DNSServers) })},
 		[2]string{"出站 IP", modifyConfigValue(status.HasConfig, status.OutboundIP, func() string { return outboundIPCardDisplay(core, status.OutboundIP) })},
 	)
@@ -290,9 +291,11 @@ func (c *commandSet) printModifyConfigCard(ctx context.Context, core string) {
 			"回落 IP", modifyConfigValue(status.HasConfig, status.FallbackIP, func() string { return outboundIPCardDisplay(core, status.FallbackIP) }),
 		})
 	}
+	hasNode := status.HasConfig || status.SNI != ""
 	rows = append(rows,
-		[2]string{"SNI 防护", enabledCardDisplay(status.HasConfig || status.SNI != "", status.HasFallback)},
-		[2]string{"严格模式", enabledCardDisplay(status.HasConfig || status.SNI != "", status.HasFallback && status.StrictMatch)},
+		[2]string{"SNI 防护", enabledCardDisplay(hasNode, status.HasFallback)},
+		[2]string{"严格模式", enabledCardDisplay(hasNode, status.HasFallback && status.StrictMatch)},
+		[2]string{"HTTP Host", httpHostCardDisplay(hasNode, status.HasFallback, status.HTTPHostRestrict)},
 	)
 	sni := strings.TrimSpace(status.SNI)
 	if sni == "" {
@@ -331,6 +334,32 @@ func enabledCardDisplay(hasNode bool, enabled bool) string {
 		return "已开启"
 	}
 	return "未开启"
+}
+
+func httpHostCardDisplay(hasNode, hasFallback, restrict bool) string {
+	if !hasNode {
+		return "未生成"
+	}
+	if !hasFallback {
+		return "未开启"
+	}
+	if restrict {
+		return "仅限 SNI"
+	}
+	return "不限制"
+}
+
+func serviceStatusCardDisplay(status app.ModifyConfigStatus) string {
+	if !status.ServiceKnown {
+		return "无法读取"
+	}
+	if status.ServiceActive {
+		return "运行中"
+	}
+	if status.ServiceDetail == "failed" {
+		return "已失败"
+	}
+	return "已停止"
 }
 
 func dnsCardDisplay(core, profile string, servers []string) string {
