@@ -37,7 +37,7 @@ func (c *commandSet) clientCommand() *cobra.Command {
 func (c *commandSet) clientMenu(ctx context.Context, core string) (bool, error) {
 	c.clearScreen()
 	c.printPageHeader(core, "客户端配置")
-	c.printMenuChoice("1", "原生 JSON")
+	c.printMenuChoice("1", "原生 JSON（sing-box / Xray 客户端）")
 	c.printMenuChoice("2", "Clash YAML（Mihomo/Clash Meta）")
 	c.printMenuChoice("0/q", "返回")
 	choice, err := c.chooseNumber("请选择", 0, 2, 1)

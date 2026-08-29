@@ -200,7 +200,8 @@ func TestServiceManagementIsNestedUnderServerConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"5   日志级别", "6   服务管理", "7   专用运行用户",
+		"5   日志级别", "显示当前 JSON", "调整内核日志详细程度",
+		"6   服务管理", "7   专用运行用户",
 		"ProxyForge  ›  xray  ›  服务端配置  ›  服务管理",
 	} {
 		if !strings.Contains(serverOut.String(), want) {

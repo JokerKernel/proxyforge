@@ -100,7 +100,7 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		} else {
 			fmt.Fprintln(c.out, "\nHTTP 回落域名限制")
 			c.printMenuChoice("1", "不限制 Host（默认）")
-			c.printMenuChoice("2", "Host 匹配 SNI")
+			c.printMenuChoice("2", "Host 匹配 SNI（明文 HTTP 仅放行当前 SNI）")
 			defaultHTTPChoice := 1
 			if o.SingBoxFallbackHTTPDomain {
 				defaultHTTPChoice = 2
@@ -113,7 +113,7 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 
 			fmt.Fprintln(c.out, "\n严格匹配回落域名")
 			c.printMenuChoice("1", "允许子域名（默认）")
-			c.printMenuChoice("2", "严格匹配")
+			c.printMenuChoice("2", "严格匹配（仅放行完整域名）")
 			defaultDomainChoice := 1
 			if o.SingBoxFallbackExactDomain {
 				defaultDomainChoice = 2
@@ -145,7 +145,7 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		} else {
 			fmt.Fprintln(c.out, "\nHTTP 回落域名限制")
 			c.printMenuChoice("1", "不限制 Host（默认）")
-			c.printMenuChoice("2", "Host 匹配 SNI")
+			c.printMenuChoice("2", "Host 匹配 SNI（明文 HTTP 仅放行当前 SNI）")
 			defaultHTTPChoice := 1
 			if o.XrayFallbackHTTPDomain {
 				defaultHTTPChoice = 2
@@ -158,7 +158,7 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 
 			fmt.Fprintln(c.out, "\n严格匹配回落域名")
 			c.printMenuChoice("1", "允许子域名（默认）")
-			c.printMenuChoice("2", "严格匹配")
+			c.printMenuChoice("2", "严格匹配（仅放行完整域名）")
 			defaultDomainChoice := 1
 			if o.XrayFallbackExactDomain {
 				defaultDomainChoice = 2
@@ -381,7 +381,7 @@ func (c *commandSet) selectPublicAddress(ctx context.Context) (string, error) {
 		fmt.Fprintln(c.out, "公网地址获取方式")
 		c.printMenuChoice("1", "物理网卡（默认）")
 		c.printMenuChoice("2", "在线探测（api.ipify.org HTTPS）")
-		c.printMenuChoice("3", "手动输入")
+		c.printMenuChoice("3", "手动输入（自行填写公网地址）")
 		choice, err := c.chooseNumberCancelable("请选择", 1, 3, 1)
 		if err != nil {
 			return "", err
