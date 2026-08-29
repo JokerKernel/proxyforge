@@ -159,14 +159,14 @@ func logLevelDisplay(core, level string) string {
 		"error":   "error（仅错误）",
 		"fatal":   "fatal（仅致命错误）",
 		"panic":   "panic（仅崩溃信息）",
-		"off":     "关闭日志",
+		"off": "off（关闭全部日志输出）",
 	}
 	display := descriptions[level]
 	if display == "" {
 		return level
 	}
 	if core == domain.CoreXray && level == "off" {
-		return "关闭访问日志和错误日志"
+		return "off（关闭访问日志和错误日志）"
 	}
 	return display
 }

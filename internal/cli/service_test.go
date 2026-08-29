@@ -71,6 +71,18 @@ func TestServiceMenuOffersLogLevelSettings(t *testing.T) {
 	if got := logLevelCardDisplay(domain.CoreSingBox, "info"); got != "info  -- 常规运行信息" {
 		t.Fatalf("sing-box info card display=%q", got)
 	}
+	if got := logLevelDisplay(domain.CoreXray, "off"); got != "off（关闭访问日志和错误日志）" {
+		t.Fatalf("xray off display=%q", got)
+	}
+	if got := logLevelCardDisplay(domain.CoreXray, "off"); got != "off  -- 关闭访问日志和错误日志" {
+		t.Fatalf("xray off card display=%q", got)
+	}
+	if got := logLevelDisplay(domain.CoreSingBox, "off"); got != "off（关闭全部日志输出）" {
+		t.Fatalf("sing-box off display=%q", got)
+	}
+	if got := logLevelCardDisplay(domain.CoreSingBox, "off"); got != "off  -- 关闭全部日志输出" {
+		t.Fatalf("sing-box off card display=%q", got)
+	}
 	var colored bytes.Buffer
 	fmt.Fprintln(system.NewColorWriter(&colored, true), "当前级别："+logLevelCardDisplay(domain.CoreSingBox, "info"))
 	if !strings.Contains(colored.String(), "当前级别：info") || !strings.Contains(colored.String(), "\x1b[90m-- 常规运行信息\x1b[0m") {
