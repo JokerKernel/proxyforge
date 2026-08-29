@@ -107,8 +107,9 @@ for certificate_host in assets.itunes.apple.com init.itunes.apple.com store.itun
   fi
 done
 [[ ${selected_certificate_host_count} -eq 2 ]]
-[[ $(grep -Fc '来源: 允许项证书 SAN' "${success_output}") -eq 2 ]]
+[[ $(grep -Fc '来源: 允许项证书 SAN' "${success_output}") -eq 4 ]]
 grep -Fq 'HTTP 附加探测中有 7 个请求收到了响应' "${success_output}"
+grep -Fq 'HTTPS Host 附加探测中有 6 个请求收到了响应' "${success_output}"
 
 failure_output="${test_tmp}/failure.log"
 run_probe 1 1 1 1 0 0 "${failure_output}"

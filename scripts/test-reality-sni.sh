@@ -185,7 +185,7 @@ for http_host_candidate_index in "${!http_host_candidates[@]}"; do
     http_host_sources+=("${http_host_candidate_sources[http_host_candidate_index]}")
   fi
 done
-total_probes=$((3 + rejected_sni_probe_count + ${#http_host_probes[@]} + certificate_http_host_count))
+total_probes=$((3 + rejected_sni_probe_count + (2 * (${#http_host_probes[@]} + certificate_http_host_count))))
 
 case ${node_host} in
   \[*\]) endpoint="${node_host}:${node_port}" ;;
@@ -389,12 +389,48 @@ run_http_host_probe() {
   return 1
 }
 
+run_https_host_probe() {
+  local host=$1
+  local source=$2
+  local output_file error_file http_code http_exit resolve_address
+  local https_url="https://${host}:${node_port}/"
+
+  resolve_address=${node_host#[}
+  resolve_address=${resolve_address%]}
+  probe_number=$((probe_number + 1))
+  output_file="${probe_tmp}/probe-${probe_number}-https-host.log"
+  error_file="${output_file}.err"
+  printf '\n%s[%s/%s]%s %sHTTPS Host 访问%s\n' "${color_blue}" "${probe_number}" "${total_probes}" "${color_reset}" "${color_bold}" "${color_reset}"
+  printf '    URL: %s%s%s\n' "${color_cyan}" "${https_url}" "${color_reset}"
+  printf '    来源: %s\n' "${source}"
+  set +e
+  curl --noproxy '*' --connect-timeout "${probe_timeout}" --max-time "${probe_timeout}" \
+    --silent --show-error --insecure --output /dev/null --write-out '%{http_code}' \
+    --resolve "${host}:${node_port}:${resolve_address}" "${https_url}" \
+    >"${output_file}" 2>"${error_file}"
+  http_exit=$?
+  set -e
+  http_code=$(sed -n 's/.*\([1-5][0-9][0-9]\)$/\1/p' "${output_file}" | tail -n 1)
+  if [[ ${http_exit} -eq 0 && ${http_code} =~ ^[1-5][0-9][0-9]$ ]]; then
+    print_http_result "${http_code}"
+    https_response_count=$((https_response_count + 1))
+  else
+    print_http_failure "${http_exit}" "${error_file}"
+  fi
+}
+
 print_http_summary() {
   if ((http_response_count > 0)); then
     printf '%sHTTP 附加探测中有 %d 个请求收到了响应；该结果不改变 TLS SNI 判定。%s\n' \
       "${color_yellow}" "${http_response_count}" "${color_reset}"
   else
     printf 'HTTP 明文附加探测均未收到响应。\n'
+  fi
+  if ((https_response_count > 0)); then
+    printf '%sHTTPS Host 附加探测中有 %d 个请求收到了响应；该结果不改变 TLS SNI 判定。%s\n' \
+      "${color_yellow}" "${https_response_count}" "${color_reset}"
+  else
+    printf 'HTTPS Host 附加探测均未收到响应。\n'
   fi
 }
 
@@ -488,6 +524,7 @@ if ${probe_connected}; then
 fi
 
 http_response_count=0
+https_response_count=0
 run_http_probe
 if ${http_received}; then
   http_response_count=$((http_response_count + 1))
@@ -498,6 +535,9 @@ for http_host_index in "${!http_host_probes[@]}"; do
   if run_http_host_probe "${http_host_probes[http_host_index]}" "${http_host_sources[http_host_index]}"; then
     http_response_count=$((http_response_count + 1))
   fi
+done
+for http_host_index in "${!http_host_probes[@]}"; do
+  run_https_host_probe "${http_host_probes[http_host_index]}" "${http_host_sources[http_host_index]}"
 done
 
 tls_certificate_count=${rejected_sni_certificate_count}
