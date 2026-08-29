@@ -61,6 +61,19 @@ func (a *App) ServerConfig(core string) ([]byte, error) {
 	return b, nil
 }
 
+func (a *App) ValidateServerConfig(ctx context.Context, core string) error {
+	path, err := a.ServerConfigPath(core)
+	if err != nil {
+		return err
+	}
+	p, err := a.Registry.Get(core)
+	if err != nil {
+		return err
+	}
+	a.progressf("使用 %s 原生命令校验服务端配置 %s", core, path)
+	return p.ValidateConfig(ctx, a.Runner, path)
+}
+
 func (a *App) ServerConfigExists(core string) (bool, error) {
 	if err := a.RootCheck(); err != nil {
 		return false, err

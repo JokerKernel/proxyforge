@@ -162,7 +162,7 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 				}
 			}
 		case 4:
-			err = c.editServerConfig(core)
+			err = c.editServerConfig(ctx, core)
 		case 5:
 			shouldPause = false
 			err = c.serviceMenu(ctx, core)

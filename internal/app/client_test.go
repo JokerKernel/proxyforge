@@ -68,6 +68,32 @@ func TestServerConfigReadsCurrentActiveFile(t *testing.T) {
 	}
 }
 
+func TestValidateServerConfigUsesNativeCoreValidator(t *testing.T) {
+	r := &fakeRunner{}
+	a, _ := testApp(t, r)
+	for _, tt := range []struct {
+		core string
+		path string
+		call string
+	}{
+		{core: domain.CoreSingBox, path: singbox.New().ConfigPath(), call: "sing-box check -c "},
+		{core: domain.CoreXray, path: xray.New().ConfigPath(), call: "xray run -test -config "},
+	} {
+		t.Run(tt.core, func(t *testing.T) {
+			path := a.Layout.Resolve(tt.path)
+			if err := system.AtomicWrite(path, []byte(`{"inbounds":[]}`), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := a.ValidateServerConfig(context.Background(), tt.core); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(r.callLog(), tt.call+path) {
+				t.Fatalf("validator call missing: %s", r.callLog())
+			}
+		})
+	}
+}
+
 func TestServerConfigExistsIgnoresEmptyPlaceholders(t *testing.T) {
 	a, _ := testApp(t, &fakeRunner{})
 	path := a.Layout.Resolve(xray.New().ConfigPath())

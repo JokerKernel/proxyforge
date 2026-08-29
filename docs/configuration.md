@@ -33,6 +33,8 @@ sudo proxyforge config generate xray \
 
 服务端用户名默认是 `one`，入站标签默认是 `singbox-one` 或 `xray-one`，可以分别通过 `--user-name` 和 `--inbound-tag` 修改。交互生成过程中的任意输入步骤都可输入 `q` 取消，不会写入配置或重启服务。
 
+通过“服务端配置 → 编辑配置”保存并退出编辑器后，ProxyForge 会使用对应内核的原生命令校验当前配置。校验通过时自动重启服务使配置生效；校验失败时显示具体错误，不会重启服务，按 Enter 后会重新打开同一配置文件继续修改。
+
 ### 配置模式
 
 sing-box 和 Xray 默认生成回落防偷跑配置。可用 `--standard-config` 恢复标准模板；sing-box 还支持 `--simplified-config`。这些模式参数不能组合。
