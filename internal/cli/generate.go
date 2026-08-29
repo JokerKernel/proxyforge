@@ -59,6 +59,7 @@ func (c *commandSet) generateCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&o.SingBoxFallbackHTTPDomain, "sing-box-fallback-http-domain", false, "sing-box HTTP 回落仅放行与 SNI 一致的域名（默认不限制）")
 	cmd.Flags().BoolVar(&o.XrayFallbackGuard, "xray-fallback-guard", false, "Xray 使用 dokodemo-door 限制 REALITY 未认证回落流量")
 	cmd.Flags().IntVar(&o.XrayFallbackPort, "xray-fallback-port", 0, "Xray 防偷跑回落入站端口（默认 30000-65000 随机；已有配置则沿用）")
+	cmd.Flags().BoolVar(&o.XrayFallbackHTTPDomain, "xray-fallback-http-domain", false, "Xray HTTP 回落仅放行与 SNI 一致的域名（默认不限制）")
 	cmd.Flags().BoolVar(&o.RotateCredentials, "rotate-credentials", false, "轮换 UUID、密钥和 short ID，使旧客户端失效")
 	cmd.Flags().Bool("take-over", false, "兼容旧版本；当前始终备份并完整覆盖现有配置")
 	_ = cmd.Flags().MarkDeprecated("take-over", "当前生成流程会自动备份并完整覆盖现有配置，无需此参数")
@@ -123,6 +124,20 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		o.XrayFallbackGuard = choice == 2
 		if !o.XrayFallbackGuard {
 			o.XrayFallbackPort = 0
+			o.XrayFallbackHTTPDomain = false
+		} else {
+			fmt.Fprintln(c.out, "\nHTTP 回落域名限制")
+			c.printMenuChoice("1", "不限制 Host（默认）")
+			c.printMenuChoice("2", "Host 匹配 SNI")
+			defaultHTTPChoice := 1
+			if o.XrayFallbackHTTPDomain {
+				defaultHTTPChoice = 2
+			}
+			choice, err := c.chooseNumberCancelable("请选择 HTTP 回落策略", 1, 2, defaultHTTPChoice)
+			if err != nil {
+				return err
+			}
+			o.XrayFallbackHTTPDomain = choice == 2
 		}
 	}
 	if o.Server == "" {
@@ -434,7 +449,11 @@ func printGenerateSuccess(w io.Writer, n domain.NodeSpec) {
 	} else if n.Core == domain.CoreXray {
 		mode := "标准配置"
 		if n.XrayFallbackGuard {
-			mode = fmt.Sprintf("回落防偷跑配置（dokodemo-door 127.0.0.1:%d）", n.XrayFallbackPort)
+			httpPolicy := "HTTP Host 不限制"
+			if n.XrayFallbackHTTPDomain {
+				httpPolicy = "HTTP Host 仅限 SNI"
+			}
+			mode = fmt.Sprintf("回落防偷跑配置（dokodemo-door 127.0.0.1:%d；%s）", n.XrayFallbackPort, httpPolicy)
 		}
 		fmt.Fprintf(w, "配置模式：%s\n", mode)
 	}

@@ -121,6 +121,7 @@ type routingSettings struct {
 
 type routingRule struct {
 	InboundTag  []string `json:"inboundTag,omitempty"`
+	Protocol    []string `json:"protocol,omitempty"`
 	Domain      []string `json:"domain,omitempty"`
 	IP          []string `json:"ip,omitempty"`
 	OutboundTag string   `json:"outboundTag"`
@@ -247,7 +248,7 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 	dokodemo := dokodemoInbound{
 		Listen: "127.0.0.1", Tag: fallbackGuardInboundTag, Port: n.XrayFallbackPort, Protocol: "dokodemo-door",
 		Settings: dokodemoSettings{Address: host, Port: targetPort, Network: "tcp"},
-		Sniffing: sniffingSettings{Enabled: true, DestOverride: []string{"tls"}, RouteOnly: true},
+		Sniffing: sniffingSettings{Enabled: true, DestOverride: []string{"http", "tls"}, RouteOnly: true},
 	}
 	stream := realityStreamSettings{Network: "raw", Security: "reality", RealitySettings: serverRealitySettings{
 		Show: false, Target: net.JoinHostPort("127.0.0.1", strconv.Itoa(n.XrayFallbackPort)), Xver: 0,
@@ -261,7 +262,8 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 	}
 	routing := privateNetworkRouting()
 	routing.Rules = append([]routingRule{
-		{InboundTag: []string{fallbackGuardInboundTag}, Domain: []string{n.SNI}, OutboundTag: fallbackDirectOutboundTag},
+		{InboundTag: []string{fallbackGuardInboundTag}, Protocol: []string{"tls"}, Domain: []string{xrayFullDomain(n.SNI)}, OutboundTag: fallbackDirectOutboundTag},
+		xrayHTTPFallbackRule(n),
 		{InboundTag: []string{fallbackGuardInboundTag}, OutboundTag: "blocked-private"},
 	}, routing.Rules...)
 	v := xrayConfig{
@@ -272,6 +274,20 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 		Routing:   routing,
 	}
 	return marshalXray(v)
+}
+
+func xrayHTTPFallbackRule(n domain.NodeSpec) routingRule {
+	rule := routingRule{
+		InboundTag: []string{fallbackGuardInboundTag}, Protocol: []string{"http"}, OutboundTag: fallbackDirectOutboundTag,
+	}
+	if n.XrayFallbackHTTPDomain {
+		rule.Domain = []string{xrayFullDomain(n.SNI)}
+	}
+	return rule
+}
+
+func xrayFullDomain(name string) string {
+	return "full:" + name
 }
 
 func (*Provider) RenderClient(n domain.NodeSpec) ([]byte, error) {

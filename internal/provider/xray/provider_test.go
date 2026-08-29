@@ -227,12 +227,13 @@ func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 		InboundTag: "xray-one", Server: "203.0.113.10", Port: 443, SNI: "speed.cloudflare.com",
 		Target: "speed.cloudflare.com:443", UserName: "one", UUID: "old-uuid", PrivateKey: "old-private",
 		PublicKey: "old-public", ShortID: "old-short", XrayFallbackGuard: true, XrayFallbackPort: 61431,
+		XrayFallbackHTTPDomain: true,
 	}
 	config, err := p.RenderServer(old)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertFallbackGuardConfig(t, config, "speed.cloudflare.com", 443, "127.0.0.1:61431", "old-uuid", "old-private", "old-short")
+	assertFallbackGuardConfig(t, config, "speed.cloudflare.com", 443, "127.0.0.1:61431", "old-uuid", "old-private", "old-short", true)
 
 	next := old
 	next.SNI = "www.example.com"
@@ -242,7 +243,7 @@ func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertFallbackGuardConfig(t, patched, "origin.example.com", 8443, "127.0.0.1:61431", "new-uuid", "new-private", "new-short")
+	assertFallbackGuardConfig(t, patched, "origin.example.com", 8443, "127.0.0.1:61431", "new-uuid", "new-private", "new-short", true)
 	assertFieldsInOrder(t, patched, `"log"`, `"dns"`, `"inbounds"`, `"outbounds"`, `"routing"`)
 	dokodemoStart := bytes.Index(patched, []byte(`"listen": "127.0.0.1"`))
 	vlessStart := bytes.Index(patched, []byte(`"listen": "0.0.0.0"`))
@@ -258,12 +259,12 @@ func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 	}
 	rules := root["routing"].(map[string]any)["rules"].([]any)
 	domains := rules[0].(map[string]any)["domain"].([]any)
-	if len(domains) != 1 || domains[0] != "www.example.com" {
+	if len(domains) != 1 || domains[0] != "full:www.example.com" {
 		t.Fatalf("fallback allow domains=%#v", domains)
 	}
 }
 
-func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, targetPort int, realityTarget, uuid, privateKey, shortID string) {
+func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, targetPort int, realityTarget, uuid, privateKey, shortID string, restrictHTTP bool) {
 	t.Helper()
 	var root map[string]any
 	if err := json.Unmarshal(config, &root); err != nil {
@@ -278,7 +279,7 @@ func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, t
 	sniffing := dokodemo["sniffing"].(map[string]any)
 	if dokodemo["tag"] != fallbackGuardInboundTag || dokodemo["listen"] != "127.0.0.1" || dokodemo["protocol"] != "dokodemo-door" ||
 		settings["address"] != targetHost || settings["port"] != float64(targetPort) || settings["network"] != "tcp" ||
-		sniffing["routeOnly"] != true {
+		sniffing["routeOnly"] != true || !reflect.DeepEqual(sniffing["destOverride"], []any{"http", "tls"}) {
 		t.Fatalf("dokodemo inbound=%#v", dokodemo)
 	}
 	vless := inbounds[1].(map[string]any)
@@ -290,8 +291,76 @@ func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, t
 		t.Fatalf("vless inbound=%#v", vless)
 	}
 	rules := root["routing"].(map[string]any)["rules"].([]any)
-	if len(rules) != 3 || rules[0].(map[string]any)["outboundTag"] != fallbackDirectOutboundTag || rules[1].(map[string]any)["outboundTag"] != "blocked-private" {
+	if len(rules) != 4 || rules[0].(map[string]any)["outboundTag"] != fallbackDirectOutboundTag ||
+		rules[1].(map[string]any)["outboundTag"] != fallbackDirectOutboundTag || rules[2].(map[string]any)["outboundTag"] != "blocked-private" {
 		t.Fatalf("routing rules=%#v", rules)
+	}
+	tlsRule := rules[0].(map[string]any)
+	httpRule := rules[1].(map[string]any)
+	serverName := root["inbounds"].([]any)[1].(map[string]any)["streamSettings"].(map[string]any)["realitySettings"].(map[string]any)["serverNames"].([]any)[0].(string)
+	if !reflect.DeepEqual(tlsRule["protocol"], []any{"tls"}) ||
+		!reflect.DeepEqual(tlsRule["domain"], []any{"full:" + serverName}) ||
+		!reflect.DeepEqual(httpRule["protocol"], []any{"http"}) {
+		t.Fatalf("fallback protocol rules=%#v", rules[:2])
+	}
+	_, hasHTTPDomain := httpRule["domain"]
+	if hasHTTPDomain != restrictHTTP {
+		t.Fatalf("HTTP fallback domain present=%t want=%t rule=%#v", hasHTTPDomain, restrictHTTP, httpRule)
+	}
+	if restrictHTTP && !reflect.DeepEqual(httpRule["domain"], []any{"full:" + serverName}) {
+		t.Fatalf("HTTP fallback domain=%#v", httpRule["domain"])
+	}
+}
+
+func TestFallbackGuardHTTPDomainDefaultsToUnrestricted(t *testing.T) {
+	p := New()
+	config, err := p.RenderServer(domain.NodeSpec{
+		InboundTag: "xray-one", Server: "203.0.113.10", Port: 443, SNI: "example.com", Target: "example.com:443",
+		UserName: "one", UUID: "uuid", PrivateKey: "private", ShortID: "short",
+		XrayFallbackGuard: true, XrayFallbackPort: 61431,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFallbackGuardConfig(t, config, "example.com", 443, "127.0.0.1:61431", "uuid", "private", "short", false)
+}
+
+func TestPatchFallbackGuardMigratesLegacyTLSRuleToExactMatch(t *testing.T) {
+	p := New()
+	old := domain.NodeSpec{
+		InboundTag: "xray-one", SNI: "old.example.com", Target: "old.example.com:443", UserName: "one",
+		UUID: "uuid", PrivateKey: "private", ShortID: "short", XrayFallbackGuard: true, XrayFallbackPort: 61431,
+	}
+	config, err := p.RenderServer(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(config, &root); err != nil {
+		t.Fatal(err)
+	}
+	rules := root["routing"].(map[string]any)["rules"].([]any)
+	legacyTLS := rules[0].(map[string]any)
+	delete(legacyTLS, "protocol")
+	legacyTLS["domain"] = []any{old.SNI}
+	root["routing"].(map[string]any)["rules"] = append(rules[:1], rules[2:]...)
+	legacy, err := json.Marshal(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := old
+	next.SNI = "new.example.com"
+	next.Target = "new.example.com:443"
+	patched, err := p.PatchServer(legacy, old, next, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(patched, &root); err != nil {
+		t.Fatal(err)
+	}
+	got := root["routing"].(map[string]any)["rules"].([]any)[0].(map[string]any)["domain"]
+	if !reflect.DeepEqual(got, []any{"full:new.example.com"}) {
+		t.Fatalf("legacy fallback domain=%#v", got)
 	}
 }
 

@@ -314,13 +314,13 @@ func TestGenerateXrayFallbackGuardAndResetPreservesMode(t *testing.T) {
 	}
 	o := domain.GenerateOptions{
 		Server: "server.example.com", Port: r.port, SNI: "speed.cloudflare.com", Target: "speed.cloudflare.com:443",
-		XrayFallbackGuard: true, XrayFallbackPort: 15444, NonInteractive: true,
+		XrayFallbackGuard: true, XrayFallbackPort: 15444, XrayFallbackHTTPDomain: true, NonInteractive: true,
 	}
 	n, err := a.Generate(context.Background(), domain.CoreXray, o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !n.XrayFallbackGuard || n.XrayFallbackPort != 15444 || checkedPorts[r.port] != 1 || checkedPorts[15444] != 1 {
+	if !n.XrayFallbackGuard || n.XrayFallbackPort != 15444 || !n.XrayFallbackHTTPDomain || checkedPorts[r.port] != 1 || checkedPorts[15444] != 1 {
 		t.Fatalf("node=%#v checkedPorts=%v", n, checkedPorts)
 	}
 	config, err := os.ReadFile(a.Layout.Resolve(xray.New().ConfigPath()))
@@ -335,7 +335,7 @@ func TestGenerateXrayFallbackGuardAndResetPreservesMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reset.XrayFallbackGuard || reset.XrayFallbackPort != 15444 {
+	if !reset.XrayFallbackGuard || reset.XrayFallbackPort != 15444 || !reset.XrayFallbackHTTPDomain {
 		t.Fatalf("reset node=%#v", reset)
 	}
 	config, err = os.ReadFile(a.Layout.Resolve(xray.New().ConfigPath()))
@@ -465,7 +465,14 @@ func TestGenerateRejectsInvalidXrayFallbackGuardOptions(t *testing.T) {
 			o.XrayFallbackPort = o.Port
 			return o
 		}(), "不能与公网监听端口相同"},
+		{"HTTP domain without fallback mode", domain.CoreXray, func() domain.GenerateOptions {
+			o := base
+			o.StandardConfig = true
+			o.XrayFallbackHTTPDomain = true
+			return o
+		}(), "不能与简化或回落防偷跑配置参数同时使用"},
 		{"unsupported core", domain.CoreSingBox, func() domain.GenerateOptions { o := base; o.XrayFallbackGuard = true; return o }(), "仅支持 xray"},
+		{"HTTP domain unsupported core", domain.CoreSingBox, func() domain.GenerateOptions { o := base; o.XrayFallbackHTTPDomain = true; return o }(), "仅支持 xray"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

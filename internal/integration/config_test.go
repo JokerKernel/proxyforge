@@ -70,6 +70,15 @@ func TestRealStableBinariesValidateAllConfigs(t *testing.T) {
 					n.XrayFallbackPort = 61431
 					return p.RenderServer(n)
 				}})
+				configs = append(configs, struct {
+					name   string
+					render func(domain.NodeSpec) ([]byte, error)
+				}{"fallback-http-domain-server", func(n domain.NodeSpec) ([]byte, error) {
+					n.XrayFallbackGuard = true
+					n.XrayFallbackPort = 61431
+					n.XrayFallbackHTTPDomain = true
+					return p.RenderServer(n)
+				}})
 			}
 			for _, item := range configs {
 				item := item

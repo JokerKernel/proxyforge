@@ -26,6 +26,7 @@ type NodeSpec struct {
 	SingBoxFallbackHTTPDomain bool      `json:"sing_box_fallback_http_domain,omitempty"`
 	XrayFallbackGuard         bool      `json:"xray_fallback_guard,omitempty"`
 	XrayFallbackPort          int       `json:"xray_fallback_port,omitempty"`
+	XrayFallbackHTTPDomain    bool      `json:"xray_fallback_http_domain,omitempty"`
 	UUID                      string    `json:"uuid"`
 	PrivateKey                string    `json:"private_key"`
 	PublicKey                 string    `json:"public_key"`
@@ -49,6 +50,7 @@ type GenerateOptions struct {
 	SingBoxFallbackHTTPDomain bool
 	XrayFallbackGuard         bool
 	XrayFallbackPort          int
+	XrayFallbackHTTPDomain    bool
 	RotateCredentials         bool
 	NonInteractive            bool
 }

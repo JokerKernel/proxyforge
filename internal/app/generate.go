@@ -32,7 +32,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if opts.SimplifiedConfig && core != domain.CoreSingBox {
 		return domain.NodeSpec{}, fmt.Errorf("简化服务端配置目前仅支持 sing-box")
 	}
-	if opts.StandardConfig && (opts.SimplifiedConfig || opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != 0 || opts.SingBoxFallbackHTTPDomain || opts.XrayFallbackGuard || opts.XrayFallbackPort != 0) {
+	if opts.StandardConfig && (opts.SimplifiedConfig || opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != 0 || opts.SingBoxFallbackHTTPDomain || opts.XrayFallbackGuard || opts.XrayFallbackPort != 0 || opts.XrayFallbackHTTPDomain) {
 		return domain.NodeSpec{}, fmt.Errorf("--standard-config 不能与简化或回落防偷跑配置参数同时使用")
 	}
 	if opts.SingBoxFallbackGuard && opts.SimplifiedConfig {
@@ -41,7 +41,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if (opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != 0 || opts.SingBoxFallbackHTTPDomain) && core != domain.CoreSingBox {
 		return domain.NodeSpec{}, fmt.Errorf("sing-box 回落防偷跑配置仅支持 sing-box")
 	}
-	if (opts.XrayFallbackGuard || opts.XrayFallbackPort != 0) && core != domain.CoreXray {
+	if (opts.XrayFallbackGuard || opts.XrayFallbackPort != 0 || opts.XrayFallbackHTTPDomain) && core != domain.CoreXray {
 		return domain.NodeSpec{}, fmt.Errorf("REALITY 回落防偷跑配置仅支持 xray")
 	}
 	if !opts.StandardConfig {
@@ -70,6 +70,9 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 			return domain.NodeSpec{}, err
 		}
 		opts.XrayFallbackPort = port
+	}
+	if opts.XrayFallbackHTTPDomain && !opts.XrayFallbackGuard {
+		return domain.NodeSpec{}, fmt.Errorf("Xray HTTP 回落域名限制必须与回落防偷跑配置同时启用")
 	}
 	if err := validateGenerate(opts); err != nil {
 		return domain.NodeSpec{}, err
@@ -144,7 +147,8 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		SingBoxFallbackGuard: opts.SingBoxFallbackGuard, SingBoxFallbackPort: opts.SingBoxFallbackPort,
 		SingBoxFallbackHTTPDomain: opts.SingBoxFallbackHTTPDomain,
 		XrayFallbackGuard:         opts.XrayFallbackGuard, XrayFallbackPort: opts.XrayFallbackPort,
-		CoreVersion: version, UpdatedAt: a.Now().UTC(),
+		XrayFallbackHTTPDomain: opts.XrayFallbackHTTPDomain,
+		CoreVersion:            version, UpdatedAt: a.Now().UTC(),
 	}
 	if n.SimplifiedConfig {
 		fmt.Fprintln(a.Out, "[警告] 已选择 sing-box 简化配置；域名将在出站连接阶段由系统 DNS 解析，域名解析到私网地址时可能绕过路由私网拦截。")

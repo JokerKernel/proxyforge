@@ -51,7 +51,7 @@ func (*Provider) PatchServer(config []byte, old, next domain.NodeSpec, updateEnd
 			if err := xrayPatchFallbackTarget(root, next.Target); err != nil {
 				return nil, err
 			}
-			if err := xrayPatchFallbackDomain(root, old.SNI, next.SNI); err != nil {
+			if err := xrayPatchFallbackDomain(root, old.SNI, next.SNI, old.XrayFallbackHTTPDomain); err != nil {
 				return nil, err
 			}
 		} else {
@@ -86,7 +86,7 @@ func xrayPatchFallbackTarget(root map[string]any, target string) error {
 	return nil
 }
 
-func xrayPatchFallbackDomain(root map[string]any, oldSNI, nextSNI string) error {
+func xrayPatchFallbackDomain(root map[string]any, oldSNI, nextSNI string, restrictHTTP bool) error {
 	routing, err := xrayChildObject(root, "routing", "Xray routing")
 	if err != nil {
 		return err
@@ -95,19 +95,59 @@ func xrayPatchFallbackDomain(root map[string]any, oldSNI, nextSNI string) error 
 	if err != nil {
 		return err
 	}
-	var matches []map[string]any
-	for _, rule := range rules {
-		if !xrayIsFallbackAllowOutbound(rule["outboundTag"]) || !xrayStringListContains(rule["inboundTag"], fallbackGuardInboundTag) {
-			continue
-		}
-		if _, hasDomain := rule["domain"]; hasDomain {
+	protocols := []string{"tls"}
+	if restrictHTTP {
+		protocols = append(protocols, "http")
+	}
+	for _, protocol := range protocols {
+		var matches []map[string]any
+		for _, rule := range rules {
+			if !xrayIsFallbackAllowOutbound(rule["outboundTag"]) ||
+				!xrayStringListContains(rule["inboundTag"], fallbackGuardInboundTag) ||
+				!xrayFallbackRuleProtocolMatches(rule, protocol) ||
+				!xrayFallbackDomainContains(rule["domain"], oldSNI) {
+				continue
+			}
 			matches = append(matches, rule)
 		}
+		if len(matches) != 1 {
+			return fmt.Errorf("现有 Xray 配置中 %s 回落放行规则数量为 %d，无法安全定点重置", protocol, len(matches))
+		}
+		if err := xrayReplaceFallbackDomain(matches[0], oldSNI, nextSNI, protocol); err != nil {
+			return err
+		}
 	}
-	if len(matches) != 1 {
-		return fmt.Errorf("现有 Xray 配置中 dokodemo-door 放行规则数量为 %d，无法安全定点重置", len(matches))
+	return nil
+}
+
+func xrayFallbackRuleProtocolMatches(rule map[string]any, protocol string) bool {
+	if xrayStringListContains(rule["protocol"], protocol) {
+		return true
 	}
-	return xrayReplaceManagedString(matches[0], "domain", oldSNI, nextSNI, "Xray dokodemo-door 放行域名")
+	_, hasProtocol := rule["protocol"]
+	return protocol == "tls" && !hasProtocol
+}
+
+func xrayFallbackDomainContains(value any, sni string) bool {
+	return xrayStringListContains(value, sni) || xrayStringListContains(value, xrayFullDomain(sni))
+}
+
+func xrayReplaceFallbackDomain(rule map[string]any, oldSNI, nextSNI, protocol string) error {
+	values, ok := rule["domain"].([]any)
+	if !ok {
+		return fmt.Errorf("现有 Xray 配置中 %s 回落放行域名格式无效", protocol)
+	}
+	matches := 0
+	for index, value := range values {
+		if value == oldSNI || value == xrayFullDomain(oldSNI) {
+			values[index] = xrayFullDomain(nextSNI)
+			matches++
+		}
+	}
+	if matches != 1 {
+		return fmt.Errorf("现有 Xray 配置中 %s 回落放行域名匹配数量为 %d，无法安全定点重置", protocol, matches)
+	}
+	return nil
 }
 
 func xrayStringListContains(value any, want string) bool {

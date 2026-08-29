@@ -38,8 +38,8 @@ sudo proxyforge config generate xray \
 sing-box 和 Xray 默认生成回落防偷跑配置。可用 `--standard-config` 恢复标准模板；sing-box 还支持 `--simplified-config`。这些模式参数不能组合。
 
 - sing-box 防偷跑模式在 `127.0.0.1` 创建 `direct` 入站，将 REALITY handshake 指向该入站，通过 TLS sniff 和域名规则把合法回落转到独立的 `fallback-direct`（默认双栈）；内部端口默认在 30000-65000 间随机分配，已有配置则沿用。
-- sing-box 的明文 HTTP 回落默认不限制 Host。使用 `--sing-box-fallback-http-domain`（或交互菜单中的对应开关）后，HTTP 规则才会写入当前 SNI 的域名限制。
-- Xray 防偷跑模式在 `127.0.0.1` 创建 `dokodemo-door` 入站，将 REALITY target 指向该入站，匹配 `serverNames` 的流量走独立的 `fallback-direct`（默认双栈），其余进入 blackhole；内部端口默认在 30000-65000 间随机分配，已有配置则沿用。
+- sing-box 和 Xray 的明文 HTTP 回落默认不限制 Host。分别使用 `--sing-box-fallback-http-domain`、`--xray-fallback-http-domain`（或交互菜单中的对应开关）后，HTTP 规则才会写入当前 SNI 的域名限制。
+- Xray 防偷跑模式在 `127.0.0.1` 创建 `dokodemo-door` 入站，将 REALITY target 指向该入站，通过 TLS/HTTP sniff 和精确域名规则把合法回落转到独立的 `fallback-direct`（默认双栈），其余进入 blackhole；TLS 始终要求 SNI 精确匹配，明文 HTTP 可选择要求 Host 匹配 SNI。内部端口默认在 30000-65000 间随机分配，已有配置则沿用。
 - `--sing-box-fallback-port` 和 `--xray-fallback-port` 可修改内部端口。端口不能与公网监听端口或另一个受管节点冲突。
 - 原有的 `--sing-box-fallback-guard` 和 `--xray-fallback-guard` 参数继续兼容，但默认模式不需要显式提供。
 
