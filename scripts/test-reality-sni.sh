@@ -264,20 +264,42 @@ print_allowed_cdn_finding() {
   fi
 }
 
+conclusion_display_width() {
+  local s=$1
+  local width=0
+  local i char
+  for ((i = 0; i < ${#s}; i++)); do
+    char=${s:i:1}
+    case ${char} in
+      [[:ascii:]]) width=$((width + 1)) ;;
+      '△' | '✓' | '✗' | '?') width=$((width + 1)) ;;
+      *) width=$((width + 2)) ;;
+    esac
+  done
+  printf '%s' "${width}"
+}
+
+print_conclusion_box_line() {
+  local color=$1
+  local body=$2
+  local inner=42
+  local width padding
+  width=$(conclusion_display_width "${body}")
+  padding=$((inner - width))
+  if ((padding < 1)); then
+    padding=1
+  fi
+  printf '%s│%s%s%*s%s│%s\n' \
+    "${color}" "${body}" "${color_reset}" "${padding}" '' "${color}" "${color_reset}"
+}
+
 print_conclusion_cdn_box_line() {
   [[ -n ${detected_cdn} ]] || return 0
   if [[ ${detected_cdn} == Cloudflare ]] && ((rejected_sni_certificate_count > 0)); then
-    printf '%s│  ✗ Cloudflare 严重错误：流量可能被刷%s     %s│%s\n' \
-      "${color_red}" "${color_reset}" "${color_red}" "${color_reset}"
+    print_conclusion_box_line "${color_red}" '  ✗ Cloudflare 严重错误：流量可能被刷'
     return
   fi
-  if [[ ${detected_cdn} == Cloudflare ]]; then
-    printf '%s│  △ 当前有 CDN 风险（Cloudflare）%s         %s│%s\n' \
-      "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
-    return
-  fi
-  printf '%s│  △ 当前有 CDN 风险%s                       %s│%s\n' \
-    "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
+  print_conclusion_box_line "${color_yellow}" "  △ 当前有 CDN 风险（${detected_cdn}）"
 }
 
 print_cdn_summary() {

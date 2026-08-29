@@ -234,13 +234,14 @@ akamai_output="${test_tmp}/akamai.log"
 run_probe 0 1 1 1 1 0 "${akamai_output}" img.akamaiedge.net
 [[ ${probe_status} -eq 0 ]]
 grep -Fq 'CDN：Akamai' "${akamai_output}"
-grep -Fq '△ 当前有 CDN 风险' "${akamai_output}"
+grep -Fq '△ 当前有 CDN 风险（Akamai）' "${akamai_output}"
 grep -Fq '当前有 CDN 风险：允许 SNI 检测到 Akamai' "${akamai_output}"
 
 alicdn_output="${test_tmp}/alicdn.log"
 run_probe 0 1 1 1 1 0 "${alicdn_output}" img.alicdn.com
 [[ ${probe_status} -eq 0 ]]
 grep -Fq 'CDN：阿里云 CDN' "${alicdn_output}"
+grep -Fq '△ 当前有 CDN 风险（阿里云 CDN）' "${alicdn_output}"
 grep -Fq '当前有 CDN 风险：允许 SNI 检测到 阿里云 CDN' "${alicdn_output}"
 
 printf 'test-reality-sni: ok\n'
