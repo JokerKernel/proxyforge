@@ -123,7 +123,7 @@ func TestXrayServerConfigMenuNumbersEditBeforeModify(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "2   修改配置") || !strings.Contains(out.String(), "4   编辑配置") ||
-		!strings.Contains(out.String(), "5   专用运行用户") {
+		!strings.Contains(out.String(), "5   服务管理") || !strings.Contains(out.String(), "6   专用运行用户") {
 		t.Fatalf("xray menu=%q", out.String())
 	}
 }

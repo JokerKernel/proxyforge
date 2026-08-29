@@ -46,7 +46,7 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 	for {
 		c.clearScreen()
 		c.printCoreMenu(ctx, core)
-		choice, err := c.chooseNumber("请选择", 0, 5, -1)
+		choice, err := c.chooseNumber("请选择", 0, 4, -1)
 		if err != nil {
 			return err
 		}
@@ -71,9 +71,6 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 		case 3:
 			shouldPause, err = c.clientMenu(ctx, core)
 		case 4:
-			shouldPause = false
-			err = c.serviceMenu(ctx, core)
-		case 5:
 			var confirmed bool
 			confirmed, err = c.confirmUninstall(core)
 			if err == nil && confirmed {
@@ -86,7 +83,7 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 			err = nil
 			if choice == 1 {
 				fmt.Fprintln(c.out, "已取消安装/升级。")
-			} else if choice == 5 {
+			} else if choice == 4 {
 				fmt.Fprintln(c.out, "已取消卸载。")
 			}
 		}
@@ -108,10 +105,11 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		c.printMenuChoice("2", "修改配置（DNS、出站 IP、回落 IP、重置节点与 SNI 检测）")
 		c.printMenuChoice("3", "查看配置")
 		c.printMenuChoice("4", "编辑配置（vim / nano / vi）")
-		maxChoice := 4
+		c.printMenuChoice("5", "服务管理（启动、停止、状态与日志）")
+		maxChoice := 5
 		if core == domain.CoreXray {
-			c.printMenuChoice("5", "专用运行用户（修复 systemd 的 nobody 安全警告）")
-			maxChoice = 5
+			c.printMenuChoice("6", "专用运行用户（修复 systemd 的 nobody 安全警告）")
+			maxChoice = 6
 		}
 		c.printMenuChoice("0/q", "返回")
 		choice, err := c.chooseNumber("请选择", 0, maxChoice, 0)
@@ -166,6 +164,9 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		case 4:
 			err = c.editServerConfig(core)
 		case 5:
+			shouldPause = false
+			err = c.serviceMenu(ctx, core)
+		case 6:
 			err = c.dedicatedXrayServiceUser(ctx)
 			if errors.Is(err, errReturnToMenu) {
 				continue
@@ -262,10 +263,9 @@ func (c *commandSet) printCoreMenu(ctx context.Context, core string) {
 	c.printPageHeader(core)
 	c.printCoreStatusCard(ctx, core)
 	c.printMenuChoice("1", "安装/升级（安装内核或升级版本）")
-	c.printMenuChoice("2", "服务端配置（生成、查看、DNS 与节点重置）")
+	c.printMenuChoice("2", "服务端配置（生成、修改、查看与服务管理）")
 	c.printMenuChoice("3", "客户端配置（导出原生 JSON 或 Clash YAML）")
-	c.printMenuChoice("4", "服务管理（启动、停止、状态与日志）")
-	c.printMenuChoice("5", "卸载内核（同时清理配置和运行数据）")
+	c.printMenuChoice("4", "卸载内核（同时清理配置和运行数据）")
 	c.printMenuChoice("0/q", "返回")
 }
 

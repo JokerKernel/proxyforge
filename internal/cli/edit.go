@@ -30,7 +30,7 @@ func (c *commandSet) editServerConfig(core string) error {
 	if err := c.runConfigEditor(editor, path); err != nil {
 		return fmt.Errorf("编辑器退出异常: %w", err)
 	}
-	fmt.Fprintln(c.out, "已关闭编辑器。如已修改配置，请到“服务管理”中重启服务使配置生效。")
+	fmt.Fprintln(c.out, "已关闭编辑器。如已修改配置，请到“服务端配置 → 服务管理”中重启服务使配置生效。")
 	return nil
 }
 

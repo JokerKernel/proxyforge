@@ -36,7 +36,7 @@ func (c *commandSet) serviceMenu(ctx context.Context, core string) error {
 	actions := []string{"", "start", "stop", "restart", "status", "logs"}
 	for {
 		c.clearScreen()
-		c.printPageHeader(core, "服务管理")
+		c.printPageHeader(core, "服务端配置", "服务管理")
 		c.printMenuChoice("1", "启动")
 		c.printMenuChoice("2", "停止")
 		c.printMenuChoice("3", "重启")
@@ -92,7 +92,7 @@ func (c *commandSet) logLevelMenu(ctx context.Context, core string) error {
 		return err
 	}
 	c.clearScreen()
-	c.printPageHeader(core, "日志级别")
+	c.printPageHeader(core, "服务端配置", "服务管理", "日志级别")
 	fmt.Fprintf(c.out, "当前级别：%s\n\n", logLevelDisplay(core, settings.Current))
 	defaultChoice := 1
 	for index, level := range settings.Levels {
@@ -198,7 +198,7 @@ func (c *commandSet) followServiceLogs(ctx context.Context, core string) error {
 	followCtx, stop := interruptContext(ctx)
 	defer stop()
 
-	c.printPageHeader(core, "实时日志")
+	c.printPageHeader(core, "服务端配置", "服务管理", "实时日志")
 	fmt.Fprintln(c.out, "按 Ctrl+C 返回服务管理")
 	fmt.Fprintln(c.out, "----------------------------------------")
 	err := c.app.FollowServiceLogs(followCtx, core, c.out)

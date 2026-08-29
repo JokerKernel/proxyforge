@@ -39,7 +39,7 @@ func TestServiceMenuLiveLogsReturnsAfterInterrupt(t *testing.T) {
 	if runner.name != "journalctl" || !reflect.DeepEqual(runner.args, wantArgs) {
 		t.Fatalf("command=%s args=%v, want journalctl %v", runner.name, runner.args, wantArgs)
 	}
-	for _, want := range []string{"实时日志", "live entry", "已停止实时日志", "ProxyForge  ›  xray  ›  服务管理"} {
+	for _, want := range []string{"实时日志", "live entry", "已停止实时日志", "ProxyForge  ›  xray  ›  服务端配置  ›  服务管理"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("output missing %q: %q", want, out.String())
 		}

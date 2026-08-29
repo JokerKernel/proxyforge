@@ -174,9 +174,36 @@ func TestCoreMenuMergesUninstallAndCleanup(t *testing.T) {
 	if !strings.Contains(out.String(), "╭─ 当前内核") ||
 		!strings.Contains(out.String(), "Xray-core") ||
 		!strings.Contains(out.String(), "[未安装]") ||
-		!strings.Contains(out.String(), "5   卸载内核          -- 同时清理配置和运行数据") ||
-		strings.Contains(out.String(), "6   ") {
+		!strings.Contains(out.String(), "4   卸载内核          -- 同时清理配置和运行数据") ||
+		strings.Contains(out.String(), "5   ") {
 		t.Fatalf("menu did not merge uninstall and cleanup: %q", out.String())
+	}
+}
+
+func TestServiceManagementIsNestedUnderServerConfig(t *testing.T) {
+	var coreOut bytes.Buffer
+	(&commandSet{out: &coreOut}).printCoreMenu(context.Background(), domain.CoreXray)
+	if strings.Contains(coreOut.String(), "4   服务管理") ||
+		!strings.Contains(coreOut.String(), "服务端配置") ||
+		!strings.Contains(coreOut.String(), "生成、修改、查看与服务管理") {
+		t.Fatalf("core menu output=%q", coreOut.String())
+	}
+
+	var serverOut bytes.Buffer
+	c := &commandSet{
+		reader: bufio.NewReader(strings.NewReader("5\n0\n0\n")),
+		out:    &serverOut,
+	}
+	if err := c.serverConfigMenu(context.Background(), domain.CoreXray); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"5   服务管理", "6   专用运行用户",
+		"ProxyForge  ›  xray  ›  服务端配置  ›  服务管理",
+	} {
+		if !strings.Contains(serverOut.String(), want) {
+			t.Fatalf("nested service menu missing %q: %q", want, serverOut.String())
+		}
 	}
 }
 
