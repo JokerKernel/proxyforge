@@ -169,13 +169,13 @@ func logLevelDisplay(core, level string) string {
 	if core == domain.CoreXray && level == "off" {
 		display = "off（关闭访问日志和错误日志）"
 	}
-	if level == officialDefaultLogLevel(core) {
-		return strings.TrimSuffix(display, "）") + "（官方默认））"
+	if level == defaultLogLevel(core) {
+		return strings.TrimSuffix(display, "）") + "（默认））"
 	}
 	return display
 }
 
-func officialDefaultLogLevel(core string) string {
+func defaultLogLevel(core string) string {
 	if core == domain.CoreXray {
 		return "warning"
 	}

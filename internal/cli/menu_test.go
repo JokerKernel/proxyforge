@@ -88,7 +88,7 @@ func TestServerConfigMenuShowsStatusCard(t *testing.T) {
 		"DNS 设置", "系统 DNS",
 		"出站 IP", "默认（先 IPv4，300ms 后竞速 IPv6）",
 		"回落 IP", "运行用户", "xray", "SNI", "www.example.com",
-		"日志级别", "warning  -- 警告及错误（官方默认）", "服务状态", "运行中",
+		"日志级别", "warning  -- 警告及错误（默认）", "服务状态", "运行中",
 		"SNI 防护", "已开启", "严格模式", "未开启", "HTTP Host", "不限制",
 	} {
 		if !strings.Contains(got, text) {
@@ -254,8 +254,8 @@ func TestCoreMenuAlignsAndDimsDescriptions(t *testing.T) {
 }
 
 func TestSplitMenuChoiceLabelKeepsNestedDescriptionParens(t *testing.T) {
-	title, description := splitMenuChoiceLabel("warning（警告及错误（官方默认））")
-	if title != "warning" || description != "警告及错误（官方默认）" {
+	title, description := splitMenuChoiceLabel("warning（警告及错误（默认））")
+	if title != "warning" || description != "警告及错误（默认）" {
 		t.Fatalf("title=%q description=%q", title, description)
 	}
 }
