@@ -100,6 +100,8 @@ color_cyan=''
 color_blue=''
 color_green=''
 color_yellow=''
+color_orange=''
+color_bold_orange=''
 color_red=''
 color_dim=''
 color_enabled=false
@@ -111,6 +113,8 @@ if [[ -t 1 && ${NO_COLOR:-} != 1 && ${NO_COLOR:-} != true && ${PROXYFORGE_COLOR:
   color_blue=$'\033[34m'
   color_green=$'\033[32m'
   color_yellow=$'\033[33m'
+  color_orange=$'\033[38;5;208m'
+  color_bold_orange=$'\033[1;38;5;208m'
   color_red=$'\033[31m'
   color_dim=$'\033[2m'
 fi
@@ -129,11 +133,34 @@ print_section() {
     "${color_cyan}" "${color_reset}"
 }
 
+format_probe_title() {
+  local title=$1
+  local marker='（证书 SAN）'
+  if [[ ${title} == '证书 SAN' ]]; then
+    printf '%s%s%s' "${color_bold_orange}" "${title}" "${color_reset}"
+    return
+  fi
+  if [[ ${title} == *"${marker}" ]]; then
+    printf '%s%s%s%s%s%s' "${color_bold}" "${title%"${marker}"}" "${color_reset}" "${color_bold_orange}" "${marker}" "${color_reset}"
+    return
+  fi
+  printf '%s%s%s' "${color_bold}" "${title}" "${color_reset}"
+}
+
+print_source_line() {
+  local source=$1
+  if [[ ${source} == '允许项证书 SAN' ]]; then
+    printf '    来源: %s%s%s\n' "${color_orange}" "${source}" "${color_reset}"
+    return
+  fi
+  printf '    来源: %s\n' "${source}"
+}
+
 print_probe_header() {
   local number=$1
   local title=$2
   local sni=$3
-  printf '\n%s[%s/%s]%s %s%s%s\n' "${color_blue}" "${number}" "${total_probes}" "${color_reset}" "${color_bold}" "${title}" "${color_reset}"
+  printf '\n%s[%s/%s]%s %s\n' "${color_blue}" "${number}" "${total_probes}" "${color_reset}" "$(format_probe_title "${title}")"
   printf '    SNI: %s%s%s\n' "${color_cyan}" "${sni}" "${color_reset}"
 }
 
@@ -234,7 +261,7 @@ run_probe() {
 
   print_probe_header "${probe_number}" "${label}" "${server_name:-<无 SNI>}"
   if [[ -n ${source} ]]; then
-    printf '    来源: %s\n' "${source}"
+    print_source_line "${source}"
   fi
 
   set +e
@@ -404,9 +431,9 @@ run_http_host_probe() {
   output_file="${probe_tmp}/probe-${probe_number}-http-host.log"
   error_file="${output_file}.err"
   title=$(http_host_probe_title http "${source}")
-  printf '\n%s[%s/%s]%s %s%s%s\n' "${color_blue}" "${probe_number}" "${total_probes}" "${color_reset}" "${color_bold}" "${title}" "${color_reset}"
+  printf '\n%s[%s/%s]%s %s\n' "${color_blue}" "${probe_number}" "${total_probes}" "${color_reset}" "$(format_probe_title "${title}")"
   printf '    Host: %s%s%s\n' "${color_cyan}" "${host}" "${color_reset}"
-  printf '    来源: %s\n' "${source}"
+  print_source_line "${source}"
   set +e
   curl --noproxy '*' --connect-timeout "${probe_timeout}" --max-time "${probe_timeout}" \
     --silent --show-error --output /dev/null --write-out '%{http_code}' \
@@ -435,9 +462,9 @@ run_https_host_probe() {
   output_file="${probe_tmp}/probe-${probe_number}-https-host.log"
   error_file="${output_file}.err"
   title=$(http_host_probe_title https "${source}")
-  printf '\n%s[%s/%s]%s %s%s%s\n' "${color_blue}" "${probe_number}" "${total_probes}" "${color_reset}" "${color_bold}" "${title}" "${color_reset}"
+  printf '\n%s[%s/%s]%s %s\n' "${color_blue}" "${probe_number}" "${total_probes}" "${color_reset}" "$(format_probe_title "${title}")"
   printf '    URL: %s%s%s\n' "${color_cyan}" "${https_url}" "${color_reset}"
-  printf '    来源: %s\n' "${source}"
+  print_source_line "${source}"
   set +e
   curl --noproxy '*' --connect-timeout "${probe_timeout}" --max-time "${probe_timeout}" \
     --silent --show-error --insecure --output /dev/null --write-out '%{http_code}' \

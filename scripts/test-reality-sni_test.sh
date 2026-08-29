@@ -128,6 +128,16 @@ grep -Fq '证书 SAN 探测均未获得证书' "${success_output}"
 grep -Fq 'HTTP 附加探测中有 7 个请求收到了响应' "${success_output}"
 grep -Fq 'HTTPS Host 附加探测中有 6 个请求收到了响应' "${success_output}"
 
+color_output="${test_tmp}/color.log"
+PROXYFORGE_COLOR=always \
+  MOCK_BAD_SNI_RESPONDS=0 MOCK_ALLOWED_SNI_RESPONDS=1 MOCK_NO_SNI_RESPONDS=1 \
+  MOCK_HTTP_RESPONDS=1 MOCK_BAD_SNI_ALERTS=1 MOCK_SUBDOMAIN_SNI_RESPONDS=0 \
+  PATH="${test_tmp}/bin:${PATH}" \
+  "${probe_script}" --host 192.0.2.10 --port 443 --sni se-edge.itunes.apple.com \
+  --bad-sni www.cloudflare.com >"${color_output}" 2>&1
+grep -Fq $'\033[1;38;5;208m证书 SAN\033[0m' "${color_output}"
+grep -Fq $'\033[1;38;5;208m（证书 SAN）\033[0m' "${color_output}"
+
 failure_output="${test_tmp}/failure.log"
 run_probe 1 1 1 1 0 0 "${failure_output}"
 [[ ${probe_status} -eq 1 ]]
