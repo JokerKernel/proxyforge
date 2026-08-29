@@ -38,17 +38,18 @@ chmod +x ~/proxyforge-test-reality-sni.sh
 
 ## 探测内容
 
-默认执行七项探测：
+默认执行八项探测：
 
 1. 使用允许 SNI 建立 TLS 连接，并检查证书 SAN 是否匹配。
-2. 使用 `www.cloudflare.com` 作为错误 SNI。
-3. 使用 `example.com` 作为错误 SNI。
-4. 不发送 SNI 建立 TLS 连接。
-5. 向 REALITY 端口发送普通 HTTP 请求。
-6. 使用允许域名作为 HTTP `Host` 请求头。
-7. 使用错误域名作为 HTTP `Host` 请求头。
+2. 使用 `proxyforge-test.<允许 SNI>` 检查允许项的子域名是否也被错误放行。
+3. 使用 `www.cloudflare.com` 作为错误 SNI。
+4. 使用 `example.com` 作为错误 SNI。
+5. 不发送 SNI 建立 TLS 连接。
+6. 向 REALITY 端口发送普通 HTTP 请求。
+7. 使用允许域名作为 HTTP `Host` 请求头。
+8. 使用错误域名作为 HTTP `Host` 请求头。
 
-前四项决定 TLS SNI 结论，后三项仅报告明文 HTTP 暴露面，不改变 TLS SNI 判定。
+前五项决定 TLS SNI 结论，后三项仅报告明文 HTTP 暴露面，不改变 TLS SNI 判定。允许项的子域名会按错误 SNI 处理：若它获得证书，脚本返回过滤未生效。
 
 ## TLS 判定
 

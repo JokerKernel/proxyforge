@@ -24,6 +24,7 @@ if [[ ${1:-} == s_client ]]; then
 
   if [[ (-z ${server_name} && ${MOCK_NO_SNI_RESPONDS:-1} == 1) ||
         (${server_name} == se-edge.itunes.apple.com && ${MOCK_ALLOWED_SNI_RESPONDS:-1} == 1) ||
+        (${server_name} == proxyforge-test.se-edge.itunes.apple.com && ${MOCK_SUBDOMAIN_SNI_RESPONDS:-0} == 1) ||
         (${MOCK_BAD_SNI_RESPONDS:-0} == 1 && ${server_name} == www.cloudflare.com) ]]; then
     printf '%s\n' '-----BEGIN CERTIFICATE-----' 'mock' '-----END CERTIFICATE-----'
     exit 0
@@ -38,7 +39,7 @@ if [[ ${1:-} == x509 ]]; then
   for ((index = 1; index <= $#; index++)); do
     if [[ ${!index} == -checkhost ]]; then
       host_index=$((index + 1))
-      [[ ${!host_index} == se-edge.itunes.apple.com ]]
+      [[ ${!host_index} == se-edge.itunes.apple.com || ${!host_index} == proxyforge-test.se-edge.itunes.apple.com ]]
       exit
     fi
   done
@@ -66,13 +67,15 @@ run_probe() {
   local no_sni_responds=$3
   local http_responds=$4
   local bad_sni_alerts=$5
-  local output_file=$6
+  local subdomain_sni_responds=$6
+  local output_file=$7
   set +e
   MOCK_BAD_SNI_RESPONDS=${bad_sni_responds} \
     MOCK_ALLOWED_SNI_RESPONDS=${allowed_sni_responds} \
     MOCK_NO_SNI_RESPONDS=${no_sni_responds} \
     MOCK_HTTP_RESPONDS=${http_responds} \
     MOCK_BAD_SNI_ALERTS=${bad_sni_alerts} \
+    MOCK_SUBDOMAIN_SNI_RESPONDS=${subdomain_sni_responds} \
     PATH="${test_tmp}/bin:${PATH}" \
     "${probe_script}" \
       --host 192.0.2.10 \
@@ -84,35 +87,44 @@ run_probe() {
 }
 
 success_output="${test_tmp}/success.log"
-run_probe 0 1 1 1 1 "${success_output}"
+run_probe 0 1 1 1 1 0 "${success_output}"
 [[ ${probe_status} -eq 0 ]]
 grep -Fq '✓ SNI 过滤生效' "${success_output}"
-grep -Fq '1 个错误 SNI 均未获得证书' "${success_output}"
+grep -Fq '允许项的子域名（应拒绝）' "${success_output}"
+grep -Fq '2 个应拒绝 SNI（含允许项子域名）均未获得证书' "${success_output}"
 grep -Fq '收到 TLS 数据但未获得证书' "${success_output}"
 grep -Fq '无 SNI 探测仍获得了证书' "${success_output}"
 grep -Fq '状态码=400（错误的请求）' "${success_output}"
 grep -Fq 'HTTP 附加探测中有 3 个请求收到了响应' "${success_output}"
 
 failure_output="${test_tmp}/failure.log"
-run_probe 1 1 1 1 0 "${failure_output}"
+run_probe 1 1 1 1 0 0 "${failure_output}"
 [[ ${probe_status} -eq 1 ]]
 grep -Fq '✗ SNI 过滤未生效' "${failure_output}"
 grep -Fq '1 个错误 SNI 获得了 TLS 证书' "${failure_output}"
 
+subdomain_failure_output="${test_tmp}/subdomain-failure.log"
+run_probe 0 1 1 1 0 1 "${subdomain_failure_output}"
+[[ ${probe_status} -eq 1 ]]
+grep -Fq '允许项的子域名（应拒绝）' "${subdomain_failure_output}"
+grep -Fq '✗ SNI 过滤未生效' "${subdomain_failure_output}"
+grep -Fq '1 个错误 SNI 获得了 TLS 证书' "${subdomain_failure_output}"
+grep -Fq '允许项子域名 proxyforge-test.se-edge.itunes.apple.com 被放行' "${subdomain_failure_output}"
+
 mismatch_output="${test_tmp}/mismatch.log"
-run_probe 0 0 1 1 1 "${mismatch_output}"
+run_probe 0 0 1 1 1 0 "${mismatch_output}"
 [[ ${probe_status} -eq 2 ]]
 grep -Fq '△ 检测到 SNI 过滤行为' "${mismatch_output}"
 grep -Fq '填写的 SNI 不是当前允许回落域名' "${mismatch_output}"
 
 enhanced_output="${test_tmp}/enhanced.log"
-run_probe 0 1 0 0 1 "${enhanced_output}"
+run_probe 0 1 0 0 1 0 "${enhanced_output}"
 [[ ${probe_status} -eq 0 ]]
 grep -Fq '✓ 增强 SNI 过滤生效' "${enhanced_output}"
 grep -Fq '无 SNI 访问已被增强过滤拒绝' "${enhanced_output}"
 
 unreachable_output="${test_tmp}/unreachable.log"
-run_probe 0 0 0 0 0 "${unreachable_output}"
+run_probe 0 0 0 0 0 0 "${unreachable_output}"
 [[ ${probe_status} -eq 2 ]]
 grep -Fq '? 未获得任何 TLS 证书' "${unreachable_output}"
 grep -Fq '节点端口可能无法访问' "${unreachable_output}"

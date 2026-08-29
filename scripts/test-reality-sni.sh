@@ -12,6 +12,8 @@ usage() {
   --verbose         显示每次 openssl 的原始输出
   -h, --help        显示帮助
 
+脚本会自动把 proxyforge-test.<允许的SNI> 作为应拒绝项，检查子域名是否被误放行。
+
 示例：
   ./scripts/test-reality-sni.sh \
     --host 203.0.113.10 --port 443 --sni speed.cloudflare.com
@@ -81,6 +83,13 @@ done
 [[ ${probe_timeout} =~ ^[0-9]+$ ]] || die '--timeout 必须是整数秒'
 ((probe_timeout >= 1 && probe_timeout <= 60)) || die '--timeout 必须在 1 到 60 秒之间'
 
+allowed_subdomain="proxyforge-test.${allowed_sni}"
+probe_allowed_subdomain=true
+if ((${#allowed_subdomain} > 253)); then
+  probe_allowed_subdomain=false
+  printf '[跳过] 允许 SNI 已过长，无法构造合法子域名：%s\n' "${allowed_sni}" >&2
+fi
+
 command -v openssl >/dev/null 2>&1 || die '未找到 openssl'
 command -v timeout >/dev/null 2>&1 || die '未找到 timeout（需要 GNU coreutils）'
 command -v curl >/dev/null 2>&1 || die '未找到 curl'
@@ -133,12 +142,20 @@ for candidate in "${rejected_snis[@]}"; do
     printf '[跳过] 错误 SNI 与允许 SNI 相同：%s\n' "${candidate}" >&2
     continue
   fi
+  if ${probe_allowed_subdomain} && [[ ${candidate,,} == "${allowed_subdomain,,}" ]]; then
+    printf '[跳过] 该 SNI 已由允许项子域名探测覆盖：%s\n' "${candidate}" >&2
+    continue
+  fi
   filtered_rejected_snis+=("${candidate}")
 done
 if ((${#filtered_rejected_snis[@]} == 0)); then
   filtered_rejected_snis=('proxyforge-invalid.invalid')
 fi
-total_probes=$((5 + ${#filtered_rejected_snis[@]}))
+rejected_sni_probe_count=${#filtered_rejected_snis[@]}
+if ${probe_allowed_subdomain}; then
+  rejected_sni_probe_count=$((rejected_sni_probe_count + 1))
+fi
+total_probes=$((5 + rejected_sni_probe_count))
 
 case ${node_host} in
   \[*\]) endpoint="${node_host}:${node_port}" ;;
@@ -347,6 +364,17 @@ allowed_output=${probe_output}
 tls_connection_seen=${probe_connected}
 
 rejected_sni_certificate_count=0
+allowed_subdomain_has_certificate=false
+if ${probe_allowed_subdomain}; then
+  run_probe '允许项的子域名（应拒绝）' "${allowed_subdomain}"
+  allowed_subdomain_has_certificate=${probe_has_certificate}
+  if ${probe_has_certificate}; then
+    rejected_sni_certificate_count=$((rejected_sni_certificate_count + 1))
+  fi
+  if ${probe_connected}; then
+    tls_connection_seen=true
+  fi
+fi
 for rejected_sni in "${filtered_rejected_snis[@]}"; do
   run_probe '错误项' "${rejected_sni}"
   if ${probe_has_certificate}; then
@@ -407,6 +435,10 @@ if ((rejected_sni_certificate_count > 0)); then
   printf '%s│  ✗ SNI 过滤未生效%s                         %s│%s\n' "${color_red}" "${color_reset}" "${color_red}" "${color_reset}"
   printf '%s╰────────────────────────────────────────────╯%s\n' "${color_red}" "${color_reset}"
   printf '检测到 %d 个错误 SNI 获得了 TLS 证书。\n' "${rejected_sni_certificate_count}"
+  if ${allowed_subdomain_has_certificate}; then
+    printf '%s允许项子域名 %s 被放行，服务端规则可能使用了宽泛的域名匹配。%s\n' \
+      "${color_red}" "${allowed_subdomain}" "${color_reset}"
+  fi
   print_http_summary
   printf '%s请检查当前运行配置、路由规则和服务是否已重启。%s\n' "${color_yellow}" "${color_reset}"
   exit 1
@@ -439,7 +471,11 @@ else
   printf '%s│  ✓ 增强 SNI 过滤生效%s                      %s│%s\n' "${color_green}" "${color_reset}" "${color_green}" "${color_reset}"
 fi
 printf '%s╰────────────────────────────────────────────╯%s\n' "${color_green}" "${color_reset}"
-printf '允许 SNI 收到匹配证书，%d 个错误 SNI 均未获得证书。\n' "${#filtered_rejected_snis[@]}"
+if ${probe_allowed_subdomain}; then
+  printf '允许 SNI 收到匹配证书，%d 个应拒绝 SNI（含允许项子域名）均未获得证书。\n' "${rejected_sni_probe_count}"
+else
+  printf '允许 SNI 收到匹配证书，%d 个错误 SNI 均未获得证书；允许项子域名因域名长度限制未检测。\n' "${rejected_sni_probe_count}"
+fi
 if ${no_sni_has_certificate}; then
   printf '%s无 SNI 探测仍获得了证书，说明无 SNI 回落链路保持开放。%s\n' "${color_yellow}" "${color_reset}"
 else
