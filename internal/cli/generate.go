@@ -100,7 +100,7 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		} else {
 			fmt.Fprintln(c.out, "\nHTTP 回落域名限制")
 			c.printMenuChoice("1", "不限制 Host（默认）")
-			c.printMenuChoice("2", "Host 匹配 SNI（明文 HTTP 仅放行当前 SNI）")
+			c.printMenuChoice("2", "限制 Host（明文 HTTP 仅放行当前 SNI）")
 			defaultHTTPChoice := 1
 			if o.SingBoxFallbackHTTPDomain {
 				defaultHTTPChoice = 2
@@ -145,7 +145,7 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		} else {
 			fmt.Fprintln(c.out, "\nHTTP 回落域名限制")
 			c.printMenuChoice("1", "不限制 Host（默认）")
-			c.printMenuChoice("2", "Host 匹配 SNI（明文 HTTP 仅放行当前 SNI）")
+			c.printMenuChoice("2", "限制 Host（明文 HTTP 仅放行当前 SNI）")
 			defaultHTTPChoice := 1
 			if o.XrayFallbackHTTPDomain {
 				defaultHTTPChoice = 2

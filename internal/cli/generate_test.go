@@ -280,7 +280,7 @@ func TestFillGenerateEnablesXrayFallbackHTTPDomain(t *testing.T) {
 	if !opts.XrayFallbackGuard || !opts.XrayFallbackHTTPDomain || opts.XrayFallbackExactDomain {
 		t.Fatalf("generate options=%#v", opts)
 	}
-	if !strings.Contains(out.String(), "Host 匹配 SNI") {
+	if !strings.Contains(out.String(), "限制 Host") {
 		t.Fatalf("HTTP domain option missing: %q", out.String())
 	}
 }
@@ -351,7 +351,7 @@ func TestFillGenerateEnablesSingBoxFallbackHTTPDomain(t *testing.T) {
 	if !opts.SingBoxFallbackGuard || !opts.SingBoxFallbackHTTPDomain || opts.SingBoxFallbackExactDomain {
 		t.Fatalf("generate options=%#v", opts)
 	}
-	if !strings.Contains(out.String(), "Host 匹配 SNI") {
+	if !strings.Contains(out.String(), "限制 Host") {
 		t.Fatalf("HTTP domain option missing: %q", out.String())
 	}
 }
