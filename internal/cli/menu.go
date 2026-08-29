@@ -281,7 +281,7 @@ func (c *commandSet) printModifyConfigCard(ctx context.Context, core string) {
 	}
 	rows = append(rows, [2]string{"运行用户", serviceUser})
 	rows = append(rows,
-		[2]string{"日志级别", modifyConfigValue(status.HasConfig, status.LogLevel, func() string { return logLevelDisplay(core, status.LogLevel) })},
+		[2]string{"日志级别", modifyConfigValue(status.HasConfig, status.LogLevel, func() string { return logLevelCardDisplay(core, status.LogLevel) })},
 		[2]string{"服务状态", serviceStatusCardDisplay(status)},
 		[2]string{"DNS 设置", modifyConfigValue(status.HasConfig, status.DNS, func() string { return dnsCardDisplay(core, status.DNS, status.DNSServers) })},
 		[2]string{"出站 IP", modifyConfigValue(status.HasConfig, status.OutboundIP, func() string { return outboundIPCardDisplay(core, status.OutboundIP) })},
@@ -324,6 +324,14 @@ func modifyConfigValue(hasConfig bool, raw string, display func() string) string
 		return "未生成"
 	}
 	return display()
+}
+
+func logLevelCardDisplay(core, level string) string {
+	title, description := splitMenuChoiceLabel(logLevelDisplay(core, level))
+	if description == "" {
+		return title
+	}
+	return title + " -- " + description
 }
 
 func enabledCardDisplay(hasNode bool, enabled bool) string {

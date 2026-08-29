@@ -58,10 +58,13 @@ func TestServiceMenuOffersLogLevelSettings(t *testing.T) {
 	if !strings.Contains(out.String(), "7   日志级别") {
 		t.Fatalf("service menu output=%q", out.String())
 	}
-	if got := logLevelDisplay(domain.CoreSingBox, "info"); !strings.Contains(got, "ProxyForge 默认") {
+	if got := logLevelDisplay(domain.CoreSingBox, "info"); got != "info（常规运行信息）" {
 		t.Fatalf("sing-box info display=%q", got)
 	}
-	if got := logLevelDisplay(domain.CoreXray, "warning"); !strings.Contains(got, "ProxyForge 默认") {
+	if got := logLevelDisplay(domain.CoreXray, "warning"); got != "warning（警告及错误）" {
 		t.Fatalf("xray warning display=%q", got)
+	}
+	if got := logLevelCardDisplay(domain.CoreXray, "warning"); got != "warning -- 警告及错误" {
+		t.Fatalf("xray warning card display=%q", got)
 	}
 }

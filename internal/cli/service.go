@@ -179,9 +179,6 @@ func logLevelDisplay(core, level string) string {
 	if display == "" {
 		return level
 	}
-	if (core == domain.CoreSingBox && level == "info") || (core == domain.CoreXray && level == "warning") {
-		return display + "（ProxyForge 默认）"
-	}
 	if core == domain.CoreXray && level == "off" {
 		return "关闭访问日志和错误日志"
 	}
