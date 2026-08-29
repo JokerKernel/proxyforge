@@ -59,17 +59,23 @@ func TestServiceMenuOffersLogLevelSettings(t *testing.T) {
 	if strings.Contains(out.String(), "日志级别") {
 		t.Fatalf("service menu still offers log level: %q", out.String())
 	}
-	if got := logLevelDisplay(domain.CoreSingBox, "info"); got != "info（常规运行信息）" {
+	if got := logLevelDisplay(domain.CoreSingBox, "info"); got != "info（常规运行信息（官方默认））" {
 		t.Fatalf("sing-box info display=%q", got)
 	}
-	if got := logLevelDisplay(domain.CoreXray, "warning"); got != "warning（警告及错误）" {
+	if got := logLevelDisplay(domain.CoreXray, "warning"); got != "warning（警告及错误（官方默认））" {
 		t.Fatalf("xray warning display=%q", got)
 	}
-	if got := logLevelCardDisplay(domain.CoreXray, "warning"); got != "warning  -- 警告及错误" {
+	if got := logLevelCardDisplay(domain.CoreXray, "warning"); got != "warning  -- 警告及错误（官方默认）" {
 		t.Fatalf("xray warning card display=%q", got)
 	}
-	if got := logLevelCardDisplay(domain.CoreSingBox, "info"); got != "info  -- 常规运行信息" {
+	if got := logLevelCardDisplay(domain.CoreSingBox, "info"); got != "info  -- 常规运行信息（官方默认）" {
 		t.Fatalf("sing-box info card display=%q", got)
+	}
+	if got := logLevelDisplay(domain.CoreXray, "info"); got != "info（常规运行信息）" {
+		t.Fatalf("xray info display=%q", got)
+	}
+	if got := logLevelDisplay(domain.CoreSingBox, "warn"); got != "warn（警告及错误）" {
+		t.Fatalf("sing-box warn display=%q", got)
 	}
 	if got := logLevelDisplay(domain.CoreXray, "off"); got != "off（关闭访问日志和错误日志）" {
 		t.Fatalf("xray off display=%q", got)
@@ -85,7 +91,7 @@ func TestServiceMenuOffersLogLevelSettings(t *testing.T) {
 	}
 	var colored bytes.Buffer
 	fmt.Fprintln(system.NewColorWriter(&colored, true), "当前级别："+logLevelCardDisplay(domain.CoreSingBox, "info"))
-	if !strings.Contains(colored.String(), "当前级别：info") || !strings.Contains(colored.String(), "\x1b[90m-- 常规运行信息\x1b[0m") {
+	if !strings.Contains(colored.String(), "当前级别：info") || !strings.Contains(colored.String(), "\x1b[90m-- 常规运行信息（官方默认）\x1b[0m") {
 		t.Fatalf("current level description is not gray: %q", colored.String())
 	}
 }

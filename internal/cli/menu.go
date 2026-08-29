@@ -537,7 +537,7 @@ func splitMenuChoiceLabel(label string) (string, string) {
 	if !strings.HasSuffix(label, "）") {
 		return label, ""
 	}
-	start := strings.LastIndex(label, "（")
+	start := strings.Index(label, "（")
 	if start <= 0 {
 		return label, ""
 	}

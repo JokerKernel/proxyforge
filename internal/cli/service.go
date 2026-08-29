@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -159,16 +160,26 @@ func logLevelDisplay(core, level string) string {
 		"error":   "error（仅错误）",
 		"fatal":   "fatal（仅致命错误）",
 		"panic":   "panic（仅崩溃信息）",
-		"off": "off（关闭全部日志输出）",
+		"off":     "off（关闭全部日志输出）",
 	}
 	display := descriptions[level]
 	if display == "" {
 		return level
 	}
 	if core == domain.CoreXray && level == "off" {
-		return "off（关闭访问日志和错误日志）"
+		display = "off（关闭访问日志和错误日志）"
+	}
+	if level == officialDefaultLogLevel(core) {
+		return strings.TrimSuffix(display, "）") + "（官方默认））"
 	}
 	return display
+}
+
+func officialDefaultLogLevel(core string) string {
+	if core == domain.CoreXray {
+		return "warning"
+	}
+	return "info"
 }
 
 func (c *commandSet) followServiceLogs(ctx context.Context, core string) error {
