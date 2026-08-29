@@ -113,7 +113,13 @@ func xrayPatchFallbackDomain(root map[string]any, oldSNI, nextSNI string, restri
 		if len(matches) != 1 {
 			return fmt.Errorf("现有 Xray 配置中 %s 回落放行规则数量为 %d，无法安全定点重置", protocol, len(matches))
 		}
-		if err := xrayReplaceFallbackDomain(matches[0], oldSNI, nextSNI, protocol); err != nil {
+		replacement := xrayFullDomain(nextSNI)
+		if !restrictHTTP {
+			if _, hasProtocol := matches[0]["protocol"]; !hasProtocol {
+				replacement = nextSNI
+			}
+		}
+		if err := xrayReplaceFallbackDomain(matches[0], oldSNI, replacement, protocol); err != nil {
 			return err
 		}
 	}
@@ -132,7 +138,7 @@ func xrayFallbackDomainContains(value any, sni string) bool {
 	return xrayStringListContains(value, sni) || xrayStringListContains(value, xrayFullDomain(sni))
 }
 
-func xrayReplaceFallbackDomain(rule map[string]any, oldSNI, nextSNI, protocol string) error {
+func xrayReplaceFallbackDomain(rule map[string]any, oldSNI, replacement, protocol string) error {
 	values, ok := rule["domain"].([]any)
 	if !ok {
 		return fmt.Errorf("现有 Xray 配置中 %s 回落放行域名格式无效", protocol)
@@ -140,7 +146,7 @@ func xrayReplaceFallbackDomain(rule map[string]any, oldSNI, nextSNI, protocol st
 	matches := 0
 	for index, value := range values {
 		if value == oldSNI || value == xrayFullDomain(oldSNI) {
-			values[index] = xrayFullDomain(nextSNI)
+			values[index] = replacement
 			matches++
 		}
 	}

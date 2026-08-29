@@ -277,9 +277,13 @@ func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, t
 	dokodemo := inbounds[0].(map[string]any)
 	settings := dokodemo["settings"].(map[string]any)
 	sniffing := dokodemo["sniffing"].(map[string]any)
+	wantDestOverride := []any{"tls"}
+	if restrictHTTP {
+		wantDestOverride = []any{"http", "tls"}
+	}
 	if dokodemo["tag"] != fallbackGuardInboundTag || dokodemo["listen"] != "127.0.0.1" || dokodemo["protocol"] != "dokodemo-door" ||
 		settings["address"] != targetHost || settings["port"] != float64(targetPort) || settings["network"] != "tcp" ||
-		sniffing["routeOnly"] != true || !reflect.DeepEqual(sniffing["destOverride"], []any{"http", "tls"}) {
+		sniffing["routeOnly"] != true || !reflect.DeepEqual(sniffing["destOverride"], wantDestOverride) {
 		t.Fatalf("dokodemo inbound=%#v", dokodemo)
 	}
 	vless := inbounds[1].(map[string]any)
@@ -291,24 +295,29 @@ func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, t
 		t.Fatalf("vless inbound=%#v", vless)
 	}
 	rules := root["routing"].(map[string]any)["rules"].([]any)
+	serverName := root["inbounds"].([]any)[1].(map[string]any)["streamSettings"].(map[string]any)["realitySettings"].(map[string]any)["serverNames"].([]any)[0].(string)
+	if !restrictHTTP {
+		if len(rules) != 3 || rules[0].(map[string]any)["outboundTag"] != fallbackDirectOutboundTag ||
+			rules[1].(map[string]any)["outboundTag"] != "blocked-private" {
+			t.Fatalf("routing rules=%#v", rules)
+		}
+		allowRule := rules[0].(map[string]any)
+		if _, hasProtocol := allowRule["protocol"]; hasProtocol || !reflect.DeepEqual(allowRule["domain"], []any{serverName}) {
+			t.Fatalf("default fallback allow rule=%#v", allowRule)
+		}
+		return
+	}
 	if len(rules) != 4 || rules[0].(map[string]any)["outboundTag"] != fallbackDirectOutboundTag ||
 		rules[1].(map[string]any)["outboundTag"] != fallbackDirectOutboundTag || rules[2].(map[string]any)["outboundTag"] != "blocked-private" {
 		t.Fatalf("routing rules=%#v", rules)
 	}
 	tlsRule := rules[0].(map[string]any)
 	httpRule := rules[1].(map[string]any)
-	serverName := root["inbounds"].([]any)[1].(map[string]any)["streamSettings"].(map[string]any)["realitySettings"].(map[string]any)["serverNames"].([]any)[0].(string)
 	if !reflect.DeepEqual(tlsRule["protocol"], []any{"tls"}) ||
 		!reflect.DeepEqual(tlsRule["domain"], []any{"full:" + serverName}) ||
-		!reflect.DeepEqual(httpRule["protocol"], []any{"http"}) {
-		t.Fatalf("fallback protocol rules=%#v", rules[:2])
-	}
-	_, hasHTTPDomain := httpRule["domain"]
-	if hasHTTPDomain != restrictHTTP {
-		t.Fatalf("HTTP fallback domain present=%t want=%t rule=%#v", hasHTTPDomain, restrictHTTP, httpRule)
-	}
-	if restrictHTTP && !reflect.DeepEqual(httpRule["domain"], []any{"full:" + serverName}) {
-		t.Fatalf("HTTP fallback domain=%#v", httpRule["domain"])
+		!reflect.DeepEqual(httpRule["protocol"], []any{"http"}) ||
+		!reflect.DeepEqual(httpRule["domain"], []any{"full:" + serverName}) {
+		t.Fatalf("restricted fallback protocol rules=%#v", rules[:2])
 	}
 }
 
@@ -325,7 +334,37 @@ func TestFallbackGuardHTTPDomainDefaultsToUnrestricted(t *testing.T) {
 	assertFallbackGuardConfig(t, config, "example.com", 443, "127.0.0.1:61431", "uuid", "private", "short", false)
 }
 
-func TestPatchFallbackGuardMigratesLegacyTLSRuleToExactMatch(t *testing.T) {
+func TestPatchFallbackGuardPreservesOriginalDefaultRule(t *testing.T) {
+	p := New()
+	old := domain.NodeSpec{
+		InboundTag: "xray-one", SNI: "old.example.com", Target: "old.example.com:443", UserName: "one",
+		UUID: "uuid", PrivateKey: "private", ShortID: "short", XrayFallbackGuard: true, XrayFallbackPort: 61431,
+	}
+	config, err := p.RenderServer(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(config, &root); err != nil {
+		t.Fatal(err)
+	}
+	next := old
+	next.SNI = "new.example.com"
+	next.Target = "new.example.com:443"
+	patched, err := p.PatchServer(config, old, next, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(patched, &root); err != nil {
+		t.Fatal(err)
+	}
+	got := root["routing"].(map[string]any)["rules"].([]any)[0].(map[string]any)["domain"]
+	if !reflect.DeepEqual(got, []any{"new.example.com"}) {
+		t.Fatalf("default fallback domain=%#v", got)
+	}
+}
+
+func TestPatchFallbackGuardSupportsTransitionalUnrestrictedHTTPConfig(t *testing.T) {
 	p := New()
 	old := domain.NodeSpec{
 		InboundTag: "xray-one", SNI: "old.example.com", Target: "old.example.com:443", UserName: "one",
@@ -340,27 +379,34 @@ func TestPatchFallbackGuardMigratesLegacyTLSRuleToExactMatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	rules := root["routing"].(map[string]any)["rules"].([]any)
-	legacyTLS := rules[0].(map[string]any)
-	delete(legacyTLS, "protocol")
-	legacyTLS["domain"] = []any{old.SNI}
-	root["routing"].(map[string]any)["rules"] = append(rules[:1], rules[2:]...)
-	legacy, err := json.Marshal(root)
+	rules[0] = map[string]any{
+		"inboundTag": []any{fallbackGuardInboundTag}, "protocol": []any{"tls"},
+		"domain": []any{xrayFullDomain(old.SNI)}, "outboundTag": fallbackDirectOutboundTag,
+	}
+	httpRule := map[string]any{
+		"inboundTag": []any{fallbackGuardInboundTag}, "protocol": []any{"http"}, "outboundTag": fallbackDirectOutboundTag,
+	}
+	root["routing"].(map[string]any)["rules"] = append(rules[:1], append([]any{httpRule}, rules[1:]...)...)
+	transitional, err := json.Marshal(root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	next := old
 	next.SNI = "new.example.com"
 	next.Target = "new.example.com:443"
-	patched, err := p.PatchServer(legacy, old, next, true)
+	patched, err := p.PatchServer(transitional, old, next, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := json.Unmarshal(patched, &root); err != nil {
 		t.Fatal(err)
 	}
-	got := root["routing"].(map[string]any)["rules"].([]any)[0].(map[string]any)["domain"]
-	if !reflect.DeepEqual(got, []any{"full:new.example.com"}) {
-		t.Fatalf("legacy fallback domain=%#v", got)
+	gotRules := root["routing"].(map[string]any)["rules"].([]any)
+	if got := gotRules[0].(map[string]any)["domain"]; !reflect.DeepEqual(got, []any{"full:new.example.com"}) {
+		t.Fatalf("transitional TLS fallback domain=%#v", got)
+	}
+	if _, hasDomain := gotRules[1].(map[string]any)["domain"]; hasDomain {
+		t.Fatalf("transitional HTTP rule unexpectedly gained domain=%#v", gotRules[1])
 	}
 }
 
