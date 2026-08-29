@@ -156,14 +156,23 @@ if ${probe_allowed_subdomain}; then
   rejected_sni_probe_count=$((rejected_sni_probe_count + 1))
 fi
 
+certificate_http_host_count=2
 declare -a http_host_candidates=(
   "${allowed_sni}"
   "${filtered_rejected_snis[0]}"
   'example.com'
   'www.google.com'
 )
+declare -a http_host_candidate_sources=(
+  '允许 SNI'
+  '错误 SNI'
+  '内置域名'
+  '内置域名'
+)
 declare -a http_host_probes=()
-for candidate in "${http_host_candidates[@]}"; do
+declare -a http_host_sources=()
+for http_host_candidate_index in "${!http_host_candidates[@]}"; do
+  candidate=${http_host_candidates[http_host_candidate_index]}
   duplicate=false
   for http_host in "${http_host_probes[@]}"; do
     if [[ ${candidate,,} == "${http_host,,}" ]]; then
@@ -173,10 +182,10 @@ for candidate in "${http_host_candidates[@]}"; do
   done
   if ! ${duplicate}; then
     http_host_probes+=("${candidate}")
+    http_host_sources+=("${http_host_candidate_sources[http_host_candidate_index]}")
   fi
 done
-
-total_probes=$((3 + rejected_sni_probe_count + ${#http_host_probes[@]}))
+total_probes=$((3 + rejected_sni_probe_count + ${#http_host_probes[@]} + certificate_http_host_count))
 
 case ${node_host} in
   \[*\]) endpoint="${node_host}:${node_port}" ;;
@@ -193,6 +202,7 @@ probe_received_tls=false
 probe_connected=false
 probe_certificate_matches_sni=false
 probe_certificate_info=''
+declare -a probe_certificate_dns_names=()
 probe_exit=0
 probe_output=''
 
@@ -224,6 +234,7 @@ run_probe() {
   probe_connected=false
   probe_certificate_matches_sni=false
   probe_certificate_info=''
+  probe_certificate_dns_names=()
   if grep -Fq -- '-----BEGIN CERTIFICATE-----' "${output_file}"; then
     probe_has_certificate=true
   fi
@@ -232,6 +243,9 @@ run_probe() {
     awk '/-----BEGIN CERTIFICATE-----/{capture=1} capture{print} /-----END CERTIFICATE-----/{exit}' \
       "${output_file}" >"${certificate_file}"
     probe_certificate_info=$(openssl x509 -in "${certificate_file}" -noout -subject -issuer -ext subjectAltName 2>/dev/null || true)
+    while IFS= read -r certificate_dns_name; do
+      [[ -n ${certificate_dns_name} ]] && probe_certificate_dns_names+=("${certificate_dns_name}")
+    done < <(grep -oE 'DNS:[^,[:space:]]+' <<<"${probe_certificate_info}" | sed 's/^DNS://')
     if [[ -n ${server_name} ]] && openssl x509 -in "${certificate_file}" -noout -checkhost "${server_name}" >/dev/null 2>&1; then
       probe_certificate_matches_sni=true
     fi
@@ -352,12 +366,14 @@ print_http_result() {
 
 run_http_host_probe() {
   local host=$1
+  local source=$2
   local output_file error_file http_code http_exit http_url="http://${endpoint}/"
   probe_number=$((probe_number + 1))
   output_file="${probe_tmp}/probe-${probe_number}-http-host.log"
   error_file="${output_file}.err"
   printf '\n%s[%s/%s]%s %sHTTP Host 伪装测试%s\n' "${color_blue}" "${probe_number}" "${total_probes}" "${color_reset}" "${color_bold}" "${color_reset}"
   printf '    Host: %s%s%s\n' "${color_cyan}" "${host}" "${color_reset}"
+  printf '    来源: %s\n' "${source}"
   set +e
   curl --noproxy '*' --connect-timeout "${probe_timeout}" --max-time "${probe_timeout}" \
     --silent --show-error --output /dev/null --write-out '%{http_code}' \
@@ -389,6 +405,47 @@ print_log_hint() {
   printf '确认错误请求命中 blackhole/blocked-private 或 reject，而不是连接真实 target。\n'
 }
 
+append_http_host_probe() {
+  local candidate=$1
+  local source=$2
+  local existing_host
+
+  [[ -n ${candidate} && ${candidate} != *'*'* ]] || return 1
+  for existing_host in "${http_host_probes[@]}"; do
+    [[ ${candidate,,} != "${existing_host,,}" ]] || return 1
+  done
+  http_host_probes+=("${candidate}")
+  http_host_sources+=("${source}")
+}
+
+select_additional_http_hosts() {
+  local certificate_dns_name fallback_host swap_dns_name
+  local dns_name_index random_index
+  local selected_count=0
+  local -a shuffled_dns_names=("${allowed_certificate_dns_names[@]}")
+
+  for ((dns_name_index = ${#shuffled_dns_names[@]} - 1; dns_name_index > 0; dns_name_index--)); do
+    random_index=$((RANDOM % (dns_name_index + 1)))
+    swap_dns_name=${shuffled_dns_names[dns_name_index]}
+    shuffled_dns_names[dns_name_index]=${shuffled_dns_names[random_index]}
+    shuffled_dns_names[random_index]=${swap_dns_name}
+  done
+
+  for certificate_dns_name in "${shuffled_dns_names[@]}"; do
+    if append_http_host_probe "${certificate_dns_name}" '允许项证书 SAN'; then
+      selected_count=$((selected_count + 1))
+      ((selected_count >= certificate_http_host_count)) && break
+    fi
+  done
+
+  for fallback_host in 'www.microsoft.com' 'github.com' 'www.wikipedia.org' 'www.amazon.com'; do
+    ((selected_count >= certificate_http_host_count)) && break
+    if append_http_host_probe "${fallback_host}" '证书 SAN 不足时的补充域名'; then
+      selected_count=$((selected_count + 1))
+    fi
+  done
+}
+
 print_header
 printf '%s节点地址%s  %s%s%s\n' "${color_dim}" "${color_reset}" "${color_bold}" "${endpoint}" "${color_reset}"
 printf '%s允许 SNI%s  %s%s%s\n' "${color_dim}" "${color_reset}" "${color_bold}" "${allowed_sni}" "${color_reset}"
@@ -398,7 +455,9 @@ run_probe '允许项' "${allowed_sni}"
 allowed_has_certificate=${probe_has_certificate}
 allowed_certificate_matches_sni=${probe_certificate_matches_sni}
 allowed_output=${probe_output}
+allowed_certificate_dns_names=("${probe_certificate_dns_names[@]}")
 tls_connection_seen=${probe_connected}
+select_additional_http_hosts
 
 rejected_sni_certificate_count=0
 allowed_subdomain_has_certificate=false
@@ -435,8 +494,8 @@ if ${http_received}; then
 fi
 
 # 测试 HTTP Host 头：HTTP 没有 TLS SNI，只能通过 Host 头模拟域名。
-for http_host in "${http_host_probes[@]}"; do
-  if run_http_host_probe "${http_host}"; then
+for http_host_index in "${!http_host_probes[@]}"; do
+  if run_http_host_probe "${http_host_probes[http_host_index]}" "${http_host_sources[http_host_index]}"; then
     http_response_count=$((http_response_count + 1))
   fi
 done

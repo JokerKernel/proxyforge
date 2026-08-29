@@ -47,7 +47,7 @@ if [[ ${1:-} == x509 ]]; then
     'subject=CN=mock.example' \
     'issuer=CN=Mock CA' \
     'X509v3 Subject Alternative Name:' \
-    '    DNS:se-edge.itunes.apple.com'
+    '    DNS:se-edge.itunes.apple.com, DNS:assets.itunes.apple.com, DNS:init.itunes.apple.com, DNS:store.itunes.apple.com'
   exit 0
 fi
 
@@ -100,7 +100,15 @@ grep -Fq '无 SNI 探测仍获得了证书' "${success_output}"
 grep -Fq '状态码=400（错误的请求）' "${success_output}"
 grep -Fq 'Host: example.com' "${success_output}"
 grep -Fq 'Host: www.google.com' "${success_output}"
-grep -Fq 'HTTP 附加探测中有 5 个请求收到了响应' "${success_output}"
+selected_certificate_host_count=0
+for certificate_host in assets.itunes.apple.com init.itunes.apple.com store.itunes.apple.com; do
+  if grep -Fq "Host: ${certificate_host}" "${success_output}"; then
+    selected_certificate_host_count=$((selected_certificate_host_count + 1))
+  fi
+done
+[[ ${selected_certificate_host_count} -eq 2 ]]
+[[ $(grep -Fc '来源: 允许项证书 SAN' "${success_output}") -eq 2 ]]
+grep -Fq 'HTTP 附加探测中有 7 个请求收到了响应' "${success_output}"
 
 failure_output="${test_tmp}/failure.log"
 run_probe 1 1 1 1 0 0 "${failure_output}"
