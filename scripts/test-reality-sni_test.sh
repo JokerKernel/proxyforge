@@ -24,7 +24,7 @@ if [[ ${1:-} == s_client ]]; then
 
   if [[ (-z ${server_name} && ${MOCK_NO_SNI_RESPONDS:-1} == 1) ||
         (${server_name} == se-edge.itunes.apple.com && ${MOCK_ALLOWED_SNI_RESPONDS:-1} == 1) ||
-        (${server_name} == proxyforge-test.se-edge.itunes.apple.com && ${MOCK_SUBDOMAIN_SNI_RESPONDS:-0} == 1) ||
+        (${server_name} == www.se-edge.itunes.apple.com && ${MOCK_SUBDOMAIN_SNI_RESPONDS:-0} == 1) ||
         (${MOCK_BAD_SNI_RESPONDS:-0} == 1 && ${server_name} == www.cloudflare.com) ]]; then
     printf '%s\n' '-----BEGIN CERTIFICATE-----' 'mock' '-----END CERTIFICATE-----'
     exit 0
@@ -39,7 +39,7 @@ if [[ ${1:-} == x509 ]]; then
   for ((index = 1; index <= $#; index++)); do
     if [[ ${!index} == -checkhost ]]; then
       host_index=$((index + 1))
-      [[ ${!host_index} == se-edge.itunes.apple.com || ${!host_index} == proxyforge-test.se-edge.itunes.apple.com ]]
+      [[ ${!host_index} == se-edge.itunes.apple.com || ${!host_index} == www.se-edge.itunes.apple.com ]]
       exit
     fi
   done
@@ -122,7 +122,7 @@ run_probe 0 1 1 1 0 1 "${subdomain_failure_output}"
 grep -Fq '允许项的子域名（应拒绝）' "${subdomain_failure_output}"
 grep -Fq '✗ SNI 过滤未生效' "${subdomain_failure_output}"
 grep -Fq '1 个错误 SNI 获得了 TLS 证书' "${subdomain_failure_output}"
-grep -Fq '允许项子域名 proxyforge-test.se-edge.itunes.apple.com 被放行' "${subdomain_failure_output}"
+grep -Fq '允许项子域名 www.se-edge.itunes.apple.com 被放行' "${subdomain_failure_output}"
 
 mismatch_output="${test_tmp}/mismatch.log"
 run_probe 0 0 1 1 1 0 "${mismatch_output}"

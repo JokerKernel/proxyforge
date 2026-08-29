@@ -41,7 +41,7 @@ chmod +x ~/proxyforge-test-reality-sni.sh
 默认执行十二项探测（域名重复时会自动去重）：
 
 1. 使用允许 SNI 建立 TLS 连接，并检查证书 SAN 是否匹配。
-2. 使用 `proxyforge-test.<允许 SNI>` 检查允许项的子域名是否也被错误放行。
+2. 使用常见的 `www.<允许 SNI>` 检查允许项的子域名是否也被错误放行。
 3. 使用 `www.cloudflare.com` 作为错误 SNI。
 4. 使用 `example.com` 作为错误 SNI。
 5. 不发送 SNI 建立 TLS 连接。

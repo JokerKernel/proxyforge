@@ -12,7 +12,7 @@ usage() {
   --verbose         显示每次 openssl 的原始输出
   -h, --help        显示帮助
 
-脚本会自动把 proxyforge-test.<允许的SNI> 作为应拒绝项，检查子域名是否被误放行。
+脚本会自动把 www.<允许的SNI> 作为应拒绝项，检查子域名是否被误放行。
 
 示例：
   ./scripts/test-reality-sni.sh \
@@ -83,7 +83,7 @@ done
 [[ ${probe_timeout} =~ ^[0-9]+$ ]] || die '--timeout 必须是整数秒'
 ((probe_timeout >= 1 && probe_timeout <= 60)) || die '--timeout 必须在 1 到 60 秒之间'
 
-allowed_subdomain="proxyforge-test.${allowed_sni}"
+allowed_subdomain="www.${allowed_sni}"
 probe_allowed_subdomain=true
 if ((${#allowed_subdomain} > 253)); then
   probe_allowed_subdomain=false
