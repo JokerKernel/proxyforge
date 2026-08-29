@@ -155,7 +155,28 @@ rejected_sni_probe_count=${#filtered_rejected_snis[@]}
 if ${probe_allowed_subdomain}; then
   rejected_sni_probe_count=$((rejected_sni_probe_count + 1))
 fi
-total_probes=$((5 + rejected_sni_probe_count))
+
+declare -a http_host_candidates=(
+  "${allowed_sni}"
+  "${filtered_rejected_snis[0]}"
+  'example.com'
+  'www.google.com'
+)
+declare -a http_host_probes=()
+for candidate in "${http_host_candidates[@]}"; do
+  duplicate=false
+  for http_host in "${http_host_probes[@]}"; do
+    if [[ ${candidate,,} == "${http_host,,}" ]]; then
+      duplicate=true
+      break
+    fi
+  done
+  if ! ${duplicate}; then
+    http_host_probes+=("${candidate}")
+  fi
+done
+
+total_probes=$((3 + rejected_sni_probe_count + ${#http_host_probes[@]}))
 
 case ${node_host} in
   \[*\]) endpoint="${node_host}:${node_port}" ;;
@@ -251,21 +272,36 @@ run_probe() {
   fi
 }
 
+print_http_failure() {
+  local http_exit=$1
+  local error_file=$2
+  local error_line
+
+  printf '    %s● 未收到 HTTP 响应%s curl退出码=%d\n' "${color_red}" "${color_reset}" "${http_exit}"
+  if [[ -s ${error_file} ]]; then
+    while IFS= read -r error_line; do
+      printf '    具体错误：%s\n' "${error_line}"
+    done < <(sed -n '1,5p' "${error_file}")
+  fi
+}
+
 run_http_probe() {
   local output_file
+  local error_file
   local http_code
   local http_exit
   local http_url="http://${endpoint}/"
 
   probe_number=$((probe_number + 1))
   output_file="${probe_tmp}/probe-${probe_number}-http.log"
+  error_file="${output_file}.err"
   printf '\n%s[%s/%s]%s %sHTTP 明文访问%s\n' "${color_blue}" "${probe_number}" "${total_probes}" "${color_reset}" "${color_bold}" "${color_reset}"
   printf '    URL: %s%s%s\n' "${color_cyan}" "${http_url}" "${color_reset}"
 
   set +e
   curl --noproxy '*' --connect-timeout "${probe_timeout}" --max-time "${probe_timeout}" \
     --silent --show-error --output /dev/null --write-out '%{http_code}' \
-    "${http_url}" >"${output_file}" 2>&1
+    "${http_url}" >"${output_file}" 2>"${error_file}"
   http_exit=$?
   set -e
   http_code=$(sed -n 's/.*\([1-5][0-9][0-9]\)$/\1/p' "${output_file}" | tail -n 1)
@@ -277,11 +313,11 @@ run_http_probe() {
   if ${http_received}; then
     print_http_result "${http_code}"
   else
-    printf '    %s● 未收到 HTTP 响应%s curl退出码=%d\n' "${color_red}" "${color_reset}" "${http_exit}"
+    print_http_failure "${http_exit}" "${error_file}"
   fi
   if ${verbose}; then
     printf '%s\n' '----- HTTP 原始输出 -----'
-    sed -n '1,80p' "${output_file}"
+    sed -n '1,80p' "${output_file}" "${error_file}"
     printf '%s\n' '-------------------------'
   fi
 }
@@ -316,15 +352,16 @@ print_http_result() {
 
 run_http_host_probe() {
   local host=$1
-  local output_file http_code http_exit http_url="http://${endpoint}/"
+  local output_file error_file http_code http_exit http_url="http://${endpoint}/"
   probe_number=$((probe_number + 1))
   output_file="${probe_tmp}/probe-${probe_number}-http-host.log"
+  error_file="${output_file}.err"
   printf '\n%s[%s/%s]%s %sHTTP Host 伪装测试%s\n' "${color_blue}" "${probe_number}" "${total_probes}" "${color_reset}" "${color_bold}" "${color_reset}"
   printf '    Host: %s%s%s\n' "${color_cyan}" "${host}" "${color_reset}"
   set +e
   curl --noproxy '*' --connect-timeout "${probe_timeout}" --max-time "${probe_timeout}" \
     --silent --show-error --output /dev/null --write-out '%{http_code}' \
-    -H "Host: ${host}" "${http_url}" >"${output_file}" 2>&1
+    -H "Host: ${host}" "${http_url}" >"${output_file}" 2>"${error_file}"
   http_exit=$?
   set -e
   http_code=$(sed -n 's/.*\([1-5][0-9][0-9]\)$/\1/p' "${output_file}" | tail -n 1)
@@ -332,7 +369,7 @@ run_http_host_probe() {
     print_http_result "${http_code}"
     return 0
   fi
-  printf '    %s● 未收到 HTTP 响应%s curl退出码=%d\n' "${color_red}" "${color_reset}" "${http_exit}"
+  print_http_failure "${http_exit}" "${error_file}"
   return 1
 }
 
@@ -398,12 +435,11 @@ if ${http_received}; then
 fi
 
 # 测试 HTTP Host 头：HTTP 没有 TLS SNI，只能通过 Host 头模拟域名。
-if run_http_host_probe "${allowed_sni}"; then
-  http_response_count=$((http_response_count + 1))
-fi
-if run_http_host_probe "${filtered_rejected_snis[0]}"; then
-  http_response_count=$((http_response_count + 1))
-fi
+for http_host in "${http_host_probes[@]}"; do
+  if run_http_host_probe "${http_host}"; then
+    http_response_count=$((http_response_count + 1))
+  fi
+done
 
 tls_certificate_count=${rejected_sni_certificate_count}
 if ${allowed_has_certificate}; then

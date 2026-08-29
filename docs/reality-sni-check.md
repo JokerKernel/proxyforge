@@ -38,7 +38,7 @@ chmod +x ~/proxyforge-test-reality-sni.sh
 
 ## 探测内容
 
-默认执行八项探测：
+默认执行十项探测（域名重复时会自动去重）：
 
 1. 使用允许 SNI 建立 TLS 连接，并检查证书 SAN 是否匹配。
 2. 使用 `proxyforge-test.<允许 SNI>` 检查允许项的子域名是否也被错误放行。
@@ -48,8 +48,10 @@ chmod +x ~/proxyforge-test-reality-sni.sh
 6. 向 REALITY 端口发送普通 HTTP 请求。
 7. 使用允许域名作为 HTTP `Host` 请求头。
 8. 使用错误域名作为 HTTP `Host` 请求头。
+9. 使用 `example.com` 作为 HTTP `Host` 请求头。
+10. 使用 `www.google.com` 作为 HTTP `Host` 请求头。
 
-前五项决定 TLS SNI 结论，后三项仅报告明文 HTTP 暴露面，不改变 TLS SNI 判定。允许项的子域名会按错误 SNI 处理：若它获得证书，脚本返回过滤未生效。
+前五项决定 TLS SNI 结论，后五项仅报告明文 HTTP 暴露面，不改变 TLS SNI 判定。允许项的子域名会按错误 SNI 处理：若它获得证书，脚本返回过滤未生效。
 
 ## TLS 判定
 
@@ -74,6 +76,8 @@ HTTP 请求没有 TLS SNI，因此 HTTP 探测只作为附加信息：
 - `400（错误的请求）`：端口收到了明文 HTTP，但认为请求或协议不正确。
 - 其他 `4xx（客户端请求错误）`：服务端拒绝或无法处理请求。
 - `5xx（服务端错误）`：请求到达服务端，但服务端处理失败。
+
+未收到 HTTP 响应时，脚本会同时显示 curl 退出码和原始错误信息，例如 `curl: (52) Empty reply from server`。
 
 例如 REALITY/TLS 端口返回 `400（错误的请求）`，通常说明端口可以连接，但明文 HTTP 不符合它预期的 TLS 协议。这不代表代理认证成功，也不代表错误 SNI 被放行。
 

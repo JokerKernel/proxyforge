@@ -56,7 +56,10 @@ EOF
 
 cat >"${test_tmp}/bin/curl" <<'EOF'
 #!/usr/bin/env bash
-[[ ${MOCK_HTTP_RESPONDS:-1} == 1 ]] || exit 7
+if [[ ${MOCK_HTTP_RESPONDS:-1} != 1 ]]; then
+  printf '%s\n' 'curl: (52) Empty reply from server' >&2
+  exit 52
+fi
 printf '400'
 EOF
 chmod +x "${test_tmp}/bin/openssl" "${test_tmp}/bin/curl"
@@ -95,7 +98,9 @@ grep -Fq '2 个应拒绝 SNI（含允许项子域名）均未获得证书' "${su
 grep -Fq '收到 TLS 数据但未获得证书' "${success_output}"
 grep -Fq '无 SNI 探测仍获得了证书' "${success_output}"
 grep -Fq '状态码=400（错误的请求）' "${success_output}"
-grep -Fq 'HTTP 附加探测中有 3 个请求收到了响应' "${success_output}"
+grep -Fq 'Host: example.com' "${success_output}"
+grep -Fq 'Host: www.google.com' "${success_output}"
+grep -Fq 'HTTP 附加探测中有 5 个请求收到了响应' "${success_output}"
 
 failure_output="${test_tmp}/failure.log"
 run_probe 1 1 1 1 0 0 "${failure_output}"
@@ -122,6 +127,8 @@ run_probe 0 1 0 0 1 0 "${enhanced_output}"
 [[ ${probe_status} -eq 0 ]]
 grep -Fq '✓ 增强 SNI 过滤生效' "${enhanced_output}"
 grep -Fq '无 SNI 访问已被增强过滤拒绝' "${enhanced_output}"
+grep -Fq 'curl退出码=52' "${enhanced_output}"
+grep -Fq '具体错误：curl: (52) Empty reply from server' "${enhanced_output}"
 
 unreachable_output="${test_tmp}/unreachable.log"
 run_probe 0 0 0 0 0 0 "${unreachable_output}"
