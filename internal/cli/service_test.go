@@ -56,8 +56,8 @@ func TestServiceMenuOffersLogLevelSettings(t *testing.T) {
 	if err := c.serviceMenu(context.Background(), domain.CoreSingBox); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "7   日志级别") {
-		t.Fatalf("service menu output=%q", out.String())
+	if strings.Contains(out.String(), "日志级别") {
+		t.Fatalf("service menu still offers log level: %q", out.String())
 	}
 	if got := logLevelDisplay(domain.CoreSingBox, "info"); got != "info（常规运行信息）" {
 		t.Fatalf("sing-box info display=%q", got)

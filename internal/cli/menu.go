@@ -105,11 +105,12 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		c.printMenuChoice("2", "修改配置（DNS、出站 IP、回落 IP、重置节点与 SNI 检测）")
 		c.printMenuChoice("3", "查看配置")
 		c.printMenuChoice("4", "编辑配置（vim / nano / vi）")
-		c.printMenuChoice("5", "服务管理（启动、停止、状态与日志）")
-		maxChoice := 5
+		c.printMenuChoice("5", "日志级别")
+		c.printMenuChoice("6", "服务管理（启动、停止、状态与日志）")
+		maxChoice := 6
 		if core == domain.CoreXray {
-			c.printMenuChoice("6", "专用运行用户（修复 systemd 的 nobody 安全警告）")
-			maxChoice = 6
+			c.printMenuChoice("7", "专用运行用户（修复 systemd 的 nobody 安全警告）")
+			maxChoice = 7
 		}
 		c.printMenuChoice("0/q", "返回")
 		choice, err := c.chooseNumber("请选择", 0, maxChoice, 0)
@@ -164,9 +165,14 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		case 4:
 			err = c.editServerConfig(ctx, core)
 		case 5:
+			err = c.logLevelMenu(ctx, core)
+			if errors.Is(err, errReturnToMenu) {
+				continue
+			}
+		case 6:
 			shouldPause = false
 			err = c.serviceMenu(ctx, core)
-		case 6:
+		case 7:
 			err = c.dedicatedXrayServiceUser(ctx)
 			if errors.Is(err, errReturnToMenu) {
 				continue

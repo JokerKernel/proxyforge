@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -43,9 +42,8 @@ func (c *commandSet) serviceMenu(ctx context.Context, core string) error {
 		c.printMenuChoice("4", "状态")
 		c.printMenuChoice("5", "最近日志")
 		c.printMenuChoice("6", "实时日志（Ctrl+C 返回）")
-		c.printMenuChoice("7", "日志级别")
 		c.printMenuChoice("0/q", "返回")
-		choice, chooseErr := c.chooseNumber("请选择", 0, 7, 4)
+		choice, chooseErr := c.chooseNumber("请选择", 0, 6, 4)
 		if chooseErr != nil {
 			return chooseErr
 		}
@@ -58,18 +56,6 @@ func (c *commandSet) serviceMenu(ctx context.Context, core string) error {
 				c.printMenuError(followErr)
 				c.pauseForMenu()
 			}
-			continue
-		}
-		if choice == 7 {
-			c.clearScreen()
-			logErr := c.logLevelMenu(ctx, core)
-			if errors.Is(logErr, errReturnToMenu) {
-				continue
-			}
-			if logErr != nil {
-				c.printMenuError(logErr)
-			}
-			c.pauseForMenu()
 			continue
 		}
 		b, actionErr := c.app.Service(ctx, core, actions[choice])
@@ -92,7 +78,7 @@ func (c *commandSet) logLevelMenu(ctx context.Context, core string) error {
 		return err
 	}
 	c.clearScreen()
-	c.printPageHeader(core, "服务端配置", "服务管理", "日志级别")
+	c.printPageHeader(core, "服务端配置", "日志级别")
 	fmt.Fprintf(c.out, "当前级别：%s\n\n", logLevelCardDisplay(core, settings.Current))
 	defaultChoice := 1
 	for index, level := range settings.Levels {

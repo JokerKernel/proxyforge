@@ -193,14 +193,14 @@ func TestServiceManagementIsNestedUnderServerConfig(t *testing.T) {
 
 	var serverOut bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("5\n0\n0\n")),
+		reader: bufio.NewReader(strings.NewReader("6\n0\n0\n")),
 		out:    &serverOut,
 	}
 	if err := c.serverConfigMenu(context.Background(), domain.CoreXray); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"5   服务管理", "6   专用运行用户",
+		"5   日志级别", "6   服务管理", "7   专用运行用户",
 		"ProxyForge  ›  xray  ›  服务端配置  ›  服务管理",
 	} {
 		if !strings.Contains(serverOut.String(), want) {

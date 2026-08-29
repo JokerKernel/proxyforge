@@ -117,6 +117,8 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 真实终端中的菜单会自动清屏并使用固定语义颜色。管道和文件重定向会自动关闭颜色；也可设置 `NO_COLOR=1`、`PROXYFORGE_COLOR=never` 或 `PROXYFORGE_COLOR=always`。
 
-“服务端配置 → 服务管理”菜单可以启动、停止、重启服务，查看状态或持续查看 systemd journal；按 `Ctrl+C` 只停止实时日志并返回菜单。日志级别修改同样会先备份、校验并在需要时重启服务。sing-box 支持 `trace/debug/info/warn/error/fatal/panic/关闭`，Xray 支持 `debug/info/warning/error/关闭`。
+“服务端配置 → 日志级别”可直接修改内核日志级别，会先备份、校验并在需要时重启服务。sing-box 支持 `trace/debug/info/warn/error/fatal/panic/关闭`，Xray 支持 `debug/info/warning/error/关闭`。
+
+“服务端配置 → 服务管理”菜单可以启动、停止、重启服务，查看状态或持续查看 systemd journal；按 `Ctrl+C` 只停止实时日志并返回菜单。
 
 输出前缀用于区分 ProxyForge 流程、本机命令、官方脚本和服务日志。步骤与命令日志写入 stderr，客户端配置写入 stdout 或 `--output` 文件；密钥生成结果不会写入命令日志。
