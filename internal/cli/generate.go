@@ -112,13 +112,13 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 			o.SingBoxFallbackHTTPDomain = choice == 2
 
 			fmt.Fprintln(c.out, "\n严格匹配回落域名")
-			c.printMenuChoice("1", "不使用 domain 完整匹配（默认）")
-			c.printMenuChoice("2", "使用 domain 完整匹配（严格匹配）")
+			c.printMenuChoice("1", "允许子域名（默认）")
+			c.printMenuChoice("2", "严格匹配")
 			defaultDomainChoice := 1
 			if o.SingBoxFallbackExactDomain {
 				defaultDomainChoice = 2
 			}
-			choice, err = c.chooseNumberCancelable("是否使用严格域名匹配", 1, 2, defaultDomainChoice)
+			choice, err = c.chooseNumberCancelable("请选择回落域名匹配", 1, 2, defaultDomainChoice)
 			if err != nil {
 				return err
 			}
@@ -157,13 +157,13 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 			o.XrayFallbackHTTPDomain = choice == 2
 
 			fmt.Fprintln(c.out, "\n严格匹配回落域名")
-			c.printMenuChoice("1", "不使用 full:<SNI>（默认）")
-			c.printMenuChoice("2", "使用 full:<SNI>（严格匹配）")
+			c.printMenuChoice("1", "允许子域名（默认）")
+			c.printMenuChoice("2", "严格匹配")
 			defaultDomainChoice := 1
 			if o.XrayFallbackExactDomain {
 				defaultDomainChoice = 2
 			}
-			choice, err = c.chooseNumberCancelable("是否使用严格域名匹配", 1, 2, defaultDomainChoice)
+			choice, err = c.chooseNumberCancelable("请选择回落域名匹配", 1, 2, defaultDomainChoice)
 			if err != nil {
 				return err
 			}
@@ -471,9 +471,9 @@ func printGenerateSuccess(w io.Writer, n domain.NodeSpec) {
 			if n.SingBoxFallbackHTTPDomain {
 				httpPolicy = "HTTP Host 仅限 SNI"
 			}
-			domainPolicy := "不使用 domain 完整匹配"
+			domainPolicy := "允许子域名"
 			if n.SingBoxFallbackExactDomain {
-				domainPolicy = "使用 domain 完整匹配"
+				domainPolicy = "严格匹配"
 			}
 			mode = fmt.Sprintf("回落防偷跑配置（direct 127.0.0.1:%d；%s；%s）", n.SingBoxFallbackPort, httpPolicy, domainPolicy)
 		} else if n.SimplifiedConfig {
@@ -487,9 +487,9 @@ func printGenerateSuccess(w io.Writer, n domain.NodeSpec) {
 			if n.XrayFallbackHTTPDomain {
 				httpPolicy = "HTTP Host 仅限 SNI"
 			}
-			domainPolicy := "不使用 full:<SNI>"
+			domainPolicy := "允许子域名"
 			if n.XrayFallbackExactDomain {
-				domainPolicy = "使用 full:<SNI> 严格匹配"
+				domainPolicy = "严格匹配"
 			}
 			mode = fmt.Sprintf("回落防偷跑配置（dokodemo-door 127.0.0.1:%d；%s；%s）", n.XrayFallbackPort, httpPolicy, domainPolicy)
 		}
