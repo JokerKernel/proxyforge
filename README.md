@@ -67,13 +67,10 @@ sudo proxyforge service sing-box status
 没有项目源码时可单独下载黑盒检测脚本：
 
 ```bash
-wget --https-only \
-  -O ~/proxyforge-test-reality-sni.sh \
-  https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/test-reality-sni.sh
-
-chmod +x ~/proxyforge-test-reality-sni.sh
-~/proxyforge-test-reality-sni.sh \
-  --host YOUR_SERVER_IP --port 443 --sni YOUR_ALLOWED_SNI
+wget --https-only -O ~/proxyforge-test-reality-sni.sh https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/test-reality-sni.sh && chmod +x ~/proxyforge-test-reality-sni.sh
+```
+```bash
+~/proxyforge-test-reality-sni.sh --host YOUR_SERVER_IP --port 443 --sni YOUR_ALLOWED_SNI
 ```
 
 判定逻辑和排障说明见 [REALITY SNI 检测指南](docs/reality-sni-check.md)。
