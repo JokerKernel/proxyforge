@@ -253,6 +253,7 @@ func decorateSourceLabels(value string) string {
 		value = colorizeLabel(value, label.text, label.color)
 	}
 	value = colorizeLabel(value, "[Bash]", ansiBlue)
+	value = colorizeBracketPrefix(value, "[端口 ", ansiOrange)
 	for start := strings.Index(value, "[服务日志/"); start >= 0; {
 		relativeEnd := strings.IndexByte(value[start:], ']')
 		if relativeEnd < 0 {
@@ -274,6 +275,26 @@ func decorateSourceLabels(value string) string {
 
 func colorizeLabel(value, label, color string) string {
 	return strings.ReplaceAll(value, label, wrapANSI(color, label))
+}
+
+func colorizeBracketPrefix(value, prefix, color string) string {
+	for start := strings.Index(value, prefix); start >= 0; {
+		relativeEnd := strings.IndexByte(value[start:], ']')
+		if relativeEnd < 0 {
+			break
+		}
+		end := start + relativeEnd + 1
+		label := value[start:end]
+		colored := wrapANSI(color, label)
+		value = value[:start] + colored + value[end:]
+		next := start + len(colored)
+		relativeStart := strings.Index(value[next:], prefix)
+		if relativeStart < 0 {
+			break
+		}
+		start = next + relativeStart
+	}
+	return value
 }
 
 func commandLabelColor(value string) string {
