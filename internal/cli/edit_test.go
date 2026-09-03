@@ -182,13 +182,13 @@ func TestEditServerConfigRequiresInteractiveTerminal(t *testing.T) {
 	}
 }
 
-func TestXrayServerConfigMenuNumbersEditBeforeModify(t *testing.T) {
+func TestXrayServerConfigMenuNumbersViewBeforeModify(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{reader: bufio.NewReader(strings.NewReader("0\n")), out: &out}
 	if err := c.serverConfigMenu(context.Background(), domain.CoreXray); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "2   修改配置") || !strings.Contains(out.String(), "4   编辑配置") ||
+	if !strings.Contains(out.String(), "2   查看配置") || !strings.Contains(out.String(), "3   修改配置") || !strings.Contains(out.String(), "4   编辑配置") ||
 		!strings.Contains(out.String(), "5   日志级别") || !strings.Contains(out.String(), "6   服务管理") ||
 		!strings.Contains(out.String(), "7   专用运行用户") {
 		t.Fatalf("xray menu=%q", out.String())

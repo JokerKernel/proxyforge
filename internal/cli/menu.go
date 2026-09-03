@@ -102,8 +102,8 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		c.printPageHeader(core, "服务端配置")
 		c.printModifyConfigCard(ctx, core)
 		c.printMenuChoice("1", "生成/更新配置（完整覆盖现有配置，不合并原配置）")
-		c.printMenuChoice("2", "修改配置（DNS、出站 IP、回落 IP、重置节点与 SNI 检测）")
-		c.printMenuChoice("3", "查看配置（显示当前 JSON，含敏感凭据）")
+		c.printMenuChoice("2", "查看配置（显示当前 JSON，含敏感凭据）")
+		c.printMenuChoice("3", "修改配置（DNS、出站 IP、回落 IP、重置节点与 SNI 检测）")
 		c.printMenuChoice("4", "编辑配置（vim / nano / vi）")
 		c.printMenuChoice("5", "日志级别（调整内核日志详细程度）")
 		c.printMenuChoice("6", "服务管理（启动、停止、状态与日志）")
@@ -145,9 +145,6 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 				continue
 			}
 		case 2:
-			shouldPause = false
-			err = c.modifyConfigMenu(ctx, core)
-		case 3:
 			var b []byte
 			b, err = c.app.ServerConfig(core)
 			if err == nil {
@@ -162,6 +159,9 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 					fmt.Fprintln(c.out)
 				}
 			}
+		case 3:
+			shouldPause = false
+			err = c.modifyConfigMenu(ctx, core)
 		case 4:
 			err = c.editServerConfig(ctx, core)
 		case 5:
