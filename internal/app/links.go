@@ -134,7 +134,7 @@ func (a *App) LandingBundle(core, name string) (LandingBundle, error) {
 	}
 	access := n.LandingAccesses[index]
 	if !access.Enabled {
-		return LandingBundle{}, fmt.Errorf("落地接入 %q 已停用，不能导出连接文件", name)
+		return LandingBundle{}, fmt.Errorf("落地接入 %q 已停用，不能生成连接文本", name)
 	}
 	return LandingBundle{ManagedBy: "proxyforge", SchemaVersion: 1, Kind: landingBundleKind, Peer: domain.LandingPeer{
 		Name: access.Name, Core: core, Server: n.Server, Port: n.Port, SNI: n.SNI, UUID: access.UUID,
@@ -161,10 +161,10 @@ func (a *App) ExportLandingBundle(core, name, output string, force bool) ([]byte
 func ParseLandingBundle(b []byte) (domain.LandingPeer, error) {
 	var bundle LandingBundle
 	if err := json.Unmarshal(b, &bundle); err != nil {
-		return domain.LandingPeer{}, fmt.Errorf("解析落地连接文件: %w", err)
+		return domain.LandingPeer{}, fmt.Errorf("解析落地连接文本: %w", err)
 	}
 	if bundle.ManagedBy != "proxyforge" || bundle.Kind != landingBundleKind || bundle.SchemaVersion != 1 {
-		return domain.LandingPeer{}, fmt.Errorf("落地连接文件标识或版本无效")
+		return domain.LandingPeer{}, fmt.Errorf("落地连接文本标识或版本无效")
 	}
 	if err := validateLandingPeer(bundle.Peer); err != nil {
 		return domain.LandingPeer{}, err

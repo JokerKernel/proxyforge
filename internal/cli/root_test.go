@@ -8,7 +8,7 @@ import (
 
 func TestStableCommandTree(t *testing.T) {
 	root := New("test")
-	for _, args := range [][]string{{"install"}, {"update"}, {"uninstall"}, {"cleanup"}, {"config", "generate"}, {"config", "client"}, {"config", "reset"}, {"service"}} {
+	for _, args := range [][]string{{"install"}, {"update"}, {"uninstall"}, {"cleanup"}, {"config", "generate"}, {"config", "client"}, {"config", "reset"}, {"config", "landing"}, {"config", "relay"}, {"service"}} {
 		cmd, remaining, err := root.Find(args)
 		if err != nil {
 			t.Fatalf("find %v: %v", args, err)

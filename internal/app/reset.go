@@ -60,7 +60,7 @@ func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.Res
 	n.UpdatedAt = a.Now().UTC()
 	rotateCredentials := opts.Credentials || (requestedSNI == "" && requestedTarget == "")
 	if (rotateCredentials || updateEndpoint) && (len(current.LandingAccesses) > 0 || len(current.RelayLinks) > 0) {
-		fmt.Fprintln(a.Out, "[警告] SNI 或 REALITY 凭据变化后，需要重新导出受影响的中转客户端和落地连接文件。")
+		fmt.Fprintln(a.Out, "[警告] SNI 或 REALITY 凭据变化后，需要重新导出受影响的中转客户端，并重新生成落地连接文本。")
 	}
 	if !rotateCredentials {
 		n.UUID, n.PrivateKey, n.PublicKey, n.ShortID = current.UUID, current.PrivateKey, current.PublicKey, current.ShortID

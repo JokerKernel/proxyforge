@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -25,13 +28,13 @@ func (c *commandSet) landingCommand() *cobra.Command {
 func (c *commandSet) landingAddCommand() *cobra.Command {
 	var output string
 	var force bool
-	cmd := &cobra.Command{Use: "add <sing-box|xray> <name>", Short: "创建落地接入并导出连接信息", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "add <sing-box|xray> <name>", Short: "创建落地接入并输出可复制的连接文本", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
 		if _, err := c.app.AddLandingAccess(cmd.Context(), args[0], args[1]); err != nil {
 			return err
 		}
 		b, err := c.app.ExportLandingBundle(args[0], args[1], output, force)
 		if err != nil {
-			return fmt.Errorf("落地接入已创建，但导出连接文件失败（可稍后执行 landing export）：%w", err)
+			return fmt.Errorf("落地接入已创建，但生成连接文本失败（可稍后执行 landing export）：%w", err)
 		}
 		if output == "" {
 			_, err = c.out.Write(b)
@@ -40,7 +43,7 @@ func (c *commandSet) landingAddCommand() *cobra.Command {
 		}
 		return err
 	}}
-	cmd.Flags().StringVarP(&output, "output", "o", "", "连接文件路径（默认 stdout）")
+	cmd.Flags().StringVarP(&output, "output", "o", "", "兼容选项：将连接文本写入文件（默认输出到终端）")
 	cmd.Flags().BoolVar(&force, "force", false, "覆盖已有输出文件")
 	return cmd
 }
@@ -65,7 +68,7 @@ func (c *commandSet) landingListCommand() *cobra.Command {
 func (c *commandSet) landingExportCommand() *cobra.Command {
 	var output string
 	var force bool
-	cmd := &cobra.Command{Use: "export <sing-box|xray> <name>", Aliases: []string{"show"}, Short: "导出或显示落地连接文件", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "export <sing-box|xray> <name>", Aliases: []string{"show"}, Short: "显示可复制的落地连接文本", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
 		b, err := c.app.ExportLandingBundle(args[0], args[1], output, force)
 		if err != nil {
 			return err
@@ -77,7 +80,7 @@ func (c *commandSet) landingExportCommand() *cobra.Command {
 		}
 		return err
 	}}
-	cmd.Flags().StringVarP(&output, "output", "o", "", "连接文件路径（默认 stdout）")
+	cmd.Flags().StringVarP(&output, "output", "o", "", "兼容选项：将连接文本写入文件（默认输出到终端）")
 	cmd.Flags().BoolVar(&force, "force", false, "覆盖已有输出文件")
 	return cmd
 }
@@ -98,12 +101,12 @@ func (c *commandSet) landingToggleCommand(action string, enabled bool) *cobra.Co
 
 func (c *commandSet) landingRotateCommand() *cobra.Command {
 	return &cobra.Command{Use: "rotate <sing-box|xray> <name>", Short: "轮换落地接入 UUID", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
-		if err := c.requireYes("轮换后使用旧连接文件的中转机将断开"); err != nil {
+		if err := c.requireYes("轮换后使用旧连接文本的中转机将断开"); err != nil {
 			return err
 		}
 		item, err := c.app.RotateLandingAccess(cmd.Context(), args[0], args[1])
 		if err == nil {
-			fmt.Fprintf(c.out, "落地接入 %s 的 UUID 已轮换为 %s，请重新导出连接文件。\n", args[1], item.UUID)
+			fmt.Fprintf(c.out, "落地接入 %s 的 UUID 已轮换为 %s，请重新生成并复制连接文本。\n", args[1], item.UUID)
 		}
 		return err
 	}}
@@ -152,12 +155,10 @@ func (c *commandSet) relayShowCommand() *cobra.Command {
 
 func (c *commandSet) relayAddCommand() *cobra.Command {
 	var upstream string
+	var upstreamStdin bool
 	var allow bool
-	cmd := &cobra.Command{Use: "add <sing-box|xray> <name>", Short: "导入落地文件并添加中转线路", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
-		if strings.TrimSpace(upstream) == "" {
-			return fmt.Errorf("必须提供 --upstream 落地连接文件")
-		}
-		peer, err := app.ReadLandingBundle(upstream)
+	cmd := &cobra.Command{Use: "add <sing-box|xray> <name>", Short: "导入落地连接文本并添加中转线路", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		peer, err := c.readLandingPeerInput(upstream, upstreamStdin)
 		if err != nil {
 			return err
 		}
@@ -167,7 +168,8 @@ func (c *commandSet) relayAddCommand() *cobra.Command {
 		}
 		return err
 	}}
-	cmd.Flags().StringVar(&upstream, "upstream", "", "落地连接文件")
+	cmd.Flags().StringVar(&upstream, "upstream", "", "兼容选项：从落地连接文件读取")
+	cmd.Flags().BoolVar(&upstreamStdin, "upstream-stdin", false, "从标准输入读取落地连接文本")
 	cmd.Flags().BoolVar(&allow, "allow-unreachable", false, "落地当前不可达时仍保存配置")
 	return cmd
 }
@@ -212,12 +214,10 @@ func (c *commandSet) relayClientCommand() *cobra.Command {
 
 func (c *commandSet) relayUpdateCommand() *cobra.Command {
 	var upstream string
+	var upstreamStdin bool
 	var allow bool
-	cmd := &cobra.Command{Use: "update <sing-box|xray> <name>", Short: "更新中转线路的落地参数", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
-		if upstream == "" {
-			return fmt.Errorf("必须提供 --upstream 落地连接文件")
-		}
-		peer, err := app.ReadLandingBundle(upstream)
+	cmd := &cobra.Command{Use: "update <sing-box|xray> <name>", Short: "使用新的落地连接文本更新线路", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		peer, err := c.readLandingPeerInput(upstream, upstreamStdin)
 		if err != nil {
 			return err
 		}
@@ -226,7 +226,8 @@ func (c *commandSet) relayUpdateCommand() *cobra.Command {
 		}
 		return err
 	}}
-	cmd.Flags().StringVar(&upstream, "upstream", "", "新的落地连接文件")
+	cmd.Flags().StringVar(&upstream, "upstream", "", "兼容选项：从新的落地连接文件读取")
+	cmd.Flags().BoolVar(&upstreamStdin, "upstream-stdin", false, "从标准输入读取新的落地连接文本")
 	cmd.Flags().BoolVar(&allow, "allow-unreachable", false, "落地当前不可达时仍保存配置")
 	return cmd
 }
@@ -295,6 +296,27 @@ func enabledLabel(enabled bool) string {
 	return "已停用"
 }
 
+func (c *commandSet) readLandingPeerInput(path string, fromStdin bool) (domain.LandingPeer, error) {
+	path = strings.TrimSpace(path)
+	if path != "" && fromStdin {
+		return domain.LandingPeer{}, fmt.Errorf("--upstream 和 --upstream-stdin 不能同时使用")
+	}
+	if fromStdin {
+		if c.in == nil {
+			return domain.LandingPeer{}, fmt.Errorf("标准输入不可用")
+		}
+		b, err := io.ReadAll(c.in)
+		if err != nil {
+			return domain.LandingPeer{}, fmt.Errorf("读取落地连接文本: %w", err)
+		}
+		return app.ParseLandingBundle(b)
+	}
+	if path != "" {
+		return app.ReadLandingBundle(path)
+	}
+	return domain.LandingPeer{}, fmt.Errorf("必须提供 --upstream-stdin（推荐）或兼容参数 --upstream")
+}
+
 func (c *commandSet) linkMenu(ctx context.Context, core string) error {
 	for {
 		c.clearScreen()
@@ -354,23 +376,18 @@ func (c *commandSet) addLandingInteractive(ctx context.Context, core string) err
 	if _, err = c.app.AddLandingAccess(ctx, core, name); err != nil {
 		return err
 	}
-	path, err := c.askDefaultCancelable("落地连接文件保存路径", "./landing-"+name+".json")
-	if errors.Is(err, errReturnToMenu) {
-		fmt.Fprintln(c.out, "落地接入已创建，可稍后从管理菜单导出连接文件。")
-		return nil
-	}
+	b, err := c.app.ExportLandingBundle(core, name, "", false)
 	if err == nil {
-		_, err = c.app.ExportLandingBundle(core, name, path, false)
-	}
-	if err == nil {
-		fmt.Fprintf(c.out, "落地接入已创建，连接文件已安全写入 %s（0600）。\n", path)
+		fmt.Fprintln(c.out, "落地接入已创建。请复制下面完整的 JSON 文本，在中转机的粘贴编辑器中使用：")
+		fmt.Fprintln(c.out)
+		_, err = c.out.Write(b)
 	}
 	return err
 }
 
 func (c *commandSet) addRelayInteractive(ctx context.Context, core string) error {
 	c.printPageHeader(core, "添加中转线路")
-	c.printMenuChoice("1", "从落地连接文件导入（推荐）")
+	c.printMenuChoice("1", "打开临时编辑文件并粘贴连接文本（推荐）")
 	c.printMenuChoice("2", "手动输入落地连接信息")
 	choice, err := c.chooseNumberCancelable("请选择落地信息来源", 1, 2, 1)
 	if err != nil {
@@ -378,11 +395,7 @@ func (c *commandSet) addRelayInteractive(ctx context.Context, core string) error
 	}
 	var peer domain.LandingPeer
 	if choice == 1 {
-		path, inputErr := c.askDefaultCancelable("落地连接文件路径", "")
-		if inputErr != nil {
-			return inputErr
-		}
-		peer, err = app.ReadLandingBundle(path)
+		peer, err = c.pasteLandingBundle()
 		if err != nil {
 			return err
 		}
@@ -414,6 +427,47 @@ func (c *commandSet) addRelayInteractive(ctx context.Context, core string) error
 		fmt.Fprintf(c.out, "中转线路 %s 已启用，客户端用户：%s。\n", link.Name, link.UserName)
 	}
 	return err
+}
+
+func (c *commandSet) pasteLandingBundle() (domain.LandingPeer, error) {
+	if c.runEditor == nil && !c.interactiveUI() {
+		return domain.LandingPeer{}, fmt.Errorf("粘贴落地连接文本需要交互式终端")
+	}
+	editor, err := c.findConfigEditor()
+	if err != nil {
+		return domain.LandingPeer{}, err
+	}
+	f, err := os.CreateTemp("", "proxyforge-landing-paste-*.json")
+	if err != nil {
+		return domain.LandingPeer{}, fmt.Errorf("创建临时粘贴文件: %w", err)
+	}
+	path := f.Name()
+	defer os.Remove(path)
+	if err = f.Chmod(0600); err == nil {
+		err = f.Close()
+	} else {
+		_ = f.Close()
+	}
+	if err != nil {
+		return domain.LandingPeer{}, err
+	}
+	fmt.Fprintf(c.out, "将打开 %s。请粘贴落地服务器生成的完整 JSON，保存并退出。\n", filepath.Base(editor))
+	if err := c.runConfigEditor(editor, path); err != nil {
+		return domain.LandingPeer{}, fmt.Errorf("编辑器退出异常: %w", err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return domain.LandingPeer{}, fmt.Errorf("读取粘贴的落地连接文本: %w", err)
+	}
+	if strings.TrimSpace(string(b)) == "" {
+		return domain.LandingPeer{}, fmt.Errorf("没有粘贴落地连接文本")
+	}
+	peer, err := app.ParseLandingBundle(b)
+	if err != nil {
+		return domain.LandingPeer{}, fmt.Errorf("粘贴的落地连接文本无效: %w", err)
+	}
+	fmt.Fprintln(c.out, "连接文本解析成功，临时文件将在导入后自动删除。")
+	return peer, nil
 }
 
 func (c *commandSet) askLandingPeer() (domain.LandingPeer, error) {
@@ -494,7 +548,7 @@ func (c *commandSet) manageRelayInteractive(ctx context.Context, core string) er
 	}
 	c.printMenuChoice("1", "导出原生客户端配置")
 	c.printMenuChoice("2", "测试落地 TCP 连通性")
-	c.printMenuChoice("3", "更新落地连接文件")
+	c.printMenuChoice("3", "粘贴新的落地连接文本")
 	c.printMenuChoice("4", "轮换中转客户端 UUID")
 	if selected.Enabled {
 		c.printMenuChoice("5", "停用线路")
@@ -531,11 +585,7 @@ func (c *commandSet) manageRelayInteractive(ctx context.Context, core string) er
 		fmt.Fprintln(c.out, "落地端点 TCP 可达。")
 		return nil
 	case 3:
-		path, e := c.askDefaultCancelable("新的落地连接文件路径", "")
-		if e != nil {
-			return e
-		}
-		peer, e := app.ReadLandingBundle(path)
+		peer, e := c.pasteLandingBundle()
 		if e != nil {
 			return e
 		}
@@ -586,7 +636,7 @@ func (c *commandSet) manageLandingInteractive(ctx context.Context, core string) 
 	if selected == nil {
 		return fmt.Errorf("找不到落地接入 %q", name)
 	}
-	c.printMenuChoice("1", "显示落地连接文件")
+	c.printMenuChoice("1", "显示可复制的落地连接文本")
 	c.printMenuChoice("2", "轮换接入 UUID")
 	if selected.Enabled {
 		c.printMenuChoice("3", "停用接入")
@@ -601,17 +651,15 @@ func (c *commandSet) manageLandingInteractive(ctx context.Context, core string) 
 	}
 	switch choice {
 	case 1:
-		path, e := c.askDefaultCancelable("落地连接文件保存路径", "./landing-"+name+".json")
-		if e != nil {
-			return e
-		}
-		_, e = c.app.ExportLandingBundle(core, name, path, false)
+		b, e := c.app.ExportLandingBundle(core, name, "", false)
 		if e == nil {
-			fmt.Fprintf(c.out, "连接文件已安全写入 %s（0600）。\n", path)
+			fmt.Fprintln(c.out, "请复制下面完整的 JSON 文本：")
+			fmt.Fprintln(c.out)
+			_, e = c.out.Write(b)
 		}
 		return e
 	case 2:
-		ok, e := c.confirmCancelable("轮换后使用旧连接文件的所有中转机都会断开。")
+		ok, e := c.confirmCancelable("轮换后使用旧连接文本的所有中转机都会断开。")
 		if e != nil || !ok {
 			return errReturnToMenu
 		}

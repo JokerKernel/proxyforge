@@ -12,8 +12,8 @@ proxyforge cleanup <sing-box|xray|all> [--yes]
 proxyforge config generate <sing-box|xray> --server HOST --port PORT --sni DOMAIN [OPTIONS]
 proxyforge config client <sing-box|xray> [--format native|clash] [--output FILE] [--force]
 proxyforge config reset <sing-box|xray> [--sni DOMAIN] [--target HOST:PORT] [--yes]
-proxyforge config landing add <sing-box|xray> NAME [--output FILE]
-proxyforge config relay add <sing-box|xray> NAME --upstream FILE
+proxyforge config landing add <sing-box|xray> NAME
+proxyforge config relay add <sing-box|xray> NAME --upstream-stdin
 proxyforge config relay client <sing-box|xray> NAME [--format native|clash] [--output FILE]
 proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
 ```
@@ -94,37 +94,40 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 “服务端配置 → 修改配置 → 中转与落地线路”可以在不增加监听端口的情况下，按 VLESS 用户身份选择出口。普通用户继续使用现有 `direct`，每条中转线路使用独立 UUID 并固定连接指定落地；落地不可用时不会回退本机出口。
 
-先在落地服务器创建独立接入并导出连接文件：
+先在落地服务器创建独立接入。命令会把一段可复制的 JSON 连接文本直接显示在终端，不会默认生成文件：
 
 ```bash
-sudo proxyforge config landing add xray from-relay \
-  --output ./landing.json
+sudo proxyforge config landing add xray from-relay
 ```
 
-将文件安全复制到中转服务器后添加线路：
+复制完整 JSON 文本。在中转服务器的交互菜单选择“添加中转线路”，程序会打开一个临时编辑文件；粘贴后保存并退出即可。临时文件权限为 `0600`，导入完成后会自动删除。
+
+使用纯命令行时，通过标准输入粘贴文本，粘贴完成后按 `Ctrl+D`：
 
 ```bash
 sudo proxyforge config relay add sing-box us \
-  --upstream ./landing.json
+  --upstream-stdin
 
 sudo proxyforge config relay client sing-box us \
   --format clash --output ./us-client.yaml
 ```
 
-落地文件包含地址、端口、UUID、SNI、REALITY 公钥和 short ID，不含服务端私钥，但其中 UUID 仍是敏感凭据，文件以 `0600` 创建。支持 Xray 与 sing-box 两端任意组合；第一版链路固定使用 VLESS + REALITY + Vision、TCP/raw。
+连接文本包含地址、端口、UUID、SNI、REALITY 公钥和 short ID，不含服务端私钥，但其中 UUID 仍是敏感凭据。支持 Xray 与 sing-box 两端任意组合；第一版链路固定使用 VLESS + REALITY + Vision、TCP/raw。
+
+`landing export`（别名 `landing show`）用于再次显示连接文本，`relay update --upstream-stdin` 用于粘贴更新。为兼容已有脚本，仍保留落地命令的 `--output FILE` 和中转命令的 `--upstream FILE`；新流程无需使用这两个文件参数。
 
 常用管理命令：
 
 ```bash
 sudo proxyforge config landing list xray
-sudo proxyforge config landing export xray from-relay --output ./landing.json
+sudo proxyforge config landing show xray from-relay
 sudo proxyforge config landing disable xray from-relay
 sudo proxyforge config landing rotate xray from-relay --yes
 sudo proxyforge config landing remove xray from-relay --yes
 
 sudo proxyforge config relay list sing-box
 sudo proxyforge config relay test sing-box us
-sudo proxyforge config relay update sing-box us --upstream ./new-landing.json
+sudo proxyforge config relay update sing-box us --upstream-stdin
 sudo proxyforge config relay disable sing-box us
 sudo proxyforge config relay rotate sing-box us --yes
 sudo proxyforge config relay remove sing-box us --yes
@@ -132,7 +135,7 @@ sudo proxyforge config relay remove sing-box us --yes
 
 创建和更新中转线路时会先检查落地 TCP 端口。落地地址默认要求公网单播地址；为了局域网联调，允许直接使用 `192.168.0.0/16`，但 `10.0.0.0/8`、`172.16.0.0/12`、回环和其他保留地址仍会拒绝。该放行只适用于连接落地服务器，用户代理访问私网的拦截规则不变。确知落地暂时不可达但仍需保存时，可以显式添加 `--allow-unreachable`。每次线路变更都会生成候选配置、调用对应内核原生命令校验、备份并重启当前服务；失败时恢复原配置和状态。停用线路会从入站移除对应用户，而不是让它落入默认 `direct`。
 
-重置本节点 SNI、REALITY 密钥或 short ID 后，已经导出的本节点客户端和落地连接文件需要重新导出。轮换某条中转线路 UUID 只影响该线路的客户端；轮换落地接入 UUID 后，需要重新导出文件并更新所有使用它的中转机。
+重置本节点 SNI、REALITY 密钥或 short ID 后，已经导出的本节点客户端需要重新导出，落地连接文本需要重新生成并粘贴到中转机。轮换某条中转线路 UUID 只影响该线路的客户端；轮换落地接入 UUID 后，需要重新生成连接文本并更新所有使用它的中转机。
 
 ## DNS 设置
 

@@ -162,7 +162,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		n.RelayLinks = append([]domain.RelayLink(nil), old.RelayLinks...)
 	}
 	if hasOld && opts.RotateCredentials && (len(old.LandingAccesses) > 0 || len(old.RelayLinks) > 0) {
-		fmt.Fprintln(a.Out, "[警告] REALITY 凭据轮换后，需要重新导出中转客户端和本机落地连接文件。")
+		fmt.Fprintln(a.Out, "[警告] REALITY 凭据轮换后，需要重新导出中转客户端，并重新生成本机落地连接文本。")
 	}
 	if n.SimplifiedConfig {
 		fmt.Fprintln(a.Out, "[警告] 已选择 sing-box 简化配置；域名将在出站连接阶段由系统 DNS 解析，域名解析到私网地址时可能绕过路由私网拦截。")
