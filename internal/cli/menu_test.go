@@ -226,12 +226,41 @@ func TestServiceManagementIsNestedUnderServerConfig(t *testing.T) {
 	}
 	for _, want := range []string{
 		"5   日志级别", "显示当前 JSON", "调整内核日志详细程度",
-		"6   服务管理", "7   专用运行用户",
+		"6   服务管理", "7   中转与落地配置", "8   专用运行用户",
 		"ProxyForge  ›  xray  ›  服务端配置  ›  服务管理",
 	} {
 		if !strings.Contains(serverOut.String(), want) {
 			t.Fatalf("nested service menu missing %q: %q", want, serverOut.String())
 		}
+	}
+}
+
+func TestLinkManagementIsDirectlyUnderServerConfig(t *testing.T) {
+	store := system.StateStore{Layout: system.Layout{Root: t.TempDir()}}
+	if err := store.Save(domain.NodeSpec{ManagedBy: "proxyforge", Core: domain.CoreXray}); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	c := &commandSet{
+		app:    &app.App{Store: store},
+		reader: bufio.NewReader(strings.NewReader("7\n0\n0\n")),
+		out:    &out,
+	}
+	if err := c.serverConfigMenu(context.Background(), domain.CoreXray); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "7   中转与落地配置") || !strings.Contains(got, "ProxyForge  ›  xray  ›  中转与落地线路") {
+		t.Fatalf("direct link management entry missing: %q", got)
+	}
+
+	var modifyOut bytes.Buffer
+	modify := &commandSet{reader: bufio.NewReader(strings.NewReader("0\n")), out: &modifyOut}
+	if err := modify.modifyConfigMenu(context.Background(), domain.CoreXray); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(modifyOut.String(), "中转与落地") {
+		t.Fatalf("link management still appears in modify menu: %q", modifyOut.String())
 	}
 }
 

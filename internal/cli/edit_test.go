@@ -190,7 +190,7 @@ func TestXrayServerConfigMenuNumbersViewBeforeModify(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "2   查看配置") || !strings.Contains(out.String(), "3   修改配置") || !strings.Contains(out.String(), "4   编辑配置") ||
 		!strings.Contains(out.String(), "5   日志级别") || !strings.Contains(out.String(), "6   服务管理") ||
-		!strings.Contains(out.String(), "7   专用运行用户") {
+		!strings.Contains(out.String(), "7   中转与落地配置") || !strings.Contains(out.String(), "8   专用运行用户") {
 		t.Fatalf("xray menu=%q", out.String())
 	}
 }

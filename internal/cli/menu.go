@@ -103,14 +103,15 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 		c.printModifyConfigCard(ctx, core)
 		c.printMenuChoice("1", "生成/更新配置（完整覆盖现有配置，不合并原配置）")
 		c.printMenuChoice("2", "查看配置（显示当前 JSON，含敏感凭据）")
-		c.printMenuChoice("3", "修改配置（DNS、出站 IP、中转线路、重置节点与 SNI 检测）")
+		c.printMenuChoice("3", "修改配置（DNS、出站 IP、重置节点与 SNI 检测）")
 		c.printMenuChoice("4", "编辑配置（vim / nano / vi）")
 		c.printMenuChoice("5", "日志级别（调整内核日志详细程度）")
 		c.printMenuChoice("6", "服务管理（启动、停止、状态与日志）")
-		maxChoice := 6
+		c.printMenuChoice("7", "中转与落地配置（同端口按用户分流）")
+		maxChoice := 7
 		if core == domain.CoreXray {
-			c.printMenuChoice("7", "专用运行用户（修复 systemd 的 nobody 安全警告）")
-			maxChoice = 7
+			c.printMenuChoice("8", "专用运行用户（修复 systemd 的 nobody 安全警告）")
+			maxChoice = 8
 		}
 		c.printMenuChoice("0/q", "返回")
 		choice, err := c.chooseNumber("请选择", 0, maxChoice, 0)
@@ -173,6 +174,9 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 			shouldPause = false
 			err = c.serviceMenu(ctx, core)
 		case 7:
+			shouldPause = false
+			err = c.linkMenu(ctx, core)
+		case 8:
 			err = c.dedicatedXrayServiceUser(ctx)
 			if errors.Is(err, errReturnToMenu) {
 				continue
@@ -203,9 +207,8 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 		c.printMenuChoice(strconv.Itoa(next), "重置 SNI/target（保留节点凭证）")
 		c.printMenuChoice(strconv.Itoa(next+1), "重置节点凭证（UUID、REALITY 密钥和 short ID；保留 SNI/target）")
 		c.printMenuChoice(strconv.Itoa(next+2), "REALITY SNI 候选检测（重新测试，不修改配置）")
-		c.printMenuChoice(strconv.Itoa(next+3), "中转与落地线路（同端口按用户分流）")
 		c.printMenuChoice("0/q", "返回")
-		maxChoice := next + 3
+		maxChoice := next + 2
 		choice, err := c.chooseNumber("请选择", 0, maxChoice, 0)
 		if err != nil {
 			return err
@@ -228,8 +231,6 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 			err = c.resetChoice(ctx, core, 2)
 		case choice == next+2:
 			err = c.retestSNICandidates(ctx, core)
-		case choice == next+3:
-			err = c.linkMenu(ctx, core)
 		}
 		if errors.Is(err, errReturnToMenu) {
 			continue
