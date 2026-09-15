@@ -120,6 +120,8 @@ sudo proxyforge config relay client sing-box us \
 
 `landing export`（别名 `landing show`）用于再次显示连接文本，`relay update --upstream-stdin` 用于粘贴更新。为兼容已有脚本，仍保留落地命令的 `--output FILE` 和中转命令的 `--upstream FILE`；新流程无需使用这两个文件参数。
 
+交互管理中转线路和落地接入时，程序会按 `1/2/3...` 显示列表。输入编号选择对应项目，不需要再次手动输入线路名称。
+
 常用管理命令：
 
 ```bash

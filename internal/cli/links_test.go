@@ -1,10 +1,17 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
+	"context"
+	"errors"
 	"os"
 	"strings"
 	"testing"
+
+	"proxyforge/internal/app"
+	"proxyforge/internal/domain"
+	"proxyforge/internal/system"
 )
 
 const validLandingText = `{
@@ -83,5 +90,67 @@ func TestReadLandingPeerInputRejectsAmbiguousOrMissingSource(t *testing.T) {
 	}
 	if _, err := c.readLandingPeerInput("", false); err == nil || !strings.Contains(err.Error(), "--upstream-stdin") {
 		t.Fatalf("missing source error=%v", err)
+	}
+}
+
+func TestManageRelaySelectsLongLineNameByNumber(t *testing.T) {
+	store := system.StateStore{Layout: system.Layout{Root: t.TempDir()}}
+	if err := store.Save(domain.NodeSpec{
+		ManagedBy: "proxyforge", Core: domain.CoreXray,
+		RelayLinks: []domain.RelayLink{
+			{Name: "short", Enabled: true, Upstream: domain.LandingPeer{Server: "192.168.1.10", Port: 443}},
+			{Name: "very-long-relay-line-name", Enabled: false, Upstream: domain.LandingPeer{Server: "192.168.1.20", Port: 8443}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	c := &commandSet{
+		app:    &app.App{Store: store},
+		reader: bufio.NewReader(strings.NewReader("2\n0\n")),
+		out:    &out,
+	}
+	err := c.manageRelayInteractive(context.Background(), domain.CoreXray)
+	if !errors.Is(err, errReturnToMenu) {
+		t.Fatalf("error=%v", err)
+	}
+	for _, want := range []string{
+		"1   short · 192.168.1.10:443", "2   very-long-relay-line-name · 192.168.1.20:8443",
+		"[已启用]", "[已停用]", "管理中转线路  ›  very-long-relay-line-name", "当前落地：192.168.1.20:8443",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("relay management output missing %q: %q", want, out.String())
+		}
+	}
+}
+
+func TestManageLandingSelectsLongAccessNameByNumber(t *testing.T) {
+	store := system.StateStore{Layout: system.Layout{Root: t.TempDir()}}
+	if err := store.Save(domain.NodeSpec{
+		ManagedBy: "proxyforge", Core: domain.CoreSingBox,
+		LandingAccesses: []domain.LandingAccess{
+			{Name: "first", UserName: "proxyforge-landing-first", Enabled: true},
+			{Name: "very-long-landing-access-name", UserName: "proxyforge-landing-long", Enabled: false},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	c := &commandSet{
+		app:    &app.App{Store: store},
+		reader: bufio.NewReader(strings.NewReader("2\n0\n")),
+		out:    &out,
+	}
+	err := c.manageLandingInteractive(context.Background(), domain.CoreSingBox)
+	if !errors.Is(err, errReturnToMenu) {
+		t.Fatalf("error=%v", err)
+	}
+	for _, want := range []string{
+		"1   first · proxyforge-landing-first", "2   very-long-landing-access-name · proxyforge-landing-long",
+		"管理落地接入  ›  very-long-landing-access-name", "当前状态：已停用",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("landing management output missing %q: %q", want, out.String())
+		}
 	}
 }

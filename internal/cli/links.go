@@ -529,23 +529,23 @@ func (c *commandSet) manageRelayInteractive(ctx context.Context, core string) er
 		return nil
 	}
 	c.printPageHeader(core, "管理中转线路")
-	for _, item := range items {
-		fmt.Fprintf(c.out, "  %s  %s:%d  [%s]\n", item.Name, item.Upstream.Server, item.Upstream.Port, enabledLabel(item.Enabled))
+	for i, item := range items {
+		title := fmt.Sprintf("%s · %s:%d", item.Name, item.Upstream.Server, item.Upstream.Port)
+		c.printMenuBadgeChoice(strconv.Itoa(i+1), title, "["+enabledLabel(item.Enabled)+"]")
 	}
-	name, err := c.askDefaultCancelable("线路名称", items[0].Name)
+	c.printMenuChoice("0/q", "返回")
+	selectedNumber, err := c.chooseNumber("请选择中转线路", 0, len(items), 1)
 	if err != nil {
 		return err
 	}
-	var selected *domain.RelayLink
-	for i := range items {
-		if items[i].Name == name {
-			selected = &items[i]
-			break
-		}
+	if selectedNumber == 0 {
+		return errReturnToMenu
 	}
-	if selected == nil {
-		return fmt.Errorf("找不到中转线路 %q", name)
-	}
+	selected := &items[selectedNumber-1]
+	name := selected.Name
+	c.clearScreen()
+	c.printPageHeader(core, "管理中转线路", name)
+	fmt.Fprintf(c.out, "当前落地：%s:%d · %s\n\n", selected.Upstream.Server, selected.Upstream.Port, enabledLabel(selected.Enabled))
 	c.printMenuChoice("1", "导出原生客户端配置")
 	c.printMenuChoice("2", "测试落地 TCP 连通性")
 	c.printMenuChoice("3", "粘贴新的落地连接文本")
@@ -619,23 +619,26 @@ func (c *commandSet) manageLandingInteractive(ctx context.Context, core string) 
 		return nil
 	}
 	c.printPageHeader(core, "管理落地接入")
-	for _, item := range items {
-		fmt.Fprintf(c.out, "  %s  %s  [%s]\n", item.Name, item.UserName, enabledLabel(item.Enabled))
+	for i, item := range items {
+		title := item.Name
+		if item.UserName != "" && item.UserName != item.Name {
+			title += " · " + item.UserName
+		}
+		c.printMenuBadgeChoice(strconv.Itoa(i+1), title, "["+enabledLabel(item.Enabled)+"]")
 	}
-	name, err := c.askDefaultCancelable("接入名称", items[0].Name)
+	c.printMenuChoice("0/q", "返回")
+	selectedNumber, err := c.chooseNumber("请选择落地接入", 0, len(items), 1)
 	if err != nil {
 		return err
 	}
-	var selected *domain.LandingAccess
-	for i := range items {
-		if items[i].Name == name {
-			selected = &items[i]
-			break
-		}
+	if selectedNumber == 0 {
+		return errReturnToMenu
 	}
-	if selected == nil {
-		return fmt.Errorf("找不到落地接入 %q", name)
-	}
+	selected := &items[selectedNumber-1]
+	name := selected.Name
+	c.clearScreen()
+	c.printPageHeader(core, "管理落地接入", name)
+	fmt.Fprintf(c.out, "当前状态：%s\n\n", enabledLabel(selected.Enabled))
 	c.printMenuChoice("1", "显示可复制的落地连接文本")
 	c.printMenuChoice("2", "轮换接入 UUID")
 	if selected.Enabled {
