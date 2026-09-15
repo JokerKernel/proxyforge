@@ -64,6 +64,7 @@ func TestServerConfigMenuShowsStatusCard(t *testing.T) {
 	if err := system.AtomicWrite(layout.Resolve(p.ConfigPath()), config, 0600); err != nil {
 		t.Fatal(err)
 	}
+	node.RelayLinks = []domain.RelayLink{{Name: "us", Enabled: true}}
 	if err := store.Save(node); err != nil {
 		t.Fatal(err)
 	}
@@ -89,12 +90,35 @@ func TestServerConfigMenuShowsStatusCard(t *testing.T) {
 		"出站 IP", "默认（先 IPv4，300ms 后竞速 IPv6）",
 		"回落 IP", "运行用户", "xray", "SNI", "www.example.com",
 		"日志级别", "warning  -- 警告及错误（默认）", "服务状态", "运行中",
+		"中转", "已开启  -- 1 条规则",
 		"SNI 防护", "已开启", "严格模式", "未开启", "HTTP Host", "不限制",
 		"端口", "443",
 	} {
 		if !strings.Contains(got, text) {
 			t.Fatalf("server config card missing %q: %q", text, got)
 		}
+	}
+}
+
+func TestRelayCardDisplay(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		hasNode, known bool
+		total, enabled int
+		want           string
+	}{
+		{name: "not generated", want: "未生成"},
+		{name: "unknown", hasNode: true, want: "无法读取"},
+		{name: "none", hasNode: true, known: true, want: "未开启  -- 0 条规则"},
+		{name: "all enabled", hasNode: true, known: true, total: 1, enabled: 1, want: "已开启  -- 1 条规则"},
+		{name: "all disabled", hasNode: true, known: true, total: 2, want: "未开启  -- 0 条启用 · 2 条已停用"},
+		{name: "mixed", hasNode: true, known: true, total: 3, enabled: 2, want: "已开启  -- 2 条规则 · 1 条已停用"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := relayCardDisplay(tc.hasNode, tc.known, tc.total, tc.enabled); got != tc.want {
+				t.Fatalf("relay card=%q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 

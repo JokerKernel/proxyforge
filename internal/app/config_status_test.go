@@ -26,6 +26,10 @@ func TestModifyConfigStatusReadsGeneratedXray(t *testing.T) {
 	if err := system.AtomicWrite(layout.Resolve(p.ConfigPath()), config, 0600); err != nil {
 		t.Fatal(err)
 	}
+	node.RelayLinks = []domain.RelayLink{
+		{Name: "enabled", Enabled: true},
+		{Name: "disabled", Enabled: false},
+	}
 	a := &App{
 		Registry: provider.NewRegistry(p), Layout: layout, Store: system.StateStore{Layout: layout},
 		Services: system.ServiceManager{Runner: configStatusRunner{}},
@@ -41,6 +45,7 @@ func TestModifyConfigStatusReadsGeneratedXray(t *testing.T) {
 		got.DNS != provider.DNSProfileSystem || got.OutboundIP != provider.OutboundIPUnset ||
 		got.FallbackIP != provider.OutboundIPUnset || got.ServiceUser != "xray" ||
 		got.LogLevel != "warning" || got.StrictMatch || got.HTTPHostRestrict ||
+		!got.RelayKnown || got.RelayTotal != 2 || got.RelayEnabled != 1 ||
 		!got.ServiceKnown || !got.ServiceActive {
 		t.Fatalf("status=%#v", got)
 	}

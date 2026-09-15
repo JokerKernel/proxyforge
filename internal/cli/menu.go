@@ -273,7 +273,7 @@ func (c *commandSet) printCoreMenu(ctx context.Context, core string) {
 	c.printCoreStatusCard(ctx, core)
 	c.printMenuChoice("1", "安装/升级（安装内核或升级版本）")
 	c.printMenuChoice("2", "服务端配置（生成、修改、查看与服务管理）")
-	c.printMenuChoice("3", "客户端配置（导出原生 JSON 或 Clash YAML）")
+	c.printMenuChoice("3", "客户端配置（显示普通节点或中转节点配置）")
 	c.printMenuChoice("4", "卸载内核（同时清理配置和运行数据）")
 	c.printMenuChoice("0/q", "返回")
 }
@@ -292,6 +292,7 @@ func (c *commandSet) printModifyConfigCard(ctx context.Context, core string) {
 	rows = append(rows,
 		[2]string{"日志级别", modifyConfigValue(status.HasConfig, status.LogLevel, func() string { return logLevelCardDisplay(core, status.LogLevel) })},
 		[2]string{"服务状态", serviceStatusCardDisplay(status)},
+		[2]string{"中转", relayCardDisplay(status.HasConfig || status.SNI != "", status.RelayKnown, status.RelayTotal, status.RelayEnabled)},
 		[2]string{"DNS 设置", modifyConfigValue(status.HasConfig, status.DNS, func() string { return dnsCardDisplay(core, status.DNS, status.DNSServers) })},
 		[2]string{"出站 IP", modifyConfigValue(status.HasConfig, status.OutboundIP, func() string { return outboundIPCardDisplay(core, status.OutboundIP) })},
 	)
@@ -352,6 +353,34 @@ func enabledCardDisplay(hasNode bool, enabled bool) string {
 		return "已开启"
 	}
 	return "未开启"
+}
+
+func relayCardDisplay(hasNode, known bool, total, enabled int) string {
+	if !hasNode {
+		return "未生成"
+	}
+	if !known {
+		return "无法读取"
+	}
+	if total < 0 {
+		total = 0
+	}
+	if enabled < 0 {
+		enabled = 0
+	}
+	if enabled > total {
+		enabled = total
+	}
+	if enabled == 0 {
+		if total == 0 {
+			return "未开启  -- 0 条规则"
+		}
+		return fmt.Sprintf("未开启  -- 0 条启用 · %d 条已停用", total)
+	}
+	if enabled == total {
+		return fmt.Sprintf("已开启  -- %d 条规则", enabled)
+	}
+	return fmt.Sprintf("已开启  -- %d 条规则 · %d 条已停用", enabled, total-enabled)
 }
 
 func portCardDisplay(status app.ModifyConfigStatus) string {

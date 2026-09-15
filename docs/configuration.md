@@ -90,6 +90,8 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 `clash` 格式输出完整的 Mihomo/Clash Meta YAML，包含 `mixed-port: 7890`、`PROXY` 策略组和 `MATCH` 规则。传统 Clash 不支持 VLESS REALITY，不能使用该文件。
 
+交互菜单的“客户端配置”同时提供普通节点和中转节点入口。选择中转节点后会列出当前线路及启用状态，再选择原生 JSON 或 Clash YAML，配置内容直接显示在终端。
+
 ## 同端口中转与落地
 
 “服务端配置 → 修改配置 → 中转与落地线路”可以在不增加监听端口的情况下，按 VLESS 用户身份选择出口。普通用户继续使用现有 `direct`，每条中转线路使用独立 UUID 并固定连接指定落地；落地不可用时不会回退本机出口。

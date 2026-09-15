@@ -24,6 +24,9 @@ type ModifyConfigStatus struct {
 	ServiceActive    bool
 	ServiceDetail    string
 	ServiceKnown     bool
+	RelayKnown       bool
+	RelayTotal       int
+	RelayEnabled     int
 	HasFallback      bool
 	StrictMatch      bool
 	HTTPHostRestrict bool
@@ -38,6 +41,13 @@ func (a *App) ModifyConfigStatus(ctx context.Context, core string) ModifyConfigS
 		return status
 	}
 	if current, err := a.Store.Load(core); err == nil {
+		status.RelayKnown = true
+		status.RelayTotal = len(current.RelayLinks)
+		for _, link := range current.RelayLinks {
+			if link.Enabled {
+				status.RelayEnabled++
+			}
+		}
 		status.SNI = strings.TrimSpace(current.SNI)
 		status.Port = current.Port
 		status.HasFallback = a.HasFallback(core)
