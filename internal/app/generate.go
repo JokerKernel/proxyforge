@@ -464,8 +464,12 @@ func PickFallbackPort(store system.StateStore, core string, publicPort int) (int
 }
 
 func pickFallbackPortInRange(min, max int, avoid map[int]struct{}, available func(int) bool) (int, error) {
+	return pickAvailablePortInRange("回落", min, max, avoid, available)
+}
+
+func pickAvailablePortInRange(label string, min, max int, avoid map[int]struct{}, available func(int) bool) (int, error) {
 	if max < min {
-		return 0, fmt.Errorf("回落端口范围无效")
+		return 0, fmt.Errorf("%s端口范围无效", label)
 	}
 	span := max - min + 1
 	try := func(port int) bool {
@@ -477,7 +481,7 @@ func pickFallbackPortInRange(min, max int, avoid map[int]struct{}, available fun
 	for i := 0; i < 32; i++ {
 		n, err := rand.Int(rand.Reader, big.NewInt(int64(span)))
 		if err != nil {
-			return 0, fmt.Errorf("生成回落端口: %w", err)
+			return 0, fmt.Errorf("生成%s端口: %w", label, err)
 		}
 		port := min + int(n.Int64())
 		if try(port) {
@@ -494,7 +498,7 @@ func pickFallbackPortInRange(min, max int, avoid map[int]struct{}, available fun
 			return port, nil
 		}
 	}
-	return 0, fmt.Errorf("无法在 %d-%d 之间分配可用的回落端口", min, max)
+	return 0, fmt.Errorf("无法在 %d-%d 之间分配可用的%s端口", min, max, label)
 }
 
 func DefaultPort(store system.StateStore, core string) int {

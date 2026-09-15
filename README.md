@@ -9,7 +9,7 @@ ProxyForge 是面向 Linux/systemd 的 Go 单二进制管理器，用于在同�
 - 默认生成 REALITY 回落防偷跑配置，并提供 SNI/target 自动检测。
 - 配置写入前校验和备份，失败时自动回滚。
 - 支持原生 sing-box/Xray 客户端及 Mihomo/Clash Meta 配置。
-- 支持在同一 REALITY 端口按用户配置多条中转线路，普通用户保持本机直出。
+- 支持按用户配置多条中转线路；落地可复用当前 REALITY 入站，也可创建独立的 `VLESS + RAW + TLS + Vision` 端口，普通用户保持本机直出。
 - 支持 Debian/Ubuntu 与 RHEL/CentOS/Rocky/AlmaLinux/Fedora 的 amd64、arm64。
 
 除 `--help` 和 `--version` 外，所有操作都需要 root 权限和 systemd 环境。

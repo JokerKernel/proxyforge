@@ -93,6 +93,48 @@ func TestReadLandingPeerInputRejectsAmbiguousOrMissingSource(t *testing.T) {
 	}
 }
 
+func TestCreateLandingMenuOffersCurrentRealityAndIndependentTLS(t *testing.T) {
+	store := system.StateStore{Layout: system.Layout{Root: t.TempDir()}}
+	if err := store.Save(domain.NodeSpec{ManagedBy: "proxyforge", Core: domain.CoreXray, Port: 443}); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	c := &commandSet{
+		app: &app.App{Store: store}, reader: bufio.NewReader(strings.NewReader("q\n")), out: &out,
+	}
+	err := c.addLandingInteractive(context.Background(), domain.CoreXray)
+	if !errors.Is(err, errReturnToMenu) {
+		t.Fatalf("error=%v", err)
+	}
+	for _, want := range []string{
+		"使用当前协议", "VLESS + RAW + REALITY + Vision，复用端口 443",
+		"创建 VLESS + RAW + TLS + Vision", "随机高位独立端口",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("create landing menu missing %q: %q", want, out.String())
+		}
+	}
+}
+
+func TestManualTLSLandingPeerDoesNotRequestRealityKeys(t *testing.T) {
+	input := strings.Join([]string{
+		"tls-exit", "1", "2", "192.168.1.20", "8443", "tls.example.com",
+		"123e4567-e89b-42d3-a456-426614174000",
+	}, "\n") + "\n"
+	var out bytes.Buffer
+	c := &commandSet{reader: bufio.NewReader(strings.NewReader(input)), out: &out}
+	peer, err := c.askLandingPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if peer.Security != domain.LandingSecurityTLS || peer.PublicKey != "" || peer.ShortID != "" || peer.Port != 8443 {
+		t.Fatalf("peer=%#v", peer)
+	}
+	if strings.Contains(out.String(), "REALITY 公钥") || strings.Contains(out.String(), "short ID") {
+		t.Fatalf("TLS manual flow requested REALITY credentials: %q", out.String())
+	}
+}
+
 func TestManageRelaySelectsLongLineNameByNumber(t *testing.T) {
 	store := system.StateStore{Layout: system.Layout{Root: t.TempDir()}}
 	if err := store.Save(domain.NodeSpec{
@@ -116,7 +158,7 @@ func TestManageRelaySelectsLongLineNameByNumber(t *testing.T) {
 	}
 	for _, want := range []string{
 		"1   short · 192.168.1.10:443", "2   very-long-relay-line-name · 192.168.1.20:8443",
-		"[已启用]", "[已停用]", "管理中转线路  ›  very-long-relay-line-name", "当前落地：192.168.1.20:8443",
+		"[已启用]", "[已停用]", "管理中转线路  ›  very-long-relay-line-name", "当前落地：192.168.1.20:8443 · REALITY",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("relay management output missing %q: %q", want, out.String())

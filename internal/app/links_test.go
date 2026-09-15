@@ -3,10 +3,18 @@ package app
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
+	"math/big"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"proxyforge/internal/domain"
 	"proxyforge/internal/provider/xray"
@@ -78,6 +86,58 @@ func TestLandingAndRelayLifecycle(t *testing.T) {
 	state, err := a.Store.Load(domain.CoreXray)
 	if err != nil || len(state.RelayLinks) != 1 || state.RelayLinks[0].Enabled {
 		t.Fatalf("state=%#v err=%v", state, err)
+	}
+}
+
+func TestTLSLandingLifecycleAndPortableBundle(t *testing.T) {
+	runner := &fakeRunner{port: freePort(t)}
+	a, _ := testApp(t, runner)
+	if _, err := a.Generate(context.Background(), domain.CoreXray, domain.GenerateOptions{
+		Server: "relay.example.com", Port: runner.port, SNI: "relay.example.com", Target: "relay.example.com:443",
+		StandardConfig: true, NonInteractive: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	certFile, keyFile := writeTestTLSKeyPair(t, "tls.example.com")
+	access, err := a.AddLandingAccessWithOptions(context.Background(), domain.CoreXray, "tls-exit", LandingAddOptions{
+		Security: domain.LandingSecurityTLS, SNI: "tls.example.com",
+		CertificateFile: certFile, KeyFile: keyFile,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if access.Security != domain.LandingSecurityTLS || access.Port < domain.LandingTLSPortMin || access.Port > domain.LandingTLSPortMax || access.CertificateFile != certFile {
+		t.Fatalf("access=%#v", access)
+	}
+	b, err := a.ExportLandingBundle(domain.CoreXray, access.Name, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(b, []byte(certFile)) || bytes.Contains(b, []byte(keyFile)) || bytes.Contains(b, []byte("certificate_file")) || bytes.Contains(b, []byte("public_key")) {
+		t.Fatalf("landing-local TLS details leaked: %s", b)
+	}
+	peer, err := ParseLandingBundle(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if peer.Security != domain.LandingSecurityTLS || peer.Port != access.Port || peer.SNI != "tls.example.com" || peer.PublicKey != "" || peer.ShortID != "" {
+		t.Fatalf("peer=%#v", peer)
+	}
+	p, _ := a.Registry.Get(domain.CoreXray)
+	configPath := a.Layout.Resolve(p.ConfigPath())
+	config, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(config, []byte("proxyforge-landing-tls-tls-exit")) || !bytes.Contains(config, []byte(`"security": "tls"`)) {
+		t.Fatalf("TLS landing inbound missing: %s", config)
+	}
+	if err := a.SetLandingAccessEnabled(context.Background(), domain.CoreXray, access.Name, false); err != nil {
+		t.Fatal(err)
+	}
+	config, _ = os.ReadFile(configPath)
+	if bytes.Contains(config, []byte("proxyforge-landing-tls-tls-exit")) {
+		t.Fatalf("disabled TLS landing remained in config: %s", config)
 	}
 }
 
@@ -175,4 +235,32 @@ func xrayConfigHasTag(root map[string]any, tag string) bool {
 		}
 	}
 	return false
+}
+
+func writeTestTLSKeyPair(t *testing.T, dnsName string) (string, string) {
+	t.Helper()
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: dnsName}, DNSNames: []string{dnsName},
+		NotBefore: now.Add(-time.Hour), NotAfter: now.Add(24 * time.Hour),
+		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	certFile, keyFile := filepath.Join(dir, "fullchain.pem"), filepath.Join(dir, "privkey.pem")
+	if err := os.WriteFile(certFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyFile, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(privateKey)}), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return certFile, keyFile
 }

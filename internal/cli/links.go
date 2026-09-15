@@ -28,8 +28,11 @@ func (c *commandSet) landingCommand() *cobra.Command {
 func (c *commandSet) landingAddCommand() *cobra.Command {
 	var output string
 	var force bool
+	var security, sni, certFile, keyFile string
+	var port int
 	cmd := &cobra.Command{Use: "add <sing-box|xray> <name>", Short: "创建落地接入并输出可复制的连接文本", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
-		if _, err := c.app.AddLandingAccess(cmd.Context(), args[0], args[1]); err != nil {
+		opts := app.LandingAddOptions{Security: security, Port: port, SNI: sni, CertificateFile: certFile, KeyFile: keyFile}
+		if _, err := c.app.AddLandingAccessWithOptions(cmd.Context(), args[0], args[1], opts); err != nil {
 			return err
 		}
 		b, err := c.app.ExportLandingBundle(args[0], args[1], output, force)
@@ -45,6 +48,11 @@ func (c *commandSet) landingAddCommand() *cobra.Command {
 	}}
 	cmd.Flags().StringVarP(&output, "output", "o", "", "兼容选项：将连接文本写入文件（默认输出到终端）")
 	cmd.Flags().BoolVar(&force, "force", false, "覆盖已有输出文件")
+	cmd.Flags().StringVar(&security, "security", domain.LandingSecurityReality, "落地安全协议：reality 或 tls")
+	cmd.Flags().IntVar(&port, "port", 0, "TLS 落地独立监听端口（默认随机选择 30000-65000）")
+	cmd.Flags().StringVar(&sni, "server-name", "", "TLS 证书域名")
+	cmd.Flags().StringVar(&certFile, "cert-file", "", "TLS 证书链文件绝对路径")
+	cmd.Flags().StringVar(&keyFile, "key-file", "", "TLS 私钥文件绝对路径")
 	return cmd
 }
 
@@ -59,7 +67,12 @@ func (c *commandSet) landingListCommand() *cobra.Command {
 			return nil
 		}
 		for _, item := range items {
-			fmt.Fprintf(c.out, "%s\t%s\t%s\n", item.Name, item.UserName, enabledLabel(item.Enabled))
+			security := domain.NormalizeLandingSecurity(item.Security)
+			endpoint := "当前 REALITY 入站"
+			if security == domain.LandingSecurityTLS {
+				endpoint = fmt.Sprintf("TLS :%d", item.Port)
+			}
+			fmt.Fprintf(c.out, "%s\t%s\t%s\t%s\t%s\n", item.Name, item.UserName, security, endpoint, enabledLabel(item.Enabled))
 		}
 		return nil
 	}}
@@ -185,7 +198,8 @@ func (c *commandSet) relayListCommand() *cobra.Command {
 			return nil
 		}
 		for _, item := range items {
-			fmt.Fprintf(c.out, "%s\t%s\t%s:%d\t%s\n", item.Name, item.UserName, item.Upstream.Server, item.Upstream.Port, enabledLabel(item.Enabled))
+			fmt.Fprintf(c.out, "%s\t%s\t%s:%d\t%s\t%s\n", item.Name, item.UserName, item.Upstream.Server, item.Upstream.Port,
+				domain.NormalizeLandingSecurity(item.Upstream.Security), enabledLabel(item.Enabled))
 		}
 		return nil
 	}}
@@ -365,15 +379,57 @@ func (c *commandSet) linkMenu(ctx context.Context, core string) error {
 
 func (c *commandSet) addLandingInteractive(ctx context.Context, core string) error {
 	c.printPageHeader(core, "创建落地接入")
+	node, err := c.app.Store.Load(core)
+	if err != nil {
+		return err
+	}
+	c.printMenuChoice("1", fmt.Sprintf("使用当前协议（VLESS + RAW + REALITY + Vision，复用端口 %d）", node.Port))
+	c.printMenuChoice("2", "创建 VLESS + RAW + TLS + Vision（随机高位独立端口）")
+	protocolChoice, err := c.chooseNumberCancelable("请选择落地接入协议", 1, 2, 1)
+	if err != nil {
+		return err
+	}
 	name, err := c.askDefaultCancelable("接入名称", "relay-1")
 	if err != nil {
 		return err
 	}
-	ok, err := c.confirmCancelable("将向当前 REALITY 入站添加独立接入用户；普通用户路由保持不变，应用时会重启当前服务。")
+	opts := app.LandingAddOptions{Security: domain.LandingSecurityReality}
+	confirmMessage := "将向当前 REALITY 入站添加独立接入用户；不新增端口，普通用户路由保持不变，应用时会重启当前服务。"
+	if protocolChoice == 2 {
+		opts.Security = domain.LandingSecurityTLS
+		randomPort, e := c.app.PickLandingTLSPort(core)
+		if e != nil {
+			return e
+		}
+		rawPort, e := c.askDefaultCancelable("独立 TLS 监听端口（已随机选择高位可用端口）", strconv.Itoa(randomPort))
+		if e != nil {
+			return e
+		}
+		opts.Port, e = strconv.Atoi(rawPort)
+		if e != nil {
+			return fmt.Errorf("TLS 落地端口无效: %w", e)
+		}
+		opts.SNI, e = c.askDefaultCancelable("TLS 证书域名", "")
+		if e != nil {
+			return e
+		}
+		defaultCert := "/etc/letsencrypt/live/" + opts.SNI + "/fullchain.pem"
+		defaultKey := "/etc/letsencrypt/live/" + opts.SNI + "/privkey.pem"
+		opts.CertificateFile, e = c.askDefaultCancelable("TLS 证书链文件", defaultCert)
+		if e != nil {
+			return e
+		}
+		opts.KeyFile, e = c.askDefaultCancelable("TLS 私钥文件", defaultKey)
+		if e != nil {
+			return e
+		}
+		confirmMessage = fmt.Sprintf("将新增独立 TLS 入站端口 %d；证书须受中转机系统信任，普通用户和当前 REALITY 入站保持不变，应用时会重启当前服务。", opts.Port)
+	}
+	ok, err := c.confirmCancelable(confirmMessage)
 	if err != nil || !ok {
 		return errReturnToMenu
 	}
-	if _, err = c.app.AddLandingAccess(ctx, core, name); err != nil {
+	if _, err = c.app.AddLandingAccessWithOptions(ctx, core, name, opts); err != nil {
 		return err
 	}
 	b, err := c.app.ExportLandingBundle(core, name, "", false)
@@ -409,7 +465,7 @@ func (c *commandSet) addRelayInteractive(ctx context.Context, core string) error
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(c.out, "\n落地：%s:%d · SNI %s\n", peer.Server, peer.Port, peer.SNI)
+	fmt.Fprintf(c.out, "\n落地：%s:%d · %s · SNI %s\n", peer.Server, peer.Port, strings.ToUpper(domain.NormalizeLandingSecurity(peer.Security)), peer.SNI)
 	ok, err := c.confirmCancelable("该线路使用独立 UUID；原有用户继续 direct。落地不可用时线路将失败，不回退本机出口。")
 	if err != nil || !ok {
 		return errReturnToMenu
@@ -487,6 +543,16 @@ func (c *commandSet) askLandingPeer() (domain.LandingPeer, error) {
 	if coreChoice == 2 {
 		peer.Core = domain.CoreSingBox
 	}
+	c.printMenuChoice("1", "VLESS + RAW + REALITY + Vision")
+	c.printMenuChoice("2", "VLESS + RAW + TLS + Vision")
+	securityChoice, err := c.chooseNumberCancelable("请选择落地安全协议", 1, 2, 1)
+	if err != nil {
+		return peer, err
+	}
+	peer.Security = domain.LandingSecurityReality
+	if securityChoice == 2 {
+		peer.Security = domain.LandingSecurityTLS
+	}
 	peer.Server, err = c.askDefaultCancelable("落地公网 IP 或域名", "")
 	if err != nil {
 		return peer, err
@@ -499,7 +565,11 @@ func (c *commandSet) askLandingPeer() (domain.LandingPeer, error) {
 	if err != nil {
 		return peer, fmt.Errorf("落地端口无效: %w", err)
 	}
-	peer.SNI, err = c.askDefaultCancelable("落地 REALITY SNI", "")
+	sniLabel := "落地 REALITY SNI"
+	if peer.Security == domain.LandingSecurityTLS {
+		sniLabel = "落地 TLS 证书域名"
+	}
+	peer.SNI, err = c.askDefaultCancelable(sniLabel, "")
 	if err != nil {
 		return peer, err
 	}
@@ -507,13 +577,15 @@ func (c *commandSet) askLandingPeer() (domain.LandingPeer, error) {
 	if err != nil {
 		return peer, err
 	}
-	peer.PublicKey, err = c.askDefaultCancelable("落地 REALITY 公钥", "")
-	if err != nil {
-		return peer, err
-	}
-	peer.ShortID, err = c.askDefaultCancelable("落地 short ID", "")
-	if err != nil {
-		return peer, err
+	if peer.Security == domain.LandingSecurityReality {
+		peer.PublicKey, err = c.askDefaultCancelable("落地 REALITY 公钥", "")
+		if err != nil {
+			return peer, err
+		}
+		peer.ShortID, err = c.askDefaultCancelable("落地 short ID", "")
+		if err != nil {
+			return peer, err
+		}
 	}
 	peer.Flow = domain.VisionFlow
 	return peer, nil
@@ -545,7 +617,8 @@ func (c *commandSet) manageRelayInteractive(ctx context.Context, core string) er
 	name := selected.Name
 	c.clearScreen()
 	c.printPageHeader(core, "管理中转线路", name)
-	fmt.Fprintf(c.out, "当前落地：%s:%d · %s\n\n", selected.Upstream.Server, selected.Upstream.Port, enabledLabel(selected.Enabled))
+	fmt.Fprintf(c.out, "当前落地：%s:%d · %s · %s\n\n", selected.Upstream.Server, selected.Upstream.Port,
+		strings.ToUpper(domain.NormalizeLandingSecurity(selected.Upstream.Security)), enabledLabel(selected.Enabled))
 	c.printMenuChoice("1", "导出原生客户端配置")
 	c.printMenuChoice("2", "测试落地 TCP 连通性")
 	c.printMenuChoice("3", "粘贴新的落地连接文本")
@@ -624,6 +697,11 @@ func (c *commandSet) manageLandingInteractive(ctx context.Context, core string) 
 		if item.UserName != "" && item.UserName != item.Name {
 			title += " · " + item.UserName
 		}
+		if domain.NormalizeLandingSecurity(item.Security) == domain.LandingSecurityTLS {
+			title += fmt.Sprintf(" · TLS :%d", item.Port)
+		} else {
+			title += " · 当前 REALITY"
+		}
 		c.printMenuBadgeChoice(strconv.Itoa(i+1), title, "["+enabledLabel(item.Enabled)+"]")
 	}
 	c.printMenuChoice("0/q", "返回")
@@ -638,7 +716,12 @@ func (c *commandSet) manageLandingInteractive(ctx context.Context, core string) 
 	name := selected.Name
 	c.clearScreen()
 	c.printPageHeader(core, "管理落地接入", name)
-	fmt.Fprintf(c.out, "当前状态：%s\n\n", enabledLabel(selected.Enabled))
+	security := domain.NormalizeLandingSecurity(selected.Security)
+	endpoint := "复用当前 REALITY 入站"
+	if security == domain.LandingSecurityTLS {
+		endpoint = fmt.Sprintf("独立 TLS 端口 %d · %s", selected.Port, selected.SNI)
+	}
+	fmt.Fprintf(c.out, "当前状态：%s · %s\n\n", enabledLabel(selected.Enabled), endpoint)
 	c.printMenuChoice("1", "显示可复制的落地连接文本")
 	c.printMenuChoice("2", "轮换接入 UUID")
 	if selected.Enabled {
@@ -692,10 +775,15 @@ func (c *commandSet) printLinkGraph(core string) error {
 	c.printPageHeader(core, "流量关系")
 	fmt.Fprintln(c.out, "普通用户\n  └─ direct（本机出口）")
 	for _, link := range relays {
-		fmt.Fprintf(c.out, "中转用户 %s [%s]\n  └─ %s:%d\n", link.UserName, enabledLabel(link.Enabled), link.Upstream.Server, link.Upstream.Port)
+		fmt.Fprintf(c.out, "中转用户 %s [%s]\n  └─ %s:%d · %s\n", link.UserName, enabledLabel(link.Enabled), link.Upstream.Server, link.Upstream.Port,
+			strings.ToUpper(domain.NormalizeLandingSecurity(link.Upstream.Security)))
 	}
 	for _, access := range landings {
-		fmt.Fprintf(c.out, "落地接入 %s [%s]\n  └─ direct（本机出口）\n", access.UserName, enabledLabel(access.Enabled))
+		protocol := "REALITY（当前端口）"
+		if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityTLS {
+			protocol = fmt.Sprintf("TLS :%d", access.Port)
+		}
+		fmt.Fprintf(c.out, "落地接入 %s [%s · %s]\n  └─ direct（本机出口）\n", access.UserName, enabledLabel(access.Enabled), protocol)
 	}
 	return nil
 }

@@ -26,7 +26,7 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 	}
 	oldNames, oldUUIDs, oldTags := xrayLinkIdentity(old)
 	for _, access := range old.LandingAccesses {
-		if access.Enabled && countXrayClients(rawClients, access.UserName, access.UUID) != 1 {
+		if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityReality && access.Enabled && countXrayClients(rawClients, access.UserName, access.UUID) != 1 {
 			return nil, fmt.Errorf("现有 Xray 配置中落地接入 %q 的用户不唯一或不存在，拒绝修改", access.Name)
 		}
 	}
@@ -68,7 +68,7 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 		return nil
 	}
 	for _, access := range next.LandingAccesses {
-		if access.Enabled {
+		if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityReality && access.Enabled {
 			if err := addClient(access.UserName, access.UUID); err != nil {
 				return nil, err
 			}
@@ -82,6 +82,57 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 		}
 	}
 	settings["clients"] = clients
+
+	rawInbounds, ok := root["inbounds"].([]any)
+	if !ok {
+		return nil, fmt.Errorf("Xray inbounds 不存在或格式无效")
+	}
+	oldTLSInboundTags := map[string]bool{}
+	for _, access := range old.LandingAccesses {
+		if domain.NormalizeLandingSecurity(access.Security) != domain.LandingSecurityTLS {
+			continue
+		}
+		tag := xrayLandingTLSInboundTag(access.Name)
+		oldTLSInboundTags[tag] = true
+		if access.Enabled && countXrayLandingTLSInbounds(rawInbounds, tag, access.UserName, access.UUID) != 1 {
+			return nil, fmt.Errorf("现有 Xray 配置中 TLS 落地接入 %q 的入站不唯一或不存在，拒绝修改", access.Name)
+		}
+	}
+	inbounds := make([]any, 0, len(rawInbounds)+len(next.LandingAccesses))
+	for _, item := range rawInbounds {
+		object, ok := item.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("Xray inbound 不是对象")
+		}
+		tag, _ := object["tag"].(string)
+		if oldTLSInboundTags[tag] {
+			continue
+		}
+		inbounds = append(inbounds, object)
+	}
+	for _, access := range next.LandingAccesses {
+		if domain.NormalizeLandingSecurity(access.Security) != domain.LandingSecurityTLS || !access.Enabled {
+			continue
+		}
+		tag := xrayLandingTLSInboundTag(access.Name)
+		if countXrayTaggedObjects(inbounds, tag) != 0 {
+			return nil, fmt.Errorf("Xray TLS 落地入站 tag 冲突: %s", tag)
+		}
+		inbounds = append(inbounds, map[string]any{
+			"listen": "0.0.0.0", "port": access.Port, "protocol": "vless", "tag": tag,
+			"settings": map[string]any{"decryption": "none", "clients": []any{map[string]any{
+				"id": access.UUID, "email": access.UserName, "flow": domain.VisionFlow,
+			}}},
+			"streamSettings": map[string]any{
+				"network": "raw", "security": "tls", "tlsSettings": map[string]any{
+					"minVersion": "1.3", "certificates": []any{map[string]any{
+						"certificateFile": access.CertificateFile, "keyFile": access.KeyFile,
+					}},
+				},
+			},
+		})
+	}
+	root["inbounds"] = inbounds
 
 	rawOutbounds, ok := root["outbounds"].([]any)
 	if !ok {
@@ -115,17 +166,26 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 			}
 		}
 		peer := link.Upstream
+		streamSettings := map[string]any{}
+		if domain.NormalizeLandingSecurity(peer.Security) == domain.LandingSecurityTLS {
+			streamSettings = map[string]any{
+				"network": "raw", "security": "tls",
+				"tlsSettings": map[string]any{"serverName": peer.SNI, "fingerprint": "chrome", "minVersion": "1.3"},
+			}
+		} else {
+			streamSettings = map[string]any{
+				"network": "raw", "security": "reality",
+				"realitySettings": map[string]any{"serverName": peer.SNI, "fingerprint": "chrome", "password": peer.PublicKey, "shortId": peer.ShortID, "spiderX": "/"},
+			}
+		}
 		outbounds = append(outbounds, map[string]any{
 			"protocol": "vless",
 			"settings": map[string]any{"vnext": []any{map[string]any{
 				"address": peer.Server, "port": peer.Port,
 				"users": []any{map[string]any{"id": peer.UUID, "encryption": "none", "flow": domain.VisionFlow}},
 			}}},
-			"tag": tag,
-			"streamSettings": map[string]any{
-				"network": "raw", "security": "reality",
-				"realitySettings": map[string]any{"serverName": peer.SNI, "fingerprint": "chrome", "password": peer.PublicKey, "shortId": peer.ShortID, "spiderX": "/"},
-			},
+			"tag":            tag,
+			"streamSettings": streamSettings,
 		})
 	}
 	root["outbounds"] = outbounds
@@ -168,17 +228,39 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 	return marshalXray(root)
 }
 
-func xrayRelayOutboundTag(name string) string { return "proxyforge-relay-" + name }
+func xrayRelayOutboundTag(name string) string     { return "proxyforge-relay-" + name }
+func xrayLandingTLSInboundTag(name string) string { return "proxyforge-landing-tls-" + name }
 
 func xrayLinkIdentity(n domain.NodeSpec) (map[string]bool, map[string]bool, map[string]bool) {
 	names, uuids, tags := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for _, access := range n.LandingAccesses {
-		names[access.UserName], uuids[access.UUID] = true, true
+		if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityReality {
+			names[access.UserName], uuids[access.UUID] = true, true
+		}
 	}
 	for _, link := range n.RelayLinks {
 		names[link.UserName], uuids[link.UUID], tags[xrayRelayOutboundTag(link.Name)] = true, true, true
 	}
 	return names, uuids, tags
+}
+
+func countXrayLandingTLSInbounds(items []any, tag, user, uuid string) int {
+	count := 0
+	for _, item := range items {
+		inbound, ok := item.(map[string]any)
+		if !ok || inbound["tag"] != tag {
+			continue
+		}
+		settings, ok := inbound["settings"].(map[string]any)
+		if !ok {
+			continue
+		}
+		clients, ok := settings["clients"].([]any)
+		if ok && countXrayClients(clients, user, uuid) == 1 {
+			count++
+		}
+	}
+	return count
 }
 
 func countXrayClients(items []any, name, uuid string) int {

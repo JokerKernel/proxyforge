@@ -1,15 +1,22 @@
 package domain
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 const (
-	CoreSingBox        = "sing-box"
-	CoreXray           = "xray"
-	VisionFlow         = "xtls-rprx-vision"
-	DefaultUserName    = "one"
-	FallbackPortMin    = 30000
-	FallbackPortMax    = 65000
-	StateSchemaVersion = 2
+	CoreSingBox            = "sing-box"
+	CoreXray               = "xray"
+	VisionFlow             = "xtls-rprx-vision"
+	LandingSecurityReality = "reality"
+	LandingSecurityTLS     = "tls"
+	DefaultUserName        = "one"
+	LandingTLSPortMin      = 30000
+	LandingTLSPortMax      = 65000
+	FallbackPortMin        = LandingTLSPortMin
+	FallbackPortMax        = LandingTLSPortMax
+	StateSchemaVersion     = 2
 )
 
 // LandingPeer is the portable, client-side description of a managed landing
@@ -17,21 +24,35 @@ const (
 type LandingPeer struct {
 	Name      string `json:"name"`
 	Core      string `json:"core"`
+	Security  string `json:"security"`
 	Server    string `json:"server"`
 	Port      int    `json:"port"`
 	SNI       string `json:"sni"`
 	UUID      string `json:"uuid"`
-	PublicKey string `json:"public_key"`
-	ShortID   string `json:"short_id"`
+	PublicKey string `json:"public_key,omitempty"`
+	ShortID   string `json:"short_id,omitempty"`
 	Flow      string `json:"flow"`
 }
 
 type LandingAccess struct {
-	Name      string    `json:"name"`
-	UserName  string    `json:"user_name"`
-	UUID      string    `json:"uuid"`
-	Enabled   bool      `json:"enabled"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Name            string    `json:"name"`
+	UserName        string    `json:"user_name"`
+	UUID            string    `json:"uuid"`
+	Security        string    `json:"security,omitempty"`
+	Port            int       `json:"port,omitempty"`
+	SNI             string    `json:"sni,omitempty"`
+	CertificateFile string    `json:"certificate_file,omitempty"`
+	KeyFile         string    `json:"key_file,omitempty"`
+	Enabled         bool      `json:"enabled"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+func NormalizeLandingSecurity(security string) string {
+	security = strings.ToLower(strings.TrimSpace(security))
+	if security == "" {
+		return LandingSecurityReality
+	}
+	return security
 }
 
 type RelayLink struct {

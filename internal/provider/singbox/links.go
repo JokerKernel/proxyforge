@@ -22,7 +22,7 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 	}
 	oldNames, oldUUIDs, oldTags := singBoxLinkIdentity(old)
 	for _, access := range old.LandingAccesses {
-		if access.Enabled && countSingBoxUsers(rawUsers, access.UserName, access.UUID) != 1 {
+		if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityReality && access.Enabled && countSingBoxUsers(rawUsers, access.UserName, access.UUID) != 1 {
 			return nil, fmt.Errorf("现有 sing-box 配置中落地接入 %q 的用户不唯一或不存在，拒绝修改", access.Name)
 		}
 	}
@@ -64,7 +64,7 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 		return nil
 	}
 	for _, access := range next.LandingAccesses {
-		if access.Enabled {
+		if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityReality && access.Enabled {
 			if err := addUser(access.UserName, access.UUID); err != nil {
 				return nil, err
 			}
@@ -78,6 +78,52 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 		}
 	}
 	inbound["users"] = users
+
+	rawInbounds, ok := root["inbounds"].([]any)
+	if !ok {
+		return nil, fmt.Errorf("sing-box inbounds 不存在或格式无效")
+	}
+	oldTLSInboundTags := map[string]bool{}
+	for _, access := range old.LandingAccesses {
+		if domain.NormalizeLandingSecurity(access.Security) != domain.LandingSecurityTLS {
+			continue
+		}
+		tag := singBoxLandingTLSInboundTag(access.Name)
+		oldTLSInboundTags[tag] = true
+		if access.Enabled && countSingBoxLandingTLSInbounds(rawInbounds, tag, access.UserName, access.UUID) != 1 {
+			return nil, fmt.Errorf("现有 sing-box 配置中 TLS 落地接入 %q 的入站不唯一或不存在，拒绝修改", access.Name)
+		}
+	}
+	inbounds := make([]any, 0, len(rawInbounds)+len(next.LandingAccesses))
+	for _, item := range rawInbounds {
+		object, ok := item.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("sing-box inbound 不是对象")
+		}
+		tag, _ := object["tag"].(string)
+		if oldTLSInboundTags[tag] {
+			continue
+		}
+		inbounds = append(inbounds, object)
+	}
+	for _, access := range next.LandingAccesses {
+		if domain.NormalizeLandingSecurity(access.Security) != domain.LandingSecurityTLS || !access.Enabled {
+			continue
+		}
+		tag := singBoxLandingTLSInboundTag(access.Name)
+		if countTaggedObjects(inbounds, tag) != 0 {
+			return nil, fmt.Errorf("sing-box TLS 落地入站 tag 冲突: %s", tag)
+		}
+		inbounds = append(inbounds, map[string]any{
+			"type": "vless", "tag": tag, "listen": "::", "listen_port": access.Port,
+			"users": []any{map[string]any{"name": access.UserName, "uuid": access.UUID, "flow": domain.VisionFlow}},
+			"tls": map[string]any{
+				"enabled": true, "server_name": access.SNI, "min_version": "1.3",
+				"certificate_path": access.CertificateFile, "key_path": access.KeyFile,
+			},
+		})
+	}
+	root["inbounds"] = inbounds
 
 	rawOutbounds, ok := root["outbounds"].([]any)
 	if !ok {
@@ -111,12 +157,17 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 			}
 		}
 		peer := link.Upstream
+		tlsSettings := map[string]any{
+			"enabled": true, "server_name": peer.SNI,
+			"utls": map[string]any{"enabled": true, "fingerprint": "chrome"},
+		}
+		if domain.NormalizeLandingSecurity(peer.Security) == domain.LandingSecurityReality {
+			tlsSettings["reality"] = map[string]any{"enabled": true, "public_key": peer.PublicKey, "short_id": peer.ShortID}
+		}
 		outbounds = append(outbounds, map[string]any{
 			"type": "vless", "tag": tag, "server": peer.Server, "server_port": peer.Port,
 			"uuid": peer.UUID, "flow": domain.VisionFlow,
-			"tls": map[string]any{"enabled": true, "server_name": peer.SNI,
-				"utls":    map[string]any{"enabled": true, "fingerprint": "chrome"},
-				"reality": map[string]any{"enabled": true, "public_key": peer.PublicKey, "short_id": peer.ShortID}},
+			"tls": tlsSettings,
 		})
 	}
 	root["outbounds"] = outbounds
@@ -160,16 +211,36 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 }
 
 func relayOutboundTag(name string) string { return "proxyforge-relay-" + name }
+func singBoxLandingTLSInboundTag(name string) string {
+	return "proxyforge-landing-tls-" + name
+}
 
 func singBoxLinkIdentity(n domain.NodeSpec) (map[string]bool, map[string]bool, map[string]bool) {
 	names, uuids, tags := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for _, access := range n.LandingAccesses {
-		names[access.UserName], uuids[access.UUID] = true, true
+		if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityReality {
+			names[access.UserName], uuids[access.UUID] = true, true
+		}
 	}
 	for _, link := range n.RelayLinks {
 		names[link.UserName], uuids[link.UUID], tags[relayOutboundTag(link.Name)] = true, true, true
 	}
 	return names, uuids, tags
+}
+
+func countSingBoxLandingTLSInbounds(items []any, tag, user, uuid string) int {
+	count := 0
+	for _, item := range items {
+		inbound, ok := item.(map[string]any)
+		if !ok || inbound["tag"] != tag {
+			continue
+		}
+		users, ok := inbound["users"].([]any)
+		if ok && countSingBoxUsers(users, user, uuid) == 1 {
+			count++
+		}
+	}
+	return count
 }
 
 func countSingBoxUsers(items []any, name, uuid string) int {

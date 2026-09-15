@@ -2,11 +2,14 @@ package app
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -27,6 +30,14 @@ type LandingBundle struct {
 
 type RelayAddOptions struct {
 	AllowUnreachable bool
+}
+
+type LandingAddOptions struct {
+	Security        string
+	Port            int
+	SNI             string
+	CertificateFile string
+	KeyFile         string
 }
 
 var linkNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`)
@@ -51,6 +62,10 @@ func (a *App) RelayLinks(core string) ([]domain.RelayLink, error) {
 }
 
 func (a *App) AddLandingAccess(ctx context.Context, core, name string) (domain.LandingAccess, error) {
+	return a.AddLandingAccessWithOptions(ctx, core, name, LandingAddOptions{Security: domain.LandingSecurityReality})
+}
+
+func (a *App) AddLandingAccessWithOptions(ctx context.Context, core, name string, opts LandingAddOptions) (domain.LandingAccess, error) {
 	if err := validateLinkName(name); err != nil {
 		return domain.LandingAccess{}, err
 	}
@@ -61,16 +76,70 @@ func (a *App) AddLandingAccess(ctx context.Context, core, name string) (domain.L
 	if _, ok := findLanding(n, name); ok {
 		return domain.LandingAccess{}, fmt.Errorf("落地接入 %q 已存在", name)
 	}
+	security := domain.NormalizeLandingSecurity(strings.ToLower(strings.TrimSpace(opts.Security)))
+	if security != domain.LandingSecurityReality && security != domain.LandingSecurityTLS {
+		return domain.LandingAccess{}, fmt.Errorf("落地安全协议无效: %q（可选 reality 或 tls）", opts.Security)
+	}
+	if security == domain.LandingSecurityTLS {
+		if opts.Port == 0 {
+			opts.Port, err = a.PickLandingTLSPort(core)
+			if err != nil {
+				return domain.LandingAccess{}, err
+			}
+		}
+		if err := a.validateLandingTLS(n, core, opts); err != nil {
+			return domain.LandingAccess{}, err
+		}
+	}
 	uuid, err := system.UUID()
 	if err != nil {
 		return domain.LandingAccess{}, err
 	}
-	access := domain.LandingAccess{Name: name, UserName: "proxyforge-landing-" + name, UUID: uuid, Enabled: true, UpdatedAt: a.Now().UTC()}
+	access := domain.LandingAccess{
+		Name: name, UserName: "proxyforge-landing-" + name, UUID: uuid, Security: security,
+		Port: opts.Port, SNI: strings.TrimSpace(opts.SNI), CertificateFile: strings.TrimSpace(opts.CertificateFile), KeyFile: strings.TrimSpace(opts.KeyFile),
+		Enabled: true, UpdatedAt: a.Now().UTC(),
+	}
+	if security == domain.LandingSecurityReality {
+		access.Port, access.SNI, access.CertificateFile, access.KeyFile = 0, "", "", ""
+	}
 	n.LandingAccesses = append(n.LandingAccesses, access)
 	if _, err := a.applyLinks(ctx, core, n, "落地接入"); err != nil {
 		return domain.LandingAccess{}, err
 	}
+	if security == domain.LandingSecurityTLS {
+		a.firewallHint(access.Port)
+	}
 	return access, nil
+}
+
+// PickLandingTLSPort returns a random, currently available high port while
+// avoiding all ports managed by ProxyForge for both cores.
+func (a *App) PickLandingTLSPort(core string) (int, error) {
+	if core != domain.CoreXray && core != domain.CoreSingBox {
+		return 0, fmt.Errorf("不支持的内核 %q", core)
+	}
+	avoid := map[int]struct{}{}
+	for _, candidateCore := range []string{domain.CoreXray, domain.CoreSingBox} {
+		n, err := a.Store.Load(candidateCore)
+		if err != nil {
+			continue
+		}
+		if n.Port != 0 {
+			avoid[n.Port] = struct{}{}
+		}
+		if port := nodeFallbackPort(n); port != 0 {
+			avoid[port] = struct{}{}
+		}
+		for _, access := range n.LandingAccesses {
+			if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityTLS && access.Port != 0 {
+				avoid[access.Port] = struct{}{}
+			}
+		}
+	}
+	return pickAvailablePortInRange("TLS 落地", domain.LandingTLSPortMin, domain.LandingTLSPortMax, avoid, func(port int) bool {
+		return a.PortFree == nil || a.PortFree(port) == nil
+	})
 }
 
 func (a *App) SetLandingAccessEnabled(ctx context.Context, core, name string, enabled bool) error {
@@ -136,10 +205,14 @@ func (a *App) LandingBundle(core, name string) (LandingBundle, error) {
 	if !access.Enabled {
 		return LandingBundle{}, fmt.Errorf("落地接入 %q 已停用，不能生成连接文本", name)
 	}
-	return LandingBundle{ManagedBy: "proxyforge", SchemaVersion: 1, Kind: landingBundleKind, Peer: domain.LandingPeer{
-		Name: access.Name, Core: core, Server: n.Server, Port: n.Port, SNI: n.SNI, UUID: access.UUID,
-		PublicKey: n.PublicKey, ShortID: n.ShortID, Flow: domain.VisionFlow,
-	}}, nil
+	security := domain.NormalizeLandingSecurity(access.Security)
+	peer := domain.LandingPeer{Name: access.Name, Core: core, Security: security, Server: n.Server, UUID: access.UUID, Flow: domain.VisionFlow}
+	if security == domain.LandingSecurityTLS {
+		peer.Port, peer.SNI = access.Port, access.SNI
+	} else {
+		peer.Port, peer.SNI, peer.PublicKey, peer.ShortID = n.Port, n.SNI, n.PublicKey, n.ShortID
+	}
+	return LandingBundle{ManagedBy: "proxyforge", SchemaVersion: 2, Kind: landingBundleKind, Peer: peer}, nil
 }
 
 func (a *App) ExportLandingBundle(core, name, output string, force bool) ([]byte, error) {
@@ -163,9 +236,10 @@ func ParseLandingBundle(b []byte) (domain.LandingPeer, error) {
 	if err := json.Unmarshal(b, &bundle); err != nil {
 		return domain.LandingPeer{}, fmt.Errorf("解析落地连接文本: %w", err)
 	}
-	if bundle.ManagedBy != "proxyforge" || bundle.Kind != landingBundleKind || bundle.SchemaVersion != 1 {
+	if bundle.ManagedBy != "proxyforge" || bundle.Kind != landingBundleKind || (bundle.SchemaVersion != 1 && bundle.SchemaVersion != 2) {
 		return domain.LandingPeer{}, fmt.Errorf("落地连接文本标识或版本无效")
 	}
+	bundle.Peer.Security = domain.NormalizeLandingSecurity(strings.ToLower(strings.TrimSpace(bundle.Peer.Security)))
 	if err := validateLandingPeer(bundle.Peer); err != nil {
 		return domain.LandingPeer{}, err
 	}
@@ -181,6 +255,7 @@ func ReadLandingBundle(path string) (domain.LandingPeer, error) {
 }
 
 func (a *App) AddRelayLink(ctx context.Context, core, name string, peer domain.LandingPeer, opts RelayAddOptions) (domain.RelayLink, error) {
+	peer.Security = domain.NormalizeLandingSecurity(strings.ToLower(strings.TrimSpace(peer.Security)))
 	if err := validateLinkName(name); err != nil {
 		return domain.RelayLink{}, err
 	}
@@ -220,6 +295,7 @@ func (a *App) AddRelayLink(ctx context.Context, core, name string, peer domain.L
 }
 
 func (a *App) UpdateRelayLink(ctx context.Context, core, name string, peer domain.LandingPeer, opts RelayAddOptions) error {
+	peer.Security = domain.NormalizeLandingSecurity(strings.ToLower(strings.TrimSpace(peer.Security)))
 	if err := validateLandingPeer(peer); err != nil {
 		return err
 	}
@@ -422,7 +498,74 @@ func validateLinkName(name string) error {
 	return nil
 }
 
+func (a *App) validateLandingTLS(n domain.NodeSpec, core string, opts LandingAddOptions) error {
+	if err := system.ValidatePort(opts.Port); err != nil {
+		return fmt.Errorf("TLS 落地端口无效: %w", err)
+	}
+	if opts.Port == n.Port || opts.Port == nodeFallbackPort(n) {
+		return fmt.Errorf("TLS 落地端口 %d 与当前节点已有端口冲突", opts.Port)
+	}
+	for _, access := range n.LandingAccesses {
+		if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityTLS && access.Port == opts.Port {
+			return fmt.Errorf("TLS 落地端口 %d 已由接入 %q 使用", opts.Port, access.Name)
+		}
+	}
+	otherCore := domain.CoreXray
+	if core == domain.CoreXray {
+		otherCore = domain.CoreSingBox
+	}
+	if other, err := a.Store.Load(otherCore); err == nil {
+		if opts.Port == other.Port || opts.Port == nodeFallbackPort(other) {
+			return fmt.Errorf("TLS 落地端口 %d 已由受管的 %s 节点使用", opts.Port, otherCore)
+		}
+		for _, access := range other.LandingAccesses {
+			if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityTLS && access.Port == opts.Port {
+				return fmt.Errorf("TLS 落地端口 %d 已由 %s 落地接入 %q 使用", opts.Port, otherCore, access.Name)
+			}
+		}
+	}
+	if a.PortFree != nil {
+		if err := a.PortFree(opts.Port); err != nil {
+			return fmt.Errorf("TLS 落地端口不可用: %w", err)
+		}
+	}
+	sni := strings.TrimSpace(opts.SNI)
+	if err := system.ValidateSNI(sni); err != nil {
+		return fmt.Errorf("TLS 落地域名无效: %w", err)
+	}
+	certFile, keyFile := strings.TrimSpace(opts.CertificateFile), strings.TrimSpace(opts.KeyFile)
+	if !filepath.IsAbs(certFile) || !filepath.IsAbs(keyFile) {
+		return fmt.Errorf("TLS 证书和私钥必须使用绝对路径")
+	}
+	pair, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return fmt.Errorf("读取 TLS 证书或私钥: %w", err)
+	}
+	if len(pair.Certificate) == 0 {
+		return fmt.Errorf("TLS 证书链为空")
+	}
+	leaf, err := x509.ParseCertificate(pair.Certificate[0])
+	if err != nil {
+		return fmt.Errorf("解析 TLS 证书: %w", err)
+	}
+	if err := leaf.VerifyHostname(sni); err != nil {
+		return fmt.Errorf("TLS 证书不匹配域名 %s: %w", sni, err)
+	}
+	now := time.Now()
+	if a.Now != nil {
+		now = a.Now()
+	}
+	if now.Before(leaf.NotBefore) || now.After(leaf.NotAfter) {
+		return fmt.Errorf("TLS 证书当前不在有效期内（%s 至 %s）", leaf.NotBefore.Format(time.RFC3339), leaf.NotAfter.Format(time.RFC3339))
+	}
+	return nil
+}
+
 func validateLandingPeer(peer domain.LandingPeer) error {
+	security := domain.NormalizeLandingSecurity(strings.ToLower(strings.TrimSpace(peer.Security)))
+	if security != domain.LandingSecurityReality && security != domain.LandingSecurityTLS {
+		return fmt.Errorf("落地安全协议无效: %q", peer.Security)
+	}
 	if peer.Core != domain.CoreXray && peer.Core != domain.CoreSingBox {
 		return fmt.Errorf("落地内核无效: %q", peer.Core)
 	}
@@ -452,11 +595,13 @@ func validateLandingPeer(peer domain.LandingPeer) error {
 	if !uuidPattern.MatchString(peer.UUID) {
 		return fmt.Errorf("落地 UUID 格式无效")
 	}
-	if strings.TrimSpace(peer.PublicKey) == "" {
-		return fmt.Errorf("落地 REALITY 公钥不能为空")
-	}
-	if !shortIDPattern.MatchString(peer.ShortID) || len(peer.ShortID)%2 != 0 {
-		return fmt.Errorf("落地 short ID 必须为 2-16 个十六进制字符")
+	if security == domain.LandingSecurityReality {
+		if strings.TrimSpace(peer.PublicKey) == "" {
+			return fmt.Errorf("落地 REALITY 公钥不能为空")
+		}
+		if !shortIDPattern.MatchString(peer.ShortID) || len(peer.ShortID)%2 != 0 {
+			return fmt.Errorf("落地 short ID 必须为 2-16 个十六进制字符")
+		}
 	}
 	if peer.Flow != domain.VisionFlow {
 		return fmt.Errorf("落地 flow 必须为 %s", domain.VisionFlow)

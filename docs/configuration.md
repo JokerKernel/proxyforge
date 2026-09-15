@@ -12,7 +12,7 @@ proxyforge cleanup <sing-box|xray|all> [--yes]
 proxyforge config generate <sing-box|xray> --server HOST --port PORT --sni DOMAIN [OPTIONS]
 proxyforge config client <sing-box|xray> [--format native|clash] [--output FILE] [--force]
 proxyforge config reset <sing-box|xray> [--sni DOMAIN] [--target HOST:PORT] [--yes]
-proxyforge config landing add <sing-box|xray> NAME
+proxyforge config landing add <sing-box|xray> NAME [--security reality|tls] [TLS OPTIONS]
 proxyforge config relay add <sing-box|xray> NAME --upstream-stdin
 proxyforge config relay client <sing-box|xray> NAME [--format native|clash] [--output FILE]
 proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
@@ -92,17 +92,36 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 交互菜单的“客户端配置”同时提供普通节点和中转节点入口。选择中转节点后会列出当前线路及启用状态，再选择原生 JSON 或 Clash YAML，配置内容直接显示在终端。
 
-## 同端口中转与落地
+## 中转与落地
 
-“服务端配置 → 中转与落地配置”可以在不增加监听端口的情况下，按 VLESS 用户身份选择出口。普通用户继续使用现有 `direct`，每条中转线路使用独立 UUID 并固定连接指定落地；落地不可用时不会回退本机出口。
+“服务端配置 → 中转与落地配置”按 VLESS 用户身份选择出口。普通用户继续使用现有 `direct`，每条中转线路使用独立 UUID 并固定连接指定落地；落地不可用时不会回退本机出口。
 
 中转用户名称直接使用线路名称，例如线路 `cs` 的用户名称也是 `cs`。旧前缀用户名不会自动迁移，需要删除旧线路后重新创建；用于管理出站的内部 tag 不属于客户端用户名，仍保留受管标识。
 
-先在落地服务器创建独立接入。命令会把一段可复制的 JSON 连接文本直接显示在终端，不会默认生成文件：
+先在落地服务器创建独立接入。交互菜单会提供两种模式：
+
+- 使用当前协议：把落地用户加入当前 `VLESS + RAW + REALITY + Vision` 入站，不新增端口。
+- 创建独立 TLS：新增一个 `VLESS + RAW + TLS + Vision` 入站，默认从 `30000–65000` 随机选择可用端口，并使用独立证书域名、证书链和私钥。交互时可以修改随机结果。
+
+命令会把一段可复制的 JSON 连接文本直接显示在终端，不会默认生成文件。默认模式是复用当前 REALITY：
 
 ```bash
 sudo proxyforge config landing add xray from-relay
 ```
+
+纯命令行创建独立 TLS 落地的示例：
+
+```bash
+sudo proxyforge config landing add xray from-relay-tls \
+  --security tls \
+  --server-name exit.example.com \
+  --cert-file /etc/letsencrypt/live/exit.example.com/fullchain.pem \
+  --key-file /etc/letsencrypt/live/exit.example.com/privkey.pem
+```
+
+TLS 模式要求证书和私钥文件已存在、证书在有效期内且 SAN 与 `--server-name` 匹配；中转机按系统 CA 验证证书，不会自动启用跳过验证。证书路径只保存在落地服务器本地状态和内核配置里，不会写进连接文本。还需确保内核运行用户可读取证书文件，并在防火墙中放行所选 TCP 端口。
+
+命令行使用 `--security tls` 时可以省略 `--port`，此时同样会在 `30000–65000` 中随机选择当前可用且未被 ProxyForge 管理的端口。
 
 复制完整 JSON 文本。在中转服务器的交互菜单选择“添加中转线路”，程序会打开一个临时编辑文件；粘贴后保存并退出即可。临时文件权限为 `0600`，导入完成后会自动删除。
 
@@ -116,7 +135,7 @@ sudo proxyforge config relay client sing-box us \
   --format clash --output ./us-client.yaml
 ```
 
-连接文本包含地址、端口、UUID、SNI、REALITY 公钥和 short ID，不含服务端私钥，但其中 UUID 仍是敏感凭据。支持 Xray 与 sing-box 两端任意组合；第一版链路固定使用 VLESS + REALITY + Vision、TCP/raw。
+连接文本包含安全协议、地址、端口、UUID 和 SNI；REALITY 模式还包含公钥与 short ID。连接文本不含 REALITY 服务端私钥、TLS 私钥或证书文件路径，但其中 UUID 仍是敏感凭据。支持 Xray 与 sing-box 两端任意组合，两种模式都使用 VLESS + Vision、RAW 传输。
 
 `landing export`（别名 `landing show`）用于再次显示连接文本，`relay update --upstream-stdin` 用于粘贴更新。为兼容已有脚本，仍保留落地命令的 `--output FILE` 和中转命令的 `--upstream FILE`；新流程无需使用这两个文件参数。
 
