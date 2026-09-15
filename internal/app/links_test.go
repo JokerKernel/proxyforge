@@ -73,14 +73,14 @@ func TestLandingAndRelayLifecycle(t *testing.T) {
 	if err := json.Unmarshal(config, &root); err != nil {
 		t.Fatal(err)
 	}
-	if !xrayConfigHasTag(root, "proxyforge-relay-la") {
+	if !xrayConfigHasTag(root, "la") {
 		t.Fatalf("relay outbound missing: %s", config)
 	}
 	if err := a.SetRelayLinkEnabled(context.Background(), domain.CoreXray, "la", false); err != nil {
 		t.Fatal(err)
 	}
 	config, _ = os.ReadFile(configPath)
-	if bytes.Contains(config, []byte("proxyforge-relay-la")) {
+	if xrayConfigContainsTag(config, "la") {
 		t.Fatalf("disabled link remained in config: %s", config)
 	}
 	state, err := a.Store.Load(domain.CoreXray)
@@ -200,7 +200,7 @@ func TestGeneratePreservesLinksUnlessExplicitlyDropped(t *testing.T) {
 	}
 	p, _ := a.Registry.Get(domain.CoreXray)
 	config, _ := os.ReadFile(a.Layout.Resolve(p.ConfigPath()))
-	if bytes.Contains(config, []byte("proxyforge-relay-la")) {
+	if xrayConfigContainsTag(config, "la") {
 		t.Fatalf("dropped link remained in config: %s", config)
 	}
 }
@@ -235,6 +235,11 @@ func xrayConfigHasTag(root map[string]any, tag string) bool {
 		}
 	}
 	return false
+}
+
+func xrayConfigContainsTag(config []byte, tag string) bool {
+	var root map[string]any
+	return json.Unmarshal(config, &root) == nil && xrayConfigHasTag(root, tag)
 }
 
 func writeTestTLSKeyPair(t *testing.T, dnsName string) (string, string) {

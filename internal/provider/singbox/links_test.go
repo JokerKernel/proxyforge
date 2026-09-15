@@ -29,10 +29,10 @@ func TestRenderAndRemoveManagedLinks(t *testing.T) {
 	if len(users) != 3 {
 		t.Fatalf("users=%#v", users)
 	}
-	if !singBoxHasTaggedOutbound(root, "proxyforge-relay-la") {
+	if !singBoxHasTaggedOutbound(root, "la") {
 		t.Fatalf("missing relay outbound: %s", b)
 	}
-	if !singBoxHasRelayRule(root, "la", "proxyforge-relay-la") {
+	if !singBoxHasRelayRule(root, "la", "la") {
 		t.Fatalf("missing relay rule: %s", b)
 	}
 	root["manual_top_level"] = "keep"
@@ -52,7 +52,7 @@ func TestRenderAndRemoveManagedLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	users = root["inbounds"].([]any)[0].(map[string]any)["users"].([]any)
-	if len(users) != 1 || singBoxHasTaggedOutbound(root, "proxyforge-relay-la") {
+	if len(users) != 1 || singBoxHasTaggedOutbound(root, "la") {
 		t.Fatalf("links not removed: %s", removed)
 	}
 	if root["manual_top_level"] != "keep" || !singBoxHasTaggedOutbound(root, "manual-out") {

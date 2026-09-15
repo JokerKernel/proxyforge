@@ -210,7 +210,7 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 	return marshalSingBox(root)
 }
 
-func relayOutboundTag(name string) string { return "proxyforge-relay-" + name }
+func relayOutboundTag(name string) string { return name }
 func singBoxLandingTLSInboundTag(name string) string {
 	return "proxyforge-landing-tls-" + name
 }
