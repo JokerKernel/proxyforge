@@ -27,6 +27,9 @@ type ModifyConfigStatus struct {
 	RelayKnown       bool
 	RelayTotal       int
 	RelayEnabled     int
+	LandingKnown     bool
+	LandingTotal     int
+	LandingEnabled   int
 	HasFallback      bool
 	StrictMatch      bool
 	HTTPHostRestrict bool
@@ -46,6 +49,13 @@ func (a *App) ModifyConfigStatus(ctx context.Context, core string) ModifyConfigS
 		for _, link := range current.RelayLinks {
 			if link.Enabled {
 				status.RelayEnabled++
+			}
+		}
+		status.LandingKnown = true
+		status.LandingTotal = len(current.LandingAccesses)
+		for _, access := range current.LandingAccesses {
+			if access.Enabled {
+				status.LandingEnabled++
 			}
 		}
 		status.SNI = strings.TrimSpace(current.SNI)

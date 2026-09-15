@@ -294,6 +294,7 @@ func (c *commandSet) printModifyConfigCard(ctx context.Context, core string) {
 		[2]string{"日志级别", modifyConfigValue(status.HasConfig, status.LogLevel, func() string { return logLevelCardDisplay(core, status.LogLevel) })},
 		[2]string{"服务状态", serviceStatusCardDisplay(status)},
 		[2]string{"中转", relayCardDisplay(status.HasConfig || status.SNI != "", status.RelayKnown, status.RelayTotal, status.RelayEnabled)},
+		[2]string{"落地", relayCardDisplay(status.HasConfig || status.SNI != "", status.LandingKnown, status.LandingTotal, status.LandingEnabled)},
 		[2]string{"DNS 设置", modifyConfigValue(status.HasConfig, status.DNS, func() string { return dnsCardDisplay(core, status.DNS, status.DNSServers) })},
 		[2]string{"出站 IP", modifyConfigValue(status.HasConfig, status.OutboundIP, func() string { return outboundIPCardDisplay(core, status.OutboundIP) })},
 	)

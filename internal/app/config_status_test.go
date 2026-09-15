@@ -30,6 +30,10 @@ func TestModifyConfigStatusReadsGeneratedXray(t *testing.T) {
 		{Name: "enabled", Enabled: true},
 		{Name: "disabled", Enabled: false},
 	}
+	node.LandingAccesses = []domain.LandingAccess{
+		{Name: "enabled", Enabled: true},
+		{Name: "disabled", Enabled: false},
+	}
 	a := &App{
 		Registry: provider.NewRegistry(p), Layout: layout, Store: system.StateStore{Layout: layout},
 		Services: system.ServiceManager{Runner: configStatusRunner{}},
@@ -46,6 +50,7 @@ func TestModifyConfigStatusReadsGeneratedXray(t *testing.T) {
 		got.FallbackIP != provider.OutboundIPUnset || got.ServiceUser != "xray" ||
 		got.LogLevel != "warning" || got.StrictMatch || got.HTTPHostRestrict ||
 		!got.RelayKnown || got.RelayTotal != 2 || got.RelayEnabled != 1 ||
+		!got.LandingKnown || got.LandingTotal != 2 || got.LandingEnabled != 1 ||
 		!got.ServiceKnown || !got.ServiceActive {
 		t.Fatalf("status=%#v", got)
 	}

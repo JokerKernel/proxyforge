@@ -65,6 +65,7 @@ func TestServerConfigMenuShowsStatusCard(t *testing.T) {
 		t.Fatal(err)
 	}
 	node.RelayLinks = []domain.RelayLink{{Name: "us", Enabled: true}}
+	node.LandingAccesses = []domain.LandingAccess{{Name: "relay-1", Enabled: true}}
 	if err := store.Save(node); err != nil {
 		t.Fatal(err)
 	}
@@ -91,6 +92,7 @@ func TestServerConfigMenuShowsStatusCard(t *testing.T) {
 		"回落 IP", "运行用户", "xray", "SNI", "www.example.com",
 		"日志级别", "warning  -- 警告及错误（默认）", "服务状态", "运行中",
 		"中转", "已开启  -- 1 条规则",
+		"落地", "已开启  -- 1 条规则",
 		"SNI 防护", "已开启", "严格模式", "未开启", "HTTP Host", "不限制",
 		"端口", "443",
 	} {
@@ -135,7 +137,7 @@ func TestXrayServerConfigMenuOffersDedicatedServiceUser(t *testing.T) {
 	if !strings.Contains(xrayOut.String(), "专用运行用户") || !strings.Contains(xrayOut.String(), "nobody 安全警告") {
 		t.Fatalf("xray menu output=%q", xrayOut.String())
 	}
-	for _, text := range []string{"╭─ 当前配置", "运行用户", "DNS 设置", "出站 IP", "SNI"} {
+	for _, text := range []string{"╭─ 当前配置", "运行用户", "中转", "落地", "DNS 设置", "出站 IP", "SNI"} {
 		if !strings.Contains(xrayOut.String(), text) || !strings.Contains(singBoxOut.String(), text) {
 			t.Fatalf("server config card missing %q: xray=%q sing-box=%q", text, xrayOut.String(), singBoxOut.String())
 		}
