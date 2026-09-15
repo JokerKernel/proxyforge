@@ -202,7 +202,7 @@ func (c *commandSet) relayListCommand() *cobra.Command {
 			if userName == "" {
 				userName = item.Name
 			}
-			fmt.Fprintf(c.out, "用户 %s\ttag %s\t%s:%d\t%s\n", userName, domain.RelayOutboundTag(item.Name), item.Upstream.Server, item.Upstream.Port,
+			fmt.Fprintf(c.out, "%s\t%s\t%s:%d\t%s\n", userName, domain.RelayOutboundTag(item.Name), item.Upstream.Server, item.Upstream.Port,
 				enabledLabel(item.Enabled))
 		}
 		return nil
@@ -616,7 +616,7 @@ func (c *commandSet) manageRelayInteractive(ctx context.Context, core string) er
 		if userName == "" {
 			userName = item.Name
 		}
-		title := fmt.Sprintf("用户 %s · tag %s · %s:%d", userName, domain.RelayOutboundTag(item.Name), item.Upstream.Server, item.Upstream.Port)
+		title := fmt.Sprintf("%s · %s · %s:%d", userName, domain.RelayOutboundTag(item.Name), item.Upstream.Server, item.Upstream.Port)
 		c.printMenuBadgeChoice(strconv.Itoa(i+1), title, "["+enabledLabel(item.Enabled)+"]")
 	}
 	c.printMenuChoice("0/q", "返回")
