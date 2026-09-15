@@ -171,8 +171,8 @@ func TestManageLandingSelectsLongAccessNameByNumber(t *testing.T) {
 	if err := store.Save(domain.NodeSpec{
 		ManagedBy: "proxyforge", Core: domain.CoreSingBox,
 		LandingAccesses: []domain.LandingAccess{
-			{Name: "first", UserName: "proxyforge-landing-first", Enabled: true},
-			{Name: "very-long-landing-access-name", UserName: "proxyforge-landing-long", Enabled: false},
+			{Name: "first", UserName: "first", Enabled: true},
+			{Name: "very-long-landing-access-name", UserName: "very-long-landing-access-name", Enabled: false},
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -188,7 +188,7 @@ func TestManageLandingSelectsLongAccessNameByNumber(t *testing.T) {
 		t.Fatalf("error=%v", err)
 	}
 	for _, want := range []string{
-		"1   first · proxyforge-landing-first", "2   very-long-landing-access-name · proxyforge-landing-long",
+		"1   first", "2   very-long-landing-access-name",
 		"管理落地接入  ›  very-long-landing-access-name", "当前状态：已停用",
 	} {
 		if !strings.Contains(out.String(), want) {

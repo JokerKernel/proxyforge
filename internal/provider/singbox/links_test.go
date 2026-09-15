@@ -12,7 +12,7 @@ func TestRenderAndRemoveManagedLinks(t *testing.T) {
 	n := domain.NodeSpec{
 		InboundTag: "singbox-one", Server: "relay.example.com", Port: 443, SNI: "relay.example.com", Target: "relay.example.com:443",
 		UserName: "one", UUID: "base-uuid", PrivateKey: "private", PublicKey: "public", ShortID: "0123456789abcdef",
-		LandingAccesses: []domain.LandingAccess{{Name: "us", UserName: "proxyforge-landing-us", UUID: "landing-uuid", Enabled: true}},
+		LandingAccesses: []domain.LandingAccess{{Name: "us", UserName: "us", UUID: "landing-uuid", Enabled: true}},
 		RelayLinks: []domain.RelayLink{{Name: "la", UserName: "la", UUID: "relay-uuid", Enabled: true, Upstream: domain.LandingPeer{
 			Core: domain.CoreXray, Server: "exit.example.com", Port: 443, SNI: "exit.example.com", UUID: "upstream-uuid", PublicKey: "upstream-public", ShortID: "abcdef0123456789", Flow: domain.VisionFlow,
 		}}},
@@ -66,7 +66,7 @@ func TestRenderTLSLandingAndRelay(t *testing.T) {
 		InboundTag: "singbox-one", Server: "relay.example.com", Port: 443, SNI: "relay.example.com", Target: "relay.example.com:443",
 		UserName: "one", UUID: "base-uuid", PrivateKey: "private", PublicKey: "public", ShortID: "0123456789abcdef",
 		LandingAccesses: []domain.LandingAccess{{
-			Name: "tls-exit", UserName: "proxyforge-landing-tls-exit", UUID: "landing-tls-uuid", Security: domain.LandingSecurityTLS,
+			Name: "tls-exit", UserName: "tls-exit", UUID: "landing-tls-uuid", Security: domain.LandingSecurityTLS,
 			Port: 8443, SNI: "tls.example.com", CertificateFile: "/etc/tls/fullchain.pem", KeyFile: "/etc/tls/privkey.pem", Enabled: true,
 		}},
 		RelayLinks: []domain.RelayLink{{Name: "tls-upstream", UserName: "tls-upstream", UUID: "relay-uuid", Enabled: true, Upstream: domain.LandingPeer{

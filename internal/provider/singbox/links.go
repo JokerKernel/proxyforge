@@ -212,7 +212,7 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 
 func relayOutboundTag(name string) string { return name }
 func singBoxLandingTLSInboundTag(name string) string {
-	return "proxyforge-landing-tls-" + name
+	return name
 }
 
 func singBoxLinkIdentity(n domain.NodeSpec) (map[string]bool, map[string]bool, map[string]bool) {

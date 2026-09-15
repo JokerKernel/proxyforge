@@ -34,7 +34,7 @@ func TestLandingAndRelayLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !access.Enabled || access.UUID == "" {
+	if !access.Enabled || access.UUID == "" || access.UserName != "from-la" {
 		t.Fatalf("access=%#v", access)
 	}
 	bundleBytes, err := a.ExportLandingBundle(domain.CoreXray, "from-la", "", false)
@@ -106,7 +106,7 @@ func TestTLSLandingLifecycleAndPortableBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if access.Security != domain.LandingSecurityTLS || access.Port < domain.LandingTLSPortMin || access.Port > domain.LandingTLSPortMax || access.CertificateFile != certFile {
+	if access.Name != "tls-exit" || access.UserName != "tls-exit" || access.Security != domain.LandingSecurityTLS || access.Port < domain.LandingTLSPortMin || access.Port > domain.LandingTLSPortMax || access.CertificateFile != certFile {
 		t.Fatalf("access=%#v", access)
 	}
 	b, err := a.ExportLandingBundle(domain.CoreXray, access.Name, "", false)
@@ -129,14 +129,14 @@ func TestTLSLandingLifecycleAndPortableBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(config, []byte("proxyforge-landing-tls-tls-exit")) || !bytes.Contains(config, []byte(`"security": "tls"`)) {
+	if !bytes.Contains(config, []byte(`"tag": "tls-exit"`)) || !bytes.Contains(config, []byte(`"security": "tls"`)) {
 		t.Fatalf("TLS landing inbound missing: %s", config)
 	}
 	if err := a.SetLandingAccessEnabled(context.Background(), domain.CoreXray, access.Name, false); err != nil {
 		t.Fatal(err)
 	}
 	config, _ = os.ReadFile(configPath)
-	if bytes.Contains(config, []byte("proxyforge-landing-tls-tls-exit")) {
+	if bytes.Contains(config, []byte(`"tag": "tls-exit"`)) {
 		t.Fatalf("disabled TLS landing remained in config: %s", config)
 	}
 }
@@ -225,6 +225,22 @@ func TestLandingPeerAllowsOnlyRequestedTestLAN(t *testing.T) {
 	peer.Server = "172.16.0.20"
 	if err := validateLandingPeer(peer); err == nil {
 		t.Fatal("172.16/12 should remain blocked")
+	}
+}
+
+func TestLinkNameAvailabilityRejectsDuplicatesAndReservedNames(t *testing.T) {
+	n := domain.NodeSpec{
+		UserName: "one", InboundTag: "xray-one",
+		LandingAccesses: []domain.LandingAccess{{Name: "landing-a", UserName: "landing-a"}},
+		RelayLinks:      []domain.RelayLink{{Name: "relay-a", UserName: "relay-a"}},
+	}
+	for _, name := range []string{"one", "XRAY-ONE", "LANDING-A", "relay-a", "direct", "blocked-private", "singbox-fallback-in"} {
+		if err := validateAvailableLinkName(n, name); err == nil {
+			t.Fatalf("name %q should be rejected", name)
+		}
+	}
+	if err := validateAvailableLinkName(n, "user-choice"); err != nil {
+		t.Fatalf("available user name rejected: %v", err)
 	}
 }
 

@@ -44,6 +44,12 @@ var linkNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`)
 var uuidPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 var shortIDPattern = regexp.MustCompile(`(?i)^[0-9a-f]{2,16}$`)
 var relayTestLAN = mustCIDR("192.168.0.0/16")
+var reservedLinkNames = map[string]struct{}{
+	"api": {}, "blocked-private": {}, "bootstrap": {}, "cloudflare": {}, "cloudflare-doh": {},
+	"direct": {}, "dns-in": {}, "dns-out": {}, "dokodemo-in": {}, "fallback-direct": {},
+	"google": {}, "google-doh": {}, "local": {}, "mixed-in": {}, "proxy": {},
+	"singbox-fallback-in": {},
+}
 
 func (a *App) LandingAccesses(core string) ([]domain.LandingAccess, error) {
 	n, err := a.Store.Load(core)
@@ -76,6 +82,9 @@ func (a *App) AddLandingAccessWithOptions(ctx context.Context, core, name string
 	if _, ok := findLanding(n, name); ok {
 		return domain.LandingAccess{}, fmt.Errorf("落地接入 %q 已存在", name)
 	}
+	if err := validateAvailableLinkName(n, name); err != nil {
+		return domain.LandingAccess{}, err
+	}
 	security := domain.NormalizeLandingSecurity(strings.ToLower(strings.TrimSpace(opts.Security)))
 	if security != domain.LandingSecurityReality && security != domain.LandingSecurityTLS {
 		return domain.LandingAccess{}, fmt.Errorf("落地安全协议无效: %q（可选 reality 或 tls）", opts.Security)
@@ -96,7 +105,7 @@ func (a *App) AddLandingAccessWithOptions(ctx context.Context, core, name string
 		return domain.LandingAccess{}, err
 	}
 	access := domain.LandingAccess{
-		Name: name, UserName: "proxyforge-landing-" + name, UUID: uuid, Security: security,
+		Name: name, UserName: name, UUID: uuid, Security: security,
 		Port: opts.Port, SNI: strings.TrimSpace(opts.SNI), CertificateFile: strings.TrimSpace(opts.CertificateFile), KeyFile: strings.TrimSpace(opts.KeyFile),
 		Enabled: true, UpdatedAt: a.Now().UTC(),
 	}
@@ -266,13 +275,10 @@ func (a *App) AddRelayLink(ctx context.Context, core, name string, peer domain.L
 	if err != nil {
 		return domain.RelayLink{}, err
 	}
-	if _, ok := findRelay(n, name); ok {
-		return domain.RelayLink{}, fmt.Errorf("中转线路 %q 已存在", name)
+	if err := validateAvailableLinkName(n, name); err != nil {
+		return domain.RelayLink{}, err
 	}
 	userName := name
-	if userName == n.UserName {
-		return domain.RelayLink{}, fmt.Errorf("中转线路名称 %q 与普通用户名称冲突，请使用其他线路名称", name)
-	}
 	if strings.EqualFold(peer.Server, n.Server) && peer.Port == n.Port {
 		return domain.RelayLink{}, fmt.Errorf("落地端点不能指向本机当前监听地址和端口")
 	}
@@ -494,6 +500,40 @@ func findRelay(n domain.NodeSpec, name string) (int, bool) {
 func validateLinkName(name string) error {
 	if !linkNamePattern.MatchString(name) {
 		return fmt.Errorf("线路名称必须为 1-32 个字母、数字、下划线或连字符，并以字母或数字开头")
+	}
+	return nil
+}
+
+func (a *App) ValidateLinkNameAvailable(core, name string) error {
+	if err := validateLinkName(name); err != nil {
+		return err
+	}
+	n, err := a.loadLinkNode(core)
+	if err != nil {
+		return err
+	}
+	return validateAvailableLinkName(n, name)
+}
+
+func validateAvailableLinkName(n domain.NodeSpec, name string) error {
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	if _, reserved := reservedLinkNames[normalized]; reserved {
+		return fmt.Errorf("名称 %q 是系统保留名称，请使用其他名称", name)
+	}
+	for label, value := range map[string]string{"普通用户": n.UserName, "主入站 tag": n.InboundTag} {
+		if value != "" && strings.EqualFold(name, value) {
+			return fmt.Errorf("名称 %q 已由%s使用，请使用其他名称", name, label)
+		}
+	}
+	for _, access := range n.LandingAccesses {
+		if strings.EqualFold(name, access.Name) || strings.EqualFold(name, access.UserName) {
+			return fmt.Errorf("名称 %q 已由落地接入 %q 使用，请使用其他名称", name, access.Name)
+		}
+	}
+	for _, link := range n.RelayLinks {
+		if strings.EqualFold(name, link.Name) || strings.EqualFold(name, link.UserName) {
+			return fmt.Errorf("名称 %q 已由中转线路 %q 使用，请使用其他名称", name, link.Name)
+		}
 	}
 	return nil
 }

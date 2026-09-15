@@ -393,6 +393,9 @@ func (c *commandSet) addLandingInteractive(ctx context.Context, core string) err
 	if err != nil {
 		return err
 	}
+	if err = c.app.ValidateLinkNameAvailable(core, name); err != nil {
+		return err
+	}
 	opts := app.LandingAddOptions{Security: domain.LandingSecurityReality}
 	confirmMessage := "将向当前 REALITY 入站添加独立接入用户；不新增端口，普通用户路由保持不变，应用时会重启当前服务。"
 	if protocolChoice == 2 {
@@ -463,6 +466,9 @@ func (c *commandSet) addRelayInteractive(ctx context.Context, core string) error
 	}
 	name, err := c.askDefaultCancelable("线路名称", peer.Name)
 	if err != nil {
+		return err
+	}
+	if err = c.app.ValidateLinkNameAvailable(core, name); err != nil {
 		return err
 	}
 	fmt.Fprintf(c.out, "\n落地：%s:%d · %s · SNI %s\n", peer.Server, peer.Port, strings.ToUpper(domain.NormalizeLandingSecurity(peer.Security)), peer.SNI)

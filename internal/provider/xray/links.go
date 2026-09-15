@@ -229,7 +229,7 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 }
 
 func xrayRelayOutboundTag(name string) string     { return name }
-func xrayLandingTLSInboundTag(name string) string { return "proxyforge-landing-tls-" + name }
+func xrayLandingTLSInboundTag(name string) string { return name }
 
 func xrayLinkIdentity(n domain.NodeSpec) (map[string]bool, map[string]bool, map[string]bool) {
 	names, uuids, tags := map[string]bool{}, map[string]bool{}, map[string]bool{}
