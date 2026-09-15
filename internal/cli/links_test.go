@@ -153,6 +153,21 @@ func TestTLSLandingCLIHasNoManualCertificateFlags(t *testing.T) {
 	}
 }
 
+func TestNextLandingAccessNameUsesFirstAvailableSequence(t *testing.T) {
+	node := domain.NodeSpec{
+		LandingAccesses: []domain.LandingAccess{{Name: "relay-1"}, {UserName: "RELAY-3"}},
+		RelayLinks:      []domain.RelayLink{{Name: "relay-2"}},
+	}
+	if got := nextLandingAccessName(node); got != "relay-4" {
+		t.Fatalf("next landing name=%q, want relay-4", got)
+	}
+	node.LandingAccesses = []domain.LandingAccess{{Name: "relay-2"}}
+	node.RelayLinks = nil
+	if got := nextLandingAccessName(node); got != "relay-1" {
+		t.Fatalf("first gap name=%q, want relay-1", got)
+	}
+}
+
 func TestManualTLSLandingPeerDoesNotRequestRealityKeys(t *testing.T) {
 	input := strings.Join([]string{
 		"tls-exit", "1", "2", "192.168.1.20", "8443", "tls.example.com",

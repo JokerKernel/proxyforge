@@ -388,7 +388,7 @@ func (c *commandSet) addLandingInteractive(ctx context.Context, core string) err
 	if err != nil {
 		return err
 	}
-	name, err := c.askDefaultCancelable("接入名称", "relay-1")
+	name, err := c.askDefaultCancelable("接入名称", nextLandingAccessName(node))
 	if err != nil {
 		return err
 	}
@@ -415,6 +415,31 @@ func (c *commandSet) addLandingInteractive(ctx context.Context, core string) err
 		_, err = c.out.Write(b)
 	}
 	return err
+}
+
+func nextLandingAccessName(node domain.NodeSpec) string {
+	used := map[string]struct{}{}
+	add := func(value string) {
+		if value = strings.ToLower(strings.TrimSpace(value)); value != "" {
+			used[value] = struct{}{}
+		}
+	}
+	add(node.UserName)
+	add(node.InboundTag)
+	for _, access := range node.LandingAccesses {
+		add(access.Name)
+		add(access.UserName)
+	}
+	for _, link := range node.RelayLinks {
+		add(link.Name)
+		add(link.UserName)
+	}
+	for index := 1; ; index++ {
+		candidate := fmt.Sprintf("relay-%d", index)
+		if _, exists := used[candidate]; !exists {
+			return candidate
+		}
+	}
 }
 
 func (c *commandSet) addRelayInteractive(ctx context.Context, core string) error {
