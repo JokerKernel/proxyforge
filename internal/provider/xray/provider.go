@@ -212,7 +212,11 @@ func (*Provider) GenerateKeyPair(ctx context.Context, r provider.Runner) (domain
 
 func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 	if n.XrayFallbackGuard {
-		return renderFallbackGuardServer(n)
+		b, err := renderFallbackGuardServer(n)
+		if err != nil || (len(n.RelayLinks) == 0 && len(n.LandingAccesses) == 0) {
+			return b, err
+		}
+		return (&Provider{}).PatchLinks(b, domain.NodeSpec{}, n)
 	}
 	stream := realityStreamSettings{Network: "raw", Security: "reality", RealitySettings: serverRealitySettings{
 		Show: false, Target: n.Target, Xver: 0, ServerNames: []string{n.SNI}, PrivateKey: n.PrivateKey, ShortIDs: []string{n.ShortID},
@@ -228,7 +232,11 @@ func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 		Outbounds: []xrayOutbound{directOutbound(), blockedOutbound()},
 		Routing:   privateNetworkRouting(),
 	}
-	return marshalXray(v)
+	b, err := marshalXray(v)
+	if err != nil || (len(n.RelayLinks) == 0 && len(n.LandingAccesses) == 0) {
+		return b, err
+	}
+	return (&Provider{}).PatchLinks(b, domain.NodeSpec{}, n)
 }
 
 const (

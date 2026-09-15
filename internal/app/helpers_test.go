@@ -191,6 +191,7 @@ func testApp(t *testing.T, runner *fakeRunner) (*App, string) {
 	a.Targets = allowTarget{}
 	a.PortFree = func(int) error { return nil }
 	a.Listening = func(context.Context, int, time.Duration) error { return nil }
+	a.Reachable = func(context.Context, string, int) error { return nil }
 	a.LookPath = func(name string) (string, error) {
 		runner.mu.Lock()
 		defer runner.mu.Unlock()

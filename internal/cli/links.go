@@ -1,0 +1,650 @@
+package cli
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/spf13/cobra"
+
+	"proxyforge/internal/app"
+	"proxyforge/internal/domain"
+)
+
+func (c *commandSet) landingCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "landing", Short: "管理供中转机连接的落地接入"}
+	cmd.AddCommand(c.landingAddCommand(), c.landingListCommand(), c.landingExportCommand(),
+		c.landingToggleCommand("enable", true), c.landingToggleCommand("disable", false),
+		c.landingRotateCommand(), c.landingRemoveCommand())
+	return cmd
+}
+
+func (c *commandSet) landingAddCommand() *cobra.Command {
+	var output string
+	var force bool
+	cmd := &cobra.Command{Use: "add <sing-box|xray> <name>", Short: "创建落地接入并导出连接信息", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		if _, err := c.app.AddLandingAccess(cmd.Context(), args[0], args[1]); err != nil {
+			return err
+		}
+		b, err := c.app.ExportLandingBundle(args[0], args[1], output, force)
+		if err != nil {
+			return fmt.Errorf("落地接入已创建，但导出连接文件失败（可稍后执行 landing export）：%w", err)
+		}
+		if output == "" {
+			_, err = c.out.Write(b)
+		} else {
+			fmt.Fprintf(c.out, "落地连接文件已安全写入 %s（0600）\n", output)
+		}
+		return err
+	}}
+	cmd.Flags().StringVarP(&output, "output", "o", "", "连接文件路径（默认 stdout）")
+	cmd.Flags().BoolVar(&force, "force", false, "覆盖已有输出文件")
+	return cmd
+}
+
+func (c *commandSet) landingListCommand() *cobra.Command {
+	return &cobra.Command{Use: "list <sing-box|xray>", Short: "列出落地接入", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		items, err := c.app.LandingAccesses(args[0])
+		if err != nil {
+			return err
+		}
+		if len(items) == 0 {
+			fmt.Fprintln(c.out, "尚未配置落地接入。")
+			return nil
+		}
+		for _, item := range items {
+			fmt.Fprintf(c.out, "%s\t%s\t%s\n", item.Name, item.UserName, enabledLabel(item.Enabled))
+		}
+		return nil
+	}}
+}
+
+func (c *commandSet) landingExportCommand() *cobra.Command {
+	var output string
+	var force bool
+	cmd := &cobra.Command{Use: "export <sing-box|xray> <name>", Aliases: []string{"show"}, Short: "导出或显示落地连接文件", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		b, err := c.app.ExportLandingBundle(args[0], args[1], output, force)
+		if err != nil {
+			return err
+		}
+		if output == "" {
+			_, err = c.out.Write(b)
+		} else {
+			fmt.Fprintf(c.out, "落地连接文件已安全写入 %s（0600）\n", output)
+		}
+		return err
+	}}
+	cmd.Flags().StringVarP(&output, "output", "o", "", "连接文件路径（默认 stdout）")
+	cmd.Flags().BoolVar(&force, "force", false, "覆盖已有输出文件")
+	return cmd
+}
+
+func (c *commandSet) landingToggleCommand(action string, enabled bool) *cobra.Command {
+	label := "启用"
+	if !enabled {
+		label = "停用"
+	}
+	return &cobra.Command{Use: action + " <sing-box|xray> <name>", Short: label + "落地接入", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		if err := c.app.SetLandingAccessEnabled(cmd.Context(), args[0], args[1], enabled); err != nil {
+			return err
+		}
+		fmt.Fprintf(c.out, "落地接入 %s 已%s。\n", args[1], label)
+		return nil
+	}}
+}
+
+func (c *commandSet) landingRotateCommand() *cobra.Command {
+	return &cobra.Command{Use: "rotate <sing-box|xray> <name>", Short: "轮换落地接入 UUID", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		if err := c.requireYes("轮换后使用旧连接文件的中转机将断开"); err != nil {
+			return err
+		}
+		item, err := c.app.RotateLandingAccess(cmd.Context(), args[0], args[1])
+		if err == nil {
+			fmt.Fprintf(c.out, "落地接入 %s 的 UUID 已轮换为 %s，请重新导出连接文件。\n", args[1], item.UUID)
+		}
+		return err
+	}}
+}
+
+func (c *commandSet) landingRemoveCommand() *cobra.Command {
+	return &cobra.Command{Use: "remove <sing-box|xray> <name>", Short: "删除落地接入", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		if err := c.requireYes("删除会立即拒绝使用该 UUID 的中转机"); err != nil {
+			return err
+		}
+		if err := c.app.RemoveLandingAccess(cmd.Context(), args[0], args[1]); err != nil {
+			return err
+		}
+		fmt.Fprintf(c.out, "落地接入 %s 已删除。\n", args[1])
+		return nil
+	}}
+}
+
+func (c *commandSet) relayCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "relay", Short: "管理同端口按用户分流的中转线路"}
+	cmd.AddCommand(c.relayAddCommand(), c.relayListCommand(), c.relayShowCommand(), c.relayClientCommand(), c.relayUpdateCommand(), c.relayTestCommand(),
+		c.relayToggleCommand("enable", true), c.relayToggleCommand("disable", false), c.relayRotateCommand(), c.relayRemoveCommand())
+	return cmd
+}
+
+func (c *commandSet) relayShowCommand() *cobra.Command {
+	return &cobra.Command{Use: "show <sing-box|xray> <name>", Short: "显示中转线路详情（含敏感凭据）", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		items, err := c.app.RelayLinks(args[0])
+		if err != nil {
+			return err
+		}
+		for _, item := range items {
+			if item.Name != args[1] {
+				continue
+			}
+			b, err := json.MarshalIndent(item, "", "  ")
+			if err == nil {
+				b = append(b, '\n')
+				_, err = c.out.Write(b)
+			}
+			return err
+		}
+		return fmt.Errorf("找不到中转线路 %q", args[1])
+	}}
+}
+
+func (c *commandSet) relayAddCommand() *cobra.Command {
+	var upstream string
+	var allow bool
+	cmd := &cobra.Command{Use: "add <sing-box|xray> <name>", Short: "导入落地文件并添加中转线路", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		if strings.TrimSpace(upstream) == "" {
+			return fmt.Errorf("必须提供 --upstream 落地连接文件")
+		}
+		peer, err := app.ReadLandingBundle(upstream)
+		if err != nil {
+			return err
+		}
+		link, err := c.app.AddRelayLink(cmd.Context(), args[0], args[1], peer, app.RelayAddOptions{AllowUnreachable: allow})
+		if err == nil {
+			fmt.Fprintf(c.out, "中转线路 %s 已启用；客户端用户为 %s。\n", link.Name, link.UserName)
+		}
+		return err
+	}}
+	cmd.Flags().StringVar(&upstream, "upstream", "", "落地连接文件")
+	cmd.Flags().BoolVar(&allow, "allow-unreachable", false, "落地当前不可达时仍保存配置")
+	return cmd
+}
+
+func (c *commandSet) relayListCommand() *cobra.Command {
+	return &cobra.Command{Use: "list <sing-box|xray>", Short: "列出中转线路", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		items, err := c.app.RelayLinks(args[0])
+		if err != nil {
+			return err
+		}
+		if len(items) == 0 {
+			fmt.Fprintln(c.out, "尚未配置中转线路。")
+			return nil
+		}
+		for _, item := range items {
+			fmt.Fprintf(c.out, "%s\t%s\t%s:%d\t%s\n", item.Name, item.UserName, item.Upstream.Server, item.Upstream.Port, enabledLabel(item.Enabled))
+		}
+		return nil
+	}}
+}
+
+func (c *commandSet) relayClientCommand() *cobra.Command {
+	var output, format string
+	var force bool
+	cmd := &cobra.Command{Use: "client <sing-box|xray> <name>", Short: "导出中转线路客户端配置", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		b, err := c.app.RelayClientConfig(cmd.Context(), args[0], args[1], format, output, force)
+		if err != nil {
+			return err
+		}
+		if output == "" {
+			_, err = c.out.Write(b)
+		} else {
+			fmt.Fprintf(c.out, "客户端配置已安全写入 %s（0600）\n", output)
+		}
+		return err
+	}}
+	cmd.Flags().StringVar(&format, "format", app.ClientFormatNative, "客户端格式：native 或 clash")
+	cmd.Flags().StringVarP(&output, "output", "o", "", "写入文件（默认 stdout）")
+	cmd.Flags().BoolVar(&force, "force", false, "覆盖已有输出文件")
+	return cmd
+}
+
+func (c *commandSet) relayUpdateCommand() *cobra.Command {
+	var upstream string
+	var allow bool
+	cmd := &cobra.Command{Use: "update <sing-box|xray> <name>", Short: "更新中转线路的落地参数", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		if upstream == "" {
+			return fmt.Errorf("必须提供 --upstream 落地连接文件")
+		}
+		peer, err := app.ReadLandingBundle(upstream)
+		if err != nil {
+			return err
+		}
+		if err = c.app.UpdateRelayLink(cmd.Context(), args[0], args[1], peer, app.RelayAddOptions{AllowUnreachable: allow}); err == nil {
+			fmt.Fprintf(c.out, "中转线路 %s 已更新。\n", args[1])
+		}
+		return err
+	}}
+	cmd.Flags().StringVar(&upstream, "upstream", "", "新的落地连接文件")
+	cmd.Flags().BoolVar(&allow, "allow-unreachable", false, "落地当前不可达时仍保存配置")
+	return cmd
+}
+
+func (c *commandSet) relayTestCommand() *cobra.Command {
+	return &cobra.Command{Use: "test <sing-box|xray> <name>", Short: "测试落地 TCP 连通性", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		if err := c.app.TestRelayLink(cmd.Context(), args[0], args[1]); err != nil {
+			return err
+		}
+		fmt.Fprintf(c.out, "中转线路 %s 的落地端点 TCP 可达。\n", args[1])
+		return nil
+	}}
+}
+
+func (c *commandSet) relayToggleCommand(action string, enabled bool) *cobra.Command {
+	label := "启用"
+	if !enabled {
+		label = "停用"
+	}
+	return &cobra.Command{Use: action + " <sing-box|xray> <name>", Short: label + "中转线路", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		if err := c.app.SetRelayLinkEnabled(cmd.Context(), args[0], args[1], enabled); err != nil {
+			return err
+		}
+		fmt.Fprintf(c.out, "中转线路 %s 已%s。\n", args[1], label)
+		return nil
+	}}
+}
+
+func (c *commandSet) relayRotateCommand() *cobra.Command {
+	return &cobra.Command{Use: "rotate <sing-box|xray> <name>", Short: "轮换中转客户端 UUID", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		if err := c.requireYes("轮换后该线路的旧客户端将失效"); err != nil {
+			return err
+		}
+		item, err := c.app.RotateRelayLink(cmd.Context(), args[0], args[1])
+		if err == nil {
+			fmt.Fprintf(c.out, "中转线路 %s 的客户端 UUID 已轮换为 %s。\n", args[1], item.UUID)
+		}
+		return err
+	}}
+}
+
+func (c *commandSet) relayRemoveCommand() *cobra.Command {
+	return &cobra.Command{Use: "remove <sing-box|xray> <name>", Short: "删除中转线路", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		if err := c.requireYes("删除会立即使该线路客户端失效"); err != nil {
+			return err
+		}
+		if err := c.app.RemoveRelayLink(cmd.Context(), args[0], args[1]); err != nil {
+			return err
+		}
+		fmt.Fprintf(c.out, "中转线路 %s 已删除。\n", args[1])
+		return nil
+	}}
+}
+
+func (c *commandSet) requireYes(message string) error {
+	if c.yes {
+		return nil
+	}
+	return fmt.Errorf("%s；确认后请添加 --yes", message)
+}
+
+func enabledLabel(enabled bool) string {
+	if enabled {
+		return "已启用"
+	}
+	return "已停用"
+}
+
+func (c *commandSet) linkMenu(ctx context.Context, core string) error {
+	for {
+		c.clearScreen()
+		c.printPageHeader(core, "中转与落地线路")
+		relays, relayErr := c.app.RelayLinks(core)
+		landings, landingErr := c.app.LandingAccesses(core)
+		if relayErr != nil || landingErr != nil {
+			if relayErr != nil {
+				return relayErr
+			}
+			return landingErr
+		}
+		fmt.Fprintf(c.out, "当前监听端口保持不变；中转线路 %d 条，落地接入 %d 个。\n\n", len(relays), len(landings))
+		c.printMenuChoice("1", "添加中转线路（专用用户流量转发到远程落地）")
+		c.printMenuChoice("2", "管理中转线路")
+		c.printMenuChoice("3", "创建落地接入（允许中转机连接本机）")
+		c.printMenuChoice("4", "管理落地接入")
+		c.printMenuChoice("5", "查看流量关系")
+		c.printMenuChoice("0/q", "返回")
+		choice, err := c.chooseNumber("请选择", 0, 5, 0)
+		if err != nil || choice == 0 {
+			return err
+		}
+		c.clearScreen()
+		switch choice {
+		case 1:
+			err = c.addRelayInteractive(ctx, core)
+		case 2:
+			err = c.manageRelayInteractive(ctx, core)
+		case 3:
+			err = c.addLandingInteractive(ctx, core)
+		case 4:
+			err = c.manageLandingInteractive(ctx, core)
+		case 5:
+			err = c.printLinkGraph(core)
+		}
+		if errors.Is(err, errReturnToMenu) {
+			continue
+		}
+		if err != nil {
+			c.printMenuError(err)
+		}
+		c.pauseForMenu()
+	}
+}
+
+func (c *commandSet) addLandingInteractive(ctx context.Context, core string) error {
+	c.printPageHeader(core, "创建落地接入")
+	name, err := c.askDefaultCancelable("接入名称", "relay-1")
+	if err != nil {
+		return err
+	}
+	ok, err := c.confirmCancelable("将向当前 REALITY 入站添加独立接入用户；普通用户路由保持不变，应用时会重启当前服务。")
+	if err != nil || !ok {
+		return errReturnToMenu
+	}
+	if _, err = c.app.AddLandingAccess(ctx, core, name); err != nil {
+		return err
+	}
+	path, err := c.askDefaultCancelable("落地连接文件保存路径", "./landing-"+name+".json")
+	if errors.Is(err, errReturnToMenu) {
+		fmt.Fprintln(c.out, "落地接入已创建，可稍后从管理菜单导出连接文件。")
+		return nil
+	}
+	if err == nil {
+		_, err = c.app.ExportLandingBundle(core, name, path, false)
+	}
+	if err == nil {
+		fmt.Fprintf(c.out, "落地接入已创建，连接文件已安全写入 %s（0600）。\n", path)
+	}
+	return err
+}
+
+func (c *commandSet) addRelayInteractive(ctx context.Context, core string) error {
+	c.printPageHeader(core, "添加中转线路")
+	c.printMenuChoice("1", "从落地连接文件导入（推荐）")
+	c.printMenuChoice("2", "手动输入落地连接信息")
+	choice, err := c.chooseNumberCancelable("请选择落地信息来源", 1, 2, 1)
+	if err != nil {
+		return err
+	}
+	var peer domain.LandingPeer
+	if choice == 1 {
+		path, inputErr := c.askDefaultCancelable("落地连接文件路径", "")
+		if inputErr != nil {
+			return inputErr
+		}
+		peer, err = app.ReadLandingBundle(path)
+		if err != nil {
+			return err
+		}
+	} else {
+		peer, err = c.askLandingPeer()
+		if err != nil {
+			return err
+		}
+	}
+	name, err := c.askDefaultCancelable("线路名称", peer.Name)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(c.out, "\n落地：%s:%d · SNI %s\n", peer.Server, peer.Port, peer.SNI)
+	ok, err := c.confirmCancelable("该线路使用独立 UUID；原有用户继续 direct。落地不可用时线路将失败，不回退本机出口。")
+	if err != nil || !ok {
+		return errReturnToMenu
+	}
+	link, err := c.app.AddRelayLink(ctx, core, name, peer, app.RelayAddOptions{})
+	if err != nil && strings.Contains(err.Error(), "落地端点不可达") {
+		fmt.Fprintln(c.out, err)
+		ok, confirmErr := c.confirmCancelable("落地当前不可达，是否仍保存线路配置？")
+		if confirmErr != nil || !ok {
+			return errReturnToMenu
+		}
+		link, err = c.app.AddRelayLink(ctx, core, name, peer, app.RelayAddOptions{AllowUnreachable: true})
+	}
+	if err == nil {
+		fmt.Fprintf(c.out, "中转线路 %s 已启用，客户端用户：%s。\n", link.Name, link.UserName)
+	}
+	return err
+}
+
+func (c *commandSet) askLandingPeer() (domain.LandingPeer, error) {
+	var peer domain.LandingPeer
+	var err error
+	peer.Name, err = c.askDefaultCancelable("落地接入名称", "landing")
+	if err != nil {
+		return peer, err
+	}
+	c.printMenuChoice("1", "Xray-core")
+	c.printMenuChoice("2", "sing-box")
+	coreChoice, err := c.chooseNumberCancelable("请选择落地内核", 1, 2, 1)
+	if err != nil {
+		return peer, err
+	}
+	peer.Core = domain.CoreXray
+	if coreChoice == 2 {
+		peer.Core = domain.CoreSingBox
+	}
+	peer.Server, err = c.askDefaultCancelable("落地公网 IP 或域名", "")
+	if err != nil {
+		return peer, err
+	}
+	rawPort, err := c.askDefaultCancelable("落地端口", "443")
+	if err != nil {
+		return peer, err
+	}
+	peer.Port, err = strconv.Atoi(rawPort)
+	if err != nil {
+		return peer, fmt.Errorf("落地端口无效: %w", err)
+	}
+	peer.SNI, err = c.askDefaultCancelable("落地 REALITY SNI", "")
+	if err != nil {
+		return peer, err
+	}
+	peer.UUID, err = c.askDefaultCancelable("落地接入 UUID", "")
+	if err != nil {
+		return peer, err
+	}
+	peer.PublicKey, err = c.askDefaultCancelable("落地 REALITY 公钥", "")
+	if err != nil {
+		return peer, err
+	}
+	peer.ShortID, err = c.askDefaultCancelable("落地 short ID", "")
+	if err != nil {
+		return peer, err
+	}
+	peer.Flow = domain.VisionFlow
+	return peer, nil
+}
+
+func (c *commandSet) manageRelayInteractive(ctx context.Context, core string) error {
+	items, err := c.app.RelayLinks(core)
+	if err != nil {
+		return err
+	}
+	if len(items) == 0 {
+		fmt.Fprintln(c.out, "尚未配置中转线路。")
+		return nil
+	}
+	c.printPageHeader(core, "管理中转线路")
+	for _, item := range items {
+		fmt.Fprintf(c.out, "  %s  %s:%d  [%s]\n", item.Name, item.Upstream.Server, item.Upstream.Port, enabledLabel(item.Enabled))
+	}
+	name, err := c.askDefaultCancelable("线路名称", items[0].Name)
+	if err != nil {
+		return err
+	}
+	var selected *domain.RelayLink
+	for i := range items {
+		if items[i].Name == name {
+			selected = &items[i]
+			break
+		}
+	}
+	if selected == nil {
+		return fmt.Errorf("找不到中转线路 %q", name)
+	}
+	c.printMenuChoice("1", "导出原生客户端配置")
+	c.printMenuChoice("2", "测试落地 TCP 连通性")
+	c.printMenuChoice("3", "更新落地连接文件")
+	c.printMenuChoice("4", "轮换中转客户端 UUID")
+	if selected.Enabled {
+		c.printMenuChoice("5", "停用线路")
+	} else {
+		c.printMenuChoice("5", "启用线路")
+	}
+	c.printMenuChoice("6", "删除线路")
+	c.printMenuChoice("0/q", "返回")
+	choice, err := c.chooseNumber("请选择", 0, 6, 0)
+	if err != nil || choice == 0 {
+		return errReturnToMenu
+	}
+	switch choice {
+	case 1:
+		c.printMenuChoice("1", "原生 JSON")
+		c.printMenuChoice("2", "Clash/Mihomo YAML")
+		formatChoice, e := c.chooseNumberCancelable("请选择客户端格式", 1, 2, 1)
+		if e != nil {
+			return e
+		}
+		format := app.ClientFormatNative
+		if formatChoice == 2 {
+			format = app.ClientFormatClash
+		}
+		b, e := c.app.RelayClientConfig(ctx, core, name, format, "", false)
+		if e == nil {
+			_, e = c.out.Write(b)
+		}
+		return e
+	case 2:
+		if e := c.app.TestRelayLink(ctx, core, name); e != nil {
+			return e
+		}
+		fmt.Fprintln(c.out, "落地端点 TCP 可达。")
+		return nil
+	case 3:
+		path, e := c.askDefaultCancelable("新的落地连接文件路径", "")
+		if e != nil {
+			return e
+		}
+		peer, e := app.ReadLandingBundle(path)
+		if e != nil {
+			return e
+		}
+		return c.app.UpdateRelayLink(ctx, core, name, peer, app.RelayAddOptions{})
+	case 4:
+		ok, e := c.confirmCancelable("轮换后该线路的旧客户端会立即失效。")
+		if e != nil || !ok {
+			return errReturnToMenu
+		}
+		_, e = c.app.RotateRelayLink(ctx, core, name)
+		return e
+	case 5:
+		return c.app.SetRelayLinkEnabled(ctx, core, name, !selected.Enabled)
+	case 6:
+		ok, e := c.confirmCancelable("删除会移除该用户、路由和落地出站，旧客户端立即失效。")
+		if e != nil || !ok {
+			return errReturnToMenu
+		}
+		return c.app.RemoveRelayLink(ctx, core, name)
+	}
+	return nil
+}
+
+func (c *commandSet) manageLandingInteractive(ctx context.Context, core string) error {
+	items, err := c.app.LandingAccesses(core)
+	if err != nil {
+		return err
+	}
+	if len(items) == 0 {
+		fmt.Fprintln(c.out, "尚未配置落地接入。")
+		return nil
+	}
+	c.printPageHeader(core, "管理落地接入")
+	for _, item := range items {
+		fmt.Fprintf(c.out, "  %s  %s  [%s]\n", item.Name, item.UserName, enabledLabel(item.Enabled))
+	}
+	name, err := c.askDefaultCancelable("接入名称", items[0].Name)
+	if err != nil {
+		return err
+	}
+	var selected *domain.LandingAccess
+	for i := range items {
+		if items[i].Name == name {
+			selected = &items[i]
+			break
+		}
+	}
+	if selected == nil {
+		return fmt.Errorf("找不到落地接入 %q", name)
+	}
+	c.printMenuChoice("1", "显示落地连接文件")
+	c.printMenuChoice("2", "轮换接入 UUID")
+	if selected.Enabled {
+		c.printMenuChoice("3", "停用接入")
+	} else {
+		c.printMenuChoice("3", "启用接入")
+	}
+	c.printMenuChoice("4", "删除接入")
+	c.printMenuChoice("0/q", "返回")
+	choice, err := c.chooseNumber("请选择", 0, 4, 0)
+	if err != nil || choice == 0 {
+		return errReturnToMenu
+	}
+	switch choice {
+	case 1:
+		path, e := c.askDefaultCancelable("落地连接文件保存路径", "./landing-"+name+".json")
+		if e != nil {
+			return e
+		}
+		_, e = c.app.ExportLandingBundle(core, name, path, false)
+		if e == nil {
+			fmt.Fprintf(c.out, "连接文件已安全写入 %s（0600）。\n", path)
+		}
+		return e
+	case 2:
+		ok, e := c.confirmCancelable("轮换后使用旧连接文件的所有中转机都会断开。")
+		if e != nil || !ok {
+			return errReturnToMenu
+		}
+		_, e = c.app.RotateLandingAccess(ctx, core, name)
+		return e
+	case 3:
+		return c.app.SetLandingAccessEnabled(ctx, core, name, !selected.Enabled)
+	case 4:
+		ok, e := c.confirmCancelable("删除后使用该 UUID 的中转机会立即断开。")
+		if e != nil || !ok {
+			return errReturnToMenu
+		}
+		return c.app.RemoveLandingAccess(ctx, core, name)
+	}
+	return nil
+}
+
+func (c *commandSet) printLinkGraph(core string) error {
+	relays, err := c.app.RelayLinks(core)
+	if err != nil {
+		return err
+	}
+	landings, err := c.app.LandingAccesses(core)
+	if err != nil {
+		return err
+	}
+	c.printPageHeader(core, "流量关系")
+	fmt.Fprintln(c.out, "普通用户\n  └─ direct（本机出口）")
+	for _, link := range relays {
+		fmt.Fprintf(c.out, "中转用户 %s [%s]\n  └─ %s:%d\n", link.UserName, enabledLabel(link.Enabled), link.Upstream.Server, link.Upstream.Port)
+	}
+	for _, access := range landings {
+		fmt.Fprintf(c.out, "落地接入 %s [%s]\n  └─ direct（本机出口）\n", access.UserName, enabledLabel(access.Enabled))
+	}
+	return nil
+}

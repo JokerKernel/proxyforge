@@ -148,7 +148,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		return domain.NodeSpec{}, fmt.Errorf("内核不可用或不支持所需能力: %w", err)
 	}
 	n := domain.NodeSpec{
-		ManagedBy: "proxyforge", Core: core, InboundTag: inboundTag, Server: opts.Server, Port: opts.Port,
+		SchemaVersion: domain.StateSchemaVersion, ManagedBy: "proxyforge", Core: core, InboundTag: inboundTag, Server: opts.Server, Port: opts.Port,
 		SNI: opts.SNI, Target: opts.Target, UserName: userName, SimplifiedConfig: opts.SimplifiedConfig,
 		SingBoxFallbackGuard: opts.SingBoxFallbackGuard, SingBoxFallbackPort: opts.SingBoxFallbackPort,
 		SingBoxFallbackHTTPDomain: opts.SingBoxFallbackHTTPDomain, SingBoxFallbackExactDomain: opts.SingBoxFallbackExactDomain,
@@ -156,6 +156,13 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		XrayFallbackHTTPDomain:  opts.XrayFallbackHTTPDomain,
 		XrayFallbackExactDomain: opts.XrayFallbackExactDomain,
 		CoreVersion:             version, UpdatedAt: a.Now().UTC(),
+	}
+	if hasOld && !opts.DropLinks {
+		n.LandingAccesses = append([]domain.LandingAccess(nil), old.LandingAccesses...)
+		n.RelayLinks = append([]domain.RelayLink(nil), old.RelayLinks...)
+	}
+	if hasOld && opts.RotateCredentials && (len(old.LandingAccesses) > 0 || len(old.RelayLinks) > 0) {
+		fmt.Fprintln(a.Out, "[警告] REALITY 凭据轮换后，需要重新导出中转客户端和本机落地连接文件。")
 	}
 	if n.SimplifiedConfig {
 		fmt.Fprintln(a.Out, "[警告] 已选择 sing-box 简化配置；域名将在出站连接阶段由系统 DNS 解析，域名解析到私网地址时可能绕过路由私网拦截。")

@@ -63,6 +63,7 @@ func (c *commandSet) generateCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&o.XrayFallbackHTTPDomain, "xray-fallback-http-domain", false, "Xray HTTP 回落仅放行与 SNI 一致的域名（默认不限制）")
 	cmd.Flags().BoolVar(&o.XrayFallbackExactDomain, "xray-fallback-exact-domain", false, "Xray 回落域名使用 full: 精确匹配（默认使用普通匹配）")
 	cmd.Flags().BoolVar(&o.RotateCredentials, "rotate-credentials", false, "轮换 UUID、密钥和 short ID，使旧客户端失效")
+	cmd.Flags().BoolVar(&o.DropLinks, "drop-links", false, "清除所有受管的中转线路和落地接入")
 	cmd.Flags().Bool("take-over", false, "兼容旧版本；当前始终备份并完整覆盖现有配置")
 	_ = cmd.Flags().MarkDeprecated("take-over", "当前生成流程会自动备份并完整覆盖现有配置，无需此参数")
 	_ = cmd.Flags().MarkHidden("take-over")
@@ -73,6 +74,19 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 	c.clearScreen()
 	c.printPageHeader(core, "生成服务端配置")
 	fmt.Fprintln(c.out, "提示：输入 q 或 0 可取消并返回上级菜单。")
+	if c.app != nil {
+		current, stateErr := c.app.Store.Load(core)
+		if stateErr == nil && !o.DropLinks && (len(current.RelayLinks) > 0 || len(current.LandingAccesses) > 0) {
+			fmt.Fprintf(c.out, "\n检测到 %d 条中转线路和 %d 个落地接入。\n", len(current.RelayLinks), len(current.LandingAccesses))
+			c.printMenuChoice("1", "保留并重新应用这些线路（默认）")
+			c.printMenuChoice("2", "清除全部中转线路和落地接入")
+			choice, err := c.chooseNumberCancelable("请选择线路处理方式", 1, 2, 1)
+			if err != nil {
+				return err
+			}
+			o.DropLinks = choice == 2
+		}
+	}
 	if core == domain.CoreSingBox {
 		fmt.Fprintln(c.out, "\n配置模式")
 		c.printMenuChoice("1", "回落防护（默认；direct 入站仅放行与 SNI 一致的 TLS 流量）")

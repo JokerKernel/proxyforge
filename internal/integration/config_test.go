@@ -44,7 +44,14 @@ func TestRealStableBinariesValidateAllConfigs(t *testing.T) {
 			configs := []struct {
 				name   string
 				render func(domain.NodeSpec) ([]byte, error)
-			}{{"server", p.RenderServer}, {"client", p.RenderClient}}
+			}{{"server", p.RenderServer}, {"client", p.RenderClient}, {"relay-server", func(n domain.NodeSpec) ([]byte, error) {
+				n.LandingAccesses = []domain.LandingAccess{{Name: "landing-test", UserName: "proxyforge-landing-test", UUID: "5d5c5537-56a4-4b1a-a3bf-9e5a1b378769", Enabled: true}}
+				n.RelayLinks = []domain.RelayLink{{Name: "relay-test", UserName: "proxyforge-relay-test", UUID: "11b50d17-8c92-4b5d-9449-245f3b70d7bd", Enabled: true, Upstream: domain.LandingPeer{
+					Name: "upstream", Core: domain.CoreXray, Server: "198.51.100.20", Port: 443, SNI: "example.com",
+					UUID: "26831be5-da6c-4d2d-b983-9280601670ae", PublicKey: n.PublicKey, ShortID: n.ShortID, Flow: domain.VisionFlow,
+				}}}
+				return p.RenderServer(n)
+			}}}
 			if p.Name() == domain.CoreSingBox {
 				configs = append(configs, struct {
 					name   string

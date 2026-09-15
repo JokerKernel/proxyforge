@@ -82,6 +82,6 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 
 func (c *commandSet) configCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "config", Short: "管理服务端、客户端和节点凭据"}
-	cmd.AddCommand(c.generateCommand(), c.clientCommand(), c.resetCommand())
+	cmd.AddCommand(c.generateCommand(), c.clientCommand(), c.resetCommand(), c.landingCommand(), c.relayCommand())
 	return cmd
 }

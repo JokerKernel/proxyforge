@@ -71,7 +71,11 @@ func (*Provider) GenerateKeyPair(ctx context.Context, r provider.Runner) (domain
 
 func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 	if n.SingBoxFallbackGuard {
-		return renderFallbackGuardServer(n)
+		b, err := renderFallbackGuardServer(n)
+		if err != nil || (len(n.RelayLinks) == 0 && len(n.LandingAccesses) == 0) {
+			return b, err
+		}
+		return (&Provider{}).PatchLinks(b, domain.NodeSpec{}, n)
 	}
 	v := map[string]any{
 		"log": map[string]any{"level": "info", "timestamp": true},
@@ -94,7 +98,11 @@ func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 		v["dns"] = map[string]any{"servers": []any{map[string]any{"type": "local", "tag": "local"}}}
 		v["route"] = privateNetworkRoute(true, "direct")
 	}
-	return marshalSingBox(v)
+	b, err := marshalSingBox(v)
+	if err != nil || (len(n.RelayLinks) == 0 && len(n.LandingAccesses) == 0) {
+		return b, err
+	}
+	return (&Provider{}).PatchLinks(b, domain.NodeSpec{}, n)
 }
 
 const (

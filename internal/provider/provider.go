@@ -84,6 +84,7 @@ type CoreProvider interface {
 	GenerateKeyPair(context.Context, Runner) (domain.KeyPair, error)
 	RenderServer(domain.NodeSpec) ([]byte, error)
 	PatchServer([]byte, domain.NodeSpec, domain.NodeSpec, bool) ([]byte, error)
+	PatchLinks([]byte, domain.NodeSpec, domain.NodeSpec) ([]byte, error)
 	RenderClient(domain.NodeSpec) ([]byte, error)
 	ValidateConfig(context.Context, Runner, string) error
 }

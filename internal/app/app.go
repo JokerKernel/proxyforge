@@ -28,6 +28,7 @@ type App struct {
 	LookPath  func(string) (string, error)
 	PortFree  func(int) error
 	Listening func(context.Context, int, time.Duration) error
+	Reachable func(context.Context, string, int) error
 }
 
 func New(reg *provider.Registry, runner provider.Runner, layout system.Layout, out io.Writer) *App {
@@ -35,7 +36,7 @@ func New(reg *provider.Registry, runner provider.Runner, layout system.Layout, o
 		Registry: reg, Runner: runner, Layout: layout, Store: system.StateStore{Layout: layout},
 		Services: system.ServiceManager{Runner: runner}, Installer: install.Installer{Runner: runner, Layout: layout, Output: out},
 		Out: out, Progress: out, Now: time.Now,
-		RootCheck: RequireRoot, LookPath: exec.LookPath, PortFree: checkPortFree, Listening: waitListening,
+		RootCheck: RequireRoot, LookPath: exec.LookPath, PortFree: checkPortFree, Listening: waitListening, Reachable: probeTCP,
 	}
 	a.Targets = NetworkTargetValidator{Progress: func(message string) { a.progressf("%s", message) }}
 	return a

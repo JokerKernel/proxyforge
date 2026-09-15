@@ -12,6 +12,9 @@ proxyforge cleanup <sing-box|xray|all> [--yes]
 proxyforge config generate <sing-box|xray> --server HOST --port PORT --sni DOMAIN [OPTIONS]
 proxyforge config client <sing-box|xray> [--format native|clash] [--output FILE] [--force]
 proxyforge config reset <sing-box|xray> [--sni DOMAIN] [--target HOST:PORT] [--yes]
+proxyforge config landing add <sing-box|xray> NAME [--output FILE]
+proxyforge config relay add <sing-box|xray> NAME --upstream FILE
+proxyforge config relay client <sing-box|xray> NAME [--format native|clash] [--output FILE]
 proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
 ```
 
@@ -71,6 +74,8 @@ XTLS 官方安装脚本首次安装时默认在 systemd unit 中写入 `User=nob
 
 普通重新生成会保留 UUID、REALITY 密钥和 short ID。只有使用 `--rotate-credentials` 或执行凭据重置时才会轮换它们，并让旧客户端失效。
 
+完整重新生成默认同时保留 ProxyForge 管理的中转线路和落地接入；只有显式使用 `--drop-links` 才会清除这些附加用户、出站和路由。
+
 定点重置会保留 DNS、路由、出站、日志、其他用户及手动配置；找不到唯一受管入站或用户时会拒绝修改。修改前会备份，失败时自动回滚。
 
 ## 导出客户端
@@ -84,6 +89,50 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 客户端文件以 `0600` 创建。默认的 `native` 格式会通过对应内核校验：sing-box 客户端提供 `127.0.0.1:2080` mixed 入站；Xray 客户端提供 `127.0.0.1:10808` SOCKS 和 `127.0.0.1:10809` HTTP 入站。
 
 `clash` 格式输出完整的 Mihomo/Clash Meta YAML，包含 `mixed-port: 7890`、`PROXY` 策略组和 `MATCH` 规则。传统 Clash 不支持 VLESS REALITY，不能使用该文件。
+
+## 同端口中转与落地
+
+“服务端配置 → 修改配置 → 中转与落地线路”可以在不增加监听端口的情况下，按 VLESS 用户身份选择出口。普通用户继续使用现有 `direct`，每条中转线路使用独立 UUID 并固定连接指定落地；落地不可用时不会回退本机出口。
+
+先在落地服务器创建独立接入并导出连接文件：
+
+```bash
+sudo proxyforge config landing add xray from-relay \
+  --output ./landing.json
+```
+
+将文件安全复制到中转服务器后添加线路：
+
+```bash
+sudo proxyforge config relay add sing-box us \
+  --upstream ./landing.json
+
+sudo proxyforge config relay client sing-box us \
+  --format clash --output ./us-client.yaml
+```
+
+落地文件包含地址、端口、UUID、SNI、REALITY 公钥和 short ID，不含服务端私钥，但其中 UUID 仍是敏感凭据，文件以 `0600` 创建。支持 Xray 与 sing-box 两端任意组合；第一版链路固定使用 VLESS + REALITY + Vision、TCP/raw。
+
+常用管理命令：
+
+```bash
+sudo proxyforge config landing list xray
+sudo proxyforge config landing export xray from-relay --output ./landing.json
+sudo proxyforge config landing disable xray from-relay
+sudo proxyforge config landing rotate xray from-relay --yes
+sudo proxyforge config landing remove xray from-relay --yes
+
+sudo proxyforge config relay list sing-box
+sudo proxyforge config relay test sing-box us
+sudo proxyforge config relay update sing-box us --upstream ./new-landing.json
+sudo proxyforge config relay disable sing-box us
+sudo proxyforge config relay rotate sing-box us --yes
+sudo proxyforge config relay remove sing-box us --yes
+```
+
+创建和更新中转线路时会先检查落地 TCP 端口。确知暂时不可达但仍需保存时，可以显式添加 `--allow-unreachable`。每次线路变更都会生成候选配置、调用对应内核原生命令校验、备份并重启当前服务；失败时恢复原配置和状态。停用线路会从入站移除对应用户，而不是让它落入默认 `direct`。
+
+重置本节点 SNI、REALITY 密钥或 short ID 后，已经导出的本节点客户端和落地连接文件需要重新导出。轮换某条中转线路 UUID 只影响该线路的客户端；轮换落地接入 UUID 后，需要重新导出文件并更新所有使用它的中转机。
 
 ## DNS 设置
 

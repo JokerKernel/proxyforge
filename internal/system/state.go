@@ -33,6 +33,9 @@ func (s StateStore) Load(core string) (domain.NodeSpec, error) {
 	if n.ManagedBy != "proxyforge" || n.Core != core {
 		return n, fmt.Errorf("状态文件标识无效: %s", path)
 	}
+	if n.SchemaVersion > domain.StateSchemaVersion {
+		return n, fmt.Errorf("状态文件版本 %d 高于当前支持版本 %d: %s", n.SchemaVersion, domain.StateSchemaVersion, path)
+	}
 	return n, nil
 }
 
