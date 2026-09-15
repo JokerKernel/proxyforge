@@ -74,7 +74,11 @@ func (c *commandSet) relayClientMenu(ctx context.Context, core string) (bool, er
 		return true, nil
 	}
 	for i, link := range links {
-		c.printMenuBadgeChoice(fmt.Sprintf("%d", i+1), link.Name+" · "+link.UserName, "["+enabledLabel(link.Enabled)+"]")
+		title := link.Name
+		if link.UserName != "" && link.UserName != link.Name {
+			title += " · 用户 " + link.UserName
+		}
+		c.printMenuBadgeChoice(fmt.Sprintf("%d", i+1), title, "["+enabledLabel(link.Enabled)+"]")
 	}
 	c.printMenuChoice("0/q", "返回")
 	choice, err := c.chooseNumber("请选择中转线路", 0, len(links), 1)

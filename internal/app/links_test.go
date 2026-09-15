@@ -45,7 +45,7 @@ func TestLandingAndRelayLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !link.Enabled || link.UUID == access.UUID {
+	if !link.Enabled || link.UUID == access.UUID || link.UserName != "la" {
 		t.Fatalf("link=%#v", link)
 	}
 	client, err := a.RelayClientConfig(context.Background(), domain.CoreXray, "la", ClientFormatNative, "", false)

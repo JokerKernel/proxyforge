@@ -13,7 +13,7 @@ func TestRenderAndRemoveManagedLinks(t *testing.T) {
 		InboundTag: "singbox-one", Server: "relay.example.com", Port: 443, SNI: "relay.example.com", Target: "relay.example.com:443",
 		UserName: "one", UUID: "base-uuid", PrivateKey: "private", PublicKey: "public", ShortID: "0123456789abcdef",
 		LandingAccesses: []domain.LandingAccess{{Name: "us", UserName: "proxyforge-landing-us", UUID: "landing-uuid", Enabled: true}},
-		RelayLinks: []domain.RelayLink{{Name: "la", UserName: "proxyforge-relay-la", UUID: "relay-uuid", Enabled: true, Upstream: domain.LandingPeer{
+		RelayLinks: []domain.RelayLink{{Name: "la", UserName: "la", UUID: "relay-uuid", Enabled: true, Upstream: domain.LandingPeer{
 			Core: domain.CoreXray, Server: "exit.example.com", Port: 443, SNI: "exit.example.com", UUID: "upstream-uuid", PublicKey: "upstream-public", ShortID: "abcdef0123456789", Flow: domain.VisionFlow,
 		}}},
 	}
@@ -32,7 +32,7 @@ func TestRenderAndRemoveManagedLinks(t *testing.T) {
 	if !singBoxHasTaggedOutbound(root, "proxyforge-relay-la") {
 		t.Fatalf("missing relay outbound: %s", b)
 	}
-	if !singBoxHasRelayRule(root, "proxyforge-relay-la", "proxyforge-relay-la") {
+	if !singBoxHasRelayRule(root, "la", "proxyforge-relay-la") {
 		t.Fatalf("missing relay rule: %s", b)
 	}
 	root["manual_top_level"] = "keep"

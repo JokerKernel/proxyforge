@@ -56,7 +56,7 @@ func TestClientMenuDisplaysRelayClientConfig(t *testing.T) {
 		Server: "relay.example.com", Port: 443, SNI: "www.example.com",
 		UUID: "123e4567-e89b-42d3-a456-426614174000", PublicKey: "public", ShortID: "0123456789abcdef",
 		RelayLinks: []domain.RelayLink{{
-			Name: "us-exit", UserName: "proxyforge-relay-us-exit",
+			Name: "us-exit", UserName: "us-exit",
 			UUID: "223e4567-e89b-42d3-a456-426614174000", Enabled: true,
 		}},
 	}); err != nil {
@@ -74,13 +74,16 @@ func TestClientMenuDisplaysRelayClientConfig(t *testing.T) {
 	}
 	got := out.String()
 	for _, want := range []string{
-		"中转节点客户端配置", "us-exit · proxyforge-relay-us-exit", "[已启用]",
+		"中转节点客户端配置", "us-exit", "[已启用]",
 		"中转节点 us-exit 的 Clash YAML 配置", "type: vless",
 		`uuid: "223e4567-e89b-42d3-a456-426614174000"`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("relay client output missing %q: %q", want, got)
 		}
+	}
+	if strings.Contains(got, "proxyforge-relay-us-exit") {
+		t.Fatalf("relay client menu leaked legacy user prefix: %q", got)
 	}
 	if !pause {
 		t.Fatal("relay client output should pause before returning to the core menu")

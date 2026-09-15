@@ -194,6 +194,10 @@ func (a *App) AddRelayLink(ctx context.Context, core, name string, peer domain.L
 	if _, ok := findRelay(n, name); ok {
 		return domain.RelayLink{}, fmt.Errorf("中转线路 %q 已存在", name)
 	}
+	userName := name
+	if userName == n.UserName {
+		return domain.RelayLink{}, fmt.Errorf("中转线路名称 %q 与普通用户名称冲突，请使用其他线路名称", name)
+	}
 	if strings.EqualFold(peer.Server, n.Server) && peer.Port == n.Port {
 		return domain.RelayLink{}, fmt.Errorf("落地端点不能指向本机当前监听地址和端口")
 	}
@@ -207,7 +211,7 @@ func (a *App) AddRelayLink(ctx context.Context, core, name string, peer domain.L
 	if err != nil {
 		return domain.RelayLink{}, err
 	}
-	link := domain.RelayLink{Name: name, UserName: "proxyforge-relay-" + name, UUID: uuid, Enabled: true, Upstream: peer, UpdatedAt: a.Now().UTC()}
+	link := domain.RelayLink{Name: name, UserName: userName, UUID: uuid, Enabled: true, Upstream: peer, UpdatedAt: a.Now().UTC()}
 	n.RelayLinks = append(n.RelayLinks, link)
 	if _, err := a.applyLinks(ctx, core, n, "中转线路"); err != nil {
 		return domain.RelayLink{}, err
