@@ -251,3 +251,81 @@ func TestManageLandingSelectsLongAccessNameByNumber(t *testing.T) {
 		}
 	}
 }
+
+func TestLinkMenuShowsProtocolStatusCard(t *testing.T) {
+	store := system.StateStore{Layout: system.Layout{Root: t.TempDir()}}
+	if err := store.Save(domain.NodeSpec{
+		ManagedBy: "proxyforge", Core: domain.CoreXray, Port: 443, SNI: "www.example.com",
+		RelayLinks: []domain.RelayLink{
+			{Name: "us", Enabled: true, Upstream: domain.LandingPeer{Security: domain.LandingSecurityReality}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	c := &commandSet{
+		app:    &app.App{Store: store},
+		reader: bufio.NewReader(strings.NewReader("0\n")),
+		out:    &out,
+	}
+	if err := c.linkMenu(context.Background(), domain.CoreXray); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	if strings.Contains(got, "当前监听端口保持不变") {
+		t.Fatalf("old count line still present: %q", got)
+	}
+	for _, want := range []string{
+		"╭─ 当前线路",
+		"监听端口", "443",
+		"中转", "已开启  -- 1 条规则",
+		"中转协议", "VLESS + RAW + REALITY + Vision",
+		"落地", "未开启  -- 0 条规则",
+		"落地协议", "未使用",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("link menu card missing %q: %q", want, got)
+		}
+	}
+}
+
+func TestLinkStatusCardShowsUsedRelayAndLandingProtocols(t *testing.T) {
+	var out bytes.Buffer
+	(&commandSet{out: &out}).printLinkStatusCard(domain.NodeSpec{
+		Port: 443,
+		RelayLinks: []domain.RelayLink{
+			{Enabled: true, Upstream: domain.LandingPeer{Security: domain.LandingSecurityReality}},
+			{Enabled: false, Upstream: domain.LandingPeer{Security: domain.LandingSecurityTLS}},
+		},
+		LandingAccesses: []domain.LandingAccess{
+			{Enabled: true, Security: domain.LandingSecurityTLS},
+			{Enabled: true},
+		},
+	})
+	got := out.String()
+	for _, want := range []string{
+		"╭─ 当前线路",
+		"│ 监听端口  443",
+		"│ 中转      已开启  -- 1 条规则 · 1 条已停用",
+		"│ 中转协议  VLESS + RAW + REALITY + Vision · VLESS + RAW + TLS + Vision",
+		"│ 落地      已开启  -- 2 条规则",
+		"│ 落地协议  VLESS + RAW + REALITY + Vision · VLESS + RAW + TLS + Vision",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("link status card missing %q: %q", want, got)
+		}
+	}
+}
+
+func TestUsedLinkProtocolDisplay(t *testing.T) {
+	if got := usedLinkProtocolDisplay(nil); got != "未使用" {
+		t.Fatalf("empty protocols=%q", got)
+	}
+	got := usedLinkProtocolDisplay([]string{
+		domain.LandingSecurityTLS, "", domain.LandingSecurityReality, domain.LandingSecurityTLS,
+	})
+	want := "VLESS + RAW + REALITY + Vision · VLESS + RAW + TLS + Vision"
+	if got != want {
+		t.Fatalf("used protocols=%q, want %q", got, want)
+	}
+}

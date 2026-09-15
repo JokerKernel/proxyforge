@@ -315,9 +315,12 @@ func (c *commandSet) printModifyConfigCard(ctx context.Context, core string) {
 	}
 	rows = append(rows, [2]string{"端口", portCardDisplay(status)})
 	rows = append(rows, [2]string{"SNI", sni})
+	c.printLabeledCard("当前配置", rows)
+}
 
+func (c *commandSet) printLabeledCard(title string, rows [][2]string) {
 	const labelWidth = 10
-	fmt.Fprintln(c.out, "╭─ 当前配置")
+	fmt.Fprintf(c.out, "╭─ %s\n", title)
 	for _, row := range rows {
 		padding := labelWidth - menuDisplayWidth(row[0])
 		if padding < 1 {

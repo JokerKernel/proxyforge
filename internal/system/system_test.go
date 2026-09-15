@@ -205,6 +205,11 @@ func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
 		"│ 严格模式  未开启\n",
 		"│ 端口      443\n",
 		"│ SNI       is1-ssl.mzstatic.com\n",
+		"│ 监听端口  443\n",
+		"│ 中转      已开启  -- 1 条规则\n",
+		"│ 中转协议  VLESS + RAW + REALITY + Vision\n",
+		"│ 落地      未开启  -- 0 条规则\n",
+		"│ 落地协议  未使用\n",
 	} {
 		if _, err := io.WriteString(w, line); err != nil {
 			t.Fatal(err)
@@ -253,6 +258,11 @@ func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
 		"\x1b[38;5;208m│\x1b[0m 严格模式  \x1b[90m未开启\x1b[0m",
 		"\x1b[38;5;208m│\x1b[0m 端口      \x1b[1;38;5;208m443\x1b[0m",
 		"\x1b[38;5;208m│\x1b[0m SNI       \x1b[1;38;5;208mis1-ssl.mzstatic.com\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 监听端口  \x1b[1;38;5;208m443\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 中转      \x1b[38;5;208m已开启\x1b[0m  \x1b[90m-- 1 条规则\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 中转协议  VLESS + RAW + REALITY + Vision",
+		"\x1b[38;5;208m│\x1b[0m 落地      \x1b[90m未开启\x1b[0m  \x1b[90m-- 0 条规则\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 落地协议  \x1b[90m未使用\x1b[0m",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("colored output missing %q: %q", want, got)

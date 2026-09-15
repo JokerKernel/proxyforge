@@ -334,15 +334,11 @@ func (c *commandSet) linkMenu(ctx context.Context, core string) error {
 	for {
 		c.clearScreen()
 		c.printPageHeader(core, "中转与落地线路")
-		relays, relayErr := c.app.RelayLinks(core)
-		landings, landingErr := c.app.LandingAccesses(core)
-		if relayErr != nil || landingErr != nil {
-			if relayErr != nil {
-				return relayErr
-			}
-			return landingErr
+		node, err := c.app.Store.Load(core)
+		if err != nil {
+			return err
 		}
-		fmt.Fprintf(c.out, "当前监听端口保持不变；中转线路 %d 条，落地接入 %d 个。\n\n", len(relays), len(landings))
+		c.printLinkStatusCard(node)
 		c.printMenuChoice("1", "添加中转线路（专用用户流量转发到远程落地）")
 		c.printMenuChoice("2", "管理中转线路")
 		c.printMenuChoice("3", "创建落地接入（允许中转机连接本机）")
@@ -373,6 +369,89 @@ func (c *commandSet) linkMenu(ctx context.Context, core string) error {
 			c.printMenuError(err)
 		}
 		c.pauseForMenu()
+	}
+}
+
+func (c *commandSet) printLinkStatusCard(node domain.NodeSpec) {
+	relayEnabled := 0
+	for _, link := range node.RelayLinks {
+		if link.Enabled {
+			relayEnabled++
+		}
+	}
+	landingEnabled := 0
+	for _, access := range node.LandingAccesses {
+		if access.Enabled {
+			landingEnabled++
+		}
+	}
+	hasNode := node.Port > 0 || strings.TrimSpace(node.SNI) != ""
+	c.printLabeledCard("当前线路", [][2]string{
+		{"监听端口", portCardDisplay(app.ModifyConfigStatus{Port: node.Port, HasConfig: hasNode, SNI: node.SNI})},
+		{"中转", relayCardDisplay(true, true, len(node.RelayLinks), relayEnabled)},
+		{"中转协议", relayProtocolCardDisplay(node.RelayLinks)},
+		{"落地", relayCardDisplay(true, true, len(node.LandingAccesses), landingEnabled)},
+		{"落地协议", landingProtocolCardDisplay(node.LandingAccesses)},
+	})
+}
+
+func relayProtocolCardDisplay(links []domain.RelayLink) string {
+	securities := make([]string, 0, len(links))
+	for _, link := range links {
+		securities = append(securities, link.Upstream.Security)
+	}
+	return usedLinkProtocolDisplay(securities)
+}
+
+func landingProtocolCardDisplay(accesses []domain.LandingAccess) string {
+	securities := make([]string, 0, len(accesses))
+	for _, access := range accesses {
+		securities = append(securities, access.Security)
+	}
+	return usedLinkProtocolDisplay(securities)
+}
+
+func usedLinkProtocolDisplay(securities []string) string {
+	if len(securities) == 0 {
+		return "未使用"
+	}
+	hasReality, hasTLS := false, false
+	var others []string
+	seenOther := map[string]struct{}{}
+	for _, security := range securities {
+		switch domain.NormalizeLandingSecurity(security) {
+		case domain.LandingSecurityTLS:
+			hasTLS = true
+		case domain.LandingSecurityReality:
+			hasReality = true
+		default:
+			label := landingProtocolLabel(security)
+			if _, exists := seenOther[label]; exists {
+				continue
+			}
+			seenOther[label] = struct{}{}
+			others = append(others, label)
+		}
+	}
+	var parts []string
+	if hasReality {
+		parts = append(parts, landingProtocolLabel(domain.LandingSecurityReality))
+	}
+	if hasTLS {
+		parts = append(parts, landingProtocolLabel(domain.LandingSecurityTLS))
+	}
+	parts = append(parts, others...)
+	return strings.Join(parts, " · ")
+}
+
+func landingProtocolLabel(security string) string {
+	switch domain.NormalizeLandingSecurity(security) {
+	case domain.LandingSecurityTLS:
+		return "VLESS + RAW + TLS + Vision"
+	case domain.LandingSecurityReality:
+		return "VLESS + RAW + REALITY + Vision"
+	default:
+		return strings.ToUpper(strings.TrimSpace(security))
 	}
 }
 
