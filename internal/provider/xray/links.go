@@ -228,8 +228,8 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 	return marshalXray(root)
 }
 
-func xrayRelayOutboundTag(name string) string     { return name }
-func xrayLandingTLSInboundTag(name string) string { return name }
+func xrayRelayOutboundTag(name string) string     { return name + "-out" }
+func xrayLandingTLSInboundTag(name string) string { return name + "-in" }
 
 func xrayLinkIdentity(n domain.NodeSpec) (map[string]bool, map[string]bool, map[string]bool) {
 	names, uuids, tags := map[string]bool{}, map[string]bool{}, map[string]bool{}

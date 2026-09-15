@@ -73,14 +73,14 @@ func TestLandingAndRelayLifecycle(t *testing.T) {
 	if err := json.Unmarshal(config, &root); err != nil {
 		t.Fatal(err)
 	}
-	if !xrayConfigHasTag(root, "la") {
+	if !xrayConfigHasTag(root, "la-out") {
 		t.Fatalf("relay outbound missing: %s", config)
 	}
 	if err := a.SetRelayLinkEnabled(context.Background(), domain.CoreXray, "la", false); err != nil {
 		t.Fatal(err)
 	}
 	config, _ = os.ReadFile(configPath)
-	if xrayConfigContainsTag(config, "la") {
+	if xrayConfigContainsTag(config, "la-out") {
 		t.Fatalf("disabled link remained in config: %s", config)
 	}
 	state, err := a.Store.Load(domain.CoreXray)
@@ -129,14 +129,14 @@ func TestTLSLandingLifecycleAndPortableBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(config, []byte(`"tag": "tls-exit"`)) || !bytes.Contains(config, []byte(`"security": "tls"`)) {
+	if !bytes.Contains(config, []byte(`"tag": "tls-exit-in"`)) || !bytes.Contains(config, []byte(`"security": "tls"`)) {
 		t.Fatalf("TLS landing inbound missing: %s", config)
 	}
 	if err := a.SetLandingAccessEnabled(context.Background(), domain.CoreXray, access.Name, false); err != nil {
 		t.Fatal(err)
 	}
 	config, _ = os.ReadFile(configPath)
-	if bytes.Contains(config, []byte(`"tag": "tls-exit"`)) {
+	if bytes.Contains(config, []byte(`"tag": "tls-exit-in"`)) {
 		t.Fatalf("disabled TLS landing remained in config: %s", config)
 	}
 }
@@ -200,7 +200,7 @@ func TestGeneratePreservesLinksUnlessExplicitlyDropped(t *testing.T) {
 	}
 	p, _ := a.Registry.Get(domain.CoreXray)
 	config, _ := os.ReadFile(a.Layout.Resolve(p.ConfigPath()))
-	if xrayConfigContainsTag(config, "la") {
+	if xrayConfigContainsTag(config, "la-out") {
 		t.Fatalf("dropped link remained in config: %s", config)
 	}
 }

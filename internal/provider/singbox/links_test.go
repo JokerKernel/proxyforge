@@ -29,10 +29,10 @@ func TestRenderAndRemoveManagedLinks(t *testing.T) {
 	if len(users) != 3 {
 		t.Fatalf("users=%#v", users)
 	}
-	if !singBoxHasTaggedOutbound(root, "la") {
+	if !singBoxHasTaggedOutbound(root, "la-out") {
 		t.Fatalf("missing relay outbound: %s", b)
 	}
-	if !singBoxHasRelayRule(root, "la", "la") {
+	if !singBoxHasRelayRule(root, "la", "la-out") {
 		t.Fatalf("missing relay rule: %s", b)
 	}
 	root["manual_top_level"] = "keep"
@@ -52,7 +52,7 @@ func TestRenderAndRemoveManagedLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	users = root["inbounds"].([]any)[0].(map[string]any)["users"].([]any)
-	if len(users) != 1 || singBoxHasTaggedOutbound(root, "la") {
+	if len(users) != 1 || singBoxHasTaggedOutbound(root, "la-out") {
 		t.Fatalf("links not removed: %s", removed)
 	}
 	if root["manual_top_level"] != "keep" || !singBoxHasTaggedOutbound(root, "manual-out") {
