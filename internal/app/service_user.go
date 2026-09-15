@@ -88,12 +88,21 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 	if err != nil {
 		return change, err
 	}
-	configSnapshots, err := captureExistingMetadata(
+	permissionPaths := []string{
 		a.Layout.Resolve(filepath.Dir(p.ConfigPath())),
 		a.Layout.Resolve(p.ConfigPath()),
 		a.Layout.Resolve("/var/log/xray/access.log"),
 		a.Layout.Resolve("/var/log/xray/error.log"),
-	)
+	}
+	if state, stateErr := a.Store.Load(domain.CoreXray); stateErr == nil {
+		permissionPaths = append(permissionPaths, a.Layout.TLSRoot(domain.CoreXray))
+		for _, access := range state.LandingAccesses {
+			if a.isManagedTLSAccess(domain.CoreXray, access) {
+				permissionPaths = append(permissionPaths, a.Layout.TLSAccessDir(domain.CoreXray, access.Name), access.CertificateFile, access.KeyFile)
+			}
+		}
+	}
+	configSnapshots, err := captureExistingMetadata(permissionPaths...)
 	if err != nil {
 		return change, err
 	}
@@ -503,6 +512,32 @@ func (a *App) secureXrayFilesForDedicatedUser(ctx context.Context, configPath st
 		}
 		if _, err := a.Runner.Run(ctx, "chmod", "0600", resolved); err != nil {
 			return fmt.Errorf("设置 Xray 日志权限: %w", err)
+		}
+	}
+	state, err := a.Store.Load(domain.CoreXray)
+	if err == nil {
+		coreTLSRoot := a.Layout.TLSRoot(domain.CoreXray)
+		if _, statErr := os.Stat(coreTLSRoot); statErr == nil {
+			for _, command := range [][]string{{"chown", "root:xray", coreTLSRoot}, {"chmod", "0750", coreTLSRoot}} {
+				if _, runErr := a.Runner.Run(ctx, command[0], command[1:]...); runErr != nil {
+					return fmt.Errorf("设置 Xray TLS 目录权限: %w", runErr)
+				}
+			}
+		}
+		for _, access := range state.LandingAccesses {
+			if !a.isManagedTLSAccess(domain.CoreXray, access) {
+				continue
+			}
+			dir := a.Layout.TLSAccessDir(domain.CoreXray, access.Name)
+			for _, command := range [][]string{
+				{"chown", "root:xray", dir}, {"chmod", "0750", dir},
+				{"chown", "root:xray", access.CertificateFile}, {"chmod", "0640", access.CertificateFile},
+				{"chown", "root:xray", access.KeyFile}, {"chmod", "0640", access.KeyFile},
+			} {
+				if _, runErr := a.Runner.Run(ctx, command[0], command[1:]...); runErr != nil {
+					return fmt.Errorf("设置 Xray TLS 证书权限: %w", runErr)
+				}
+			}
 		}
 	}
 	return nil

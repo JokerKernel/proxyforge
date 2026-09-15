@@ -158,11 +158,17 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 		}
 		peer := link.Upstream
 		tlsSettings := map[string]any{
-			"enabled": true, "server_name": peer.SNI,
+			"enabled": true, "server_name": peer.SNI, "insecure": false,
 			"utls": map[string]any{"enabled": true, "fingerprint": "chrome"},
 		}
 		if domain.NormalizeLandingSecurity(peer.Security) == domain.LandingSecurityReality {
 			tlsSettings["reality"] = map[string]any{"enabled": true, "public_key": peer.PublicKey, "short_id": peer.ShortID}
+		} else {
+			if !domain.ValidCertificateSHA256(peer.CertificateSHA256) || !domain.ValidCertificatePublicKeySHA256(peer.CertificatePublicKeySHA256) {
+				return nil, fmt.Errorf("TLS 中转线路 %q 缺少合法证书指纹；请删除并使用新的落地连接文本重新创建", link.Name)
+			}
+			tlsSettings["certificate_public_key_sha256"] = []string{peer.CertificatePublicKeySHA256}
+			tlsSettings["min_version"] = "1.3"
 		}
 		outbounds = append(outbounds, map[string]any{
 			"type": "vless", "tag": tag, "server": peer.Server, "server_port": peer.Port,

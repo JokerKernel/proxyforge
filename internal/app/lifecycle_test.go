@@ -214,6 +214,7 @@ func TestCleanupRemovesOnlySelectedCoreResidue(t *testing.T) {
 		a.Layout.StatePath(domain.CoreSingBox),
 		a.Layout.TrustPath(domain.CoreSingBox),
 		filepath.Join(a.Layout.BackupRoot(domain.CoreSingBox), "old", "config.json"),
+		filepath.Join(a.Layout.TLSAccessDir(domain.CoreSingBox, "landing"), "cert.pem"),
 	}
 	for _, path := range singPaths {
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
@@ -230,6 +231,13 @@ func TestCleanupRemovesOnlySelectedCoreResidue(t *testing.T) {
 	if err := os.WriteFile(xrayState, []byte("keep"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	xrayTLS := filepath.Join(a.Layout.TLSAccessDir(domain.CoreXray, "landing"), "cert.pem")
+	if err := os.MkdirAll(filepath.Dir(xrayTLS), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(xrayTLS, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	clientExport := filepath.Join(root, "user-client.json")
 	if err := os.WriteFile(clientExport, []byte("keep"), 0600); err != nil {
 		t.Fatal(err)
@@ -243,7 +251,7 @@ func TestCleanupRemovesOnlySelectedCoreResidue(t *testing.T) {
 			t.Fatalf("residue still exists at %s: %v", path, err)
 		}
 	}
-	for _, path := range []string{xrayState, clientExport} {
+	for _, path := range []string{xrayState, xrayTLS, clientExport} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("unrelated file was removed at %s: %v", path, err)
 		}
@@ -266,6 +274,8 @@ func TestCleanupAllRemovesBothCoresAndProxyForgeData(t *testing.T) {
 		a.Layout.StatePath(domain.CoreSingBox),
 		a.Layout.TrustPath(domain.CoreXray),
 		filepath.Join(a.Layout.BackupRoot(domain.CoreXray), "old", "config.json"),
+		filepath.Join(a.Layout.TLSAccessDir(domain.CoreSingBox, "landing"), "cert.pem"),
+		filepath.Join(a.Layout.TLSAccessDir(domain.CoreXray, "landing"), "key.pem"),
 	}
 	for _, path := range paths {
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {

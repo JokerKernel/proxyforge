@@ -24,6 +24,14 @@ func (l Layout) BackupRoot(core string) string {
 	return l.Resolve("/var/lib/proxyforge/backups/" + core)
 }
 
+func (l Layout) TLSRoot(core string) string {
+	return l.Resolve("/var/lib/proxyforge/tls/" + core)
+}
+
+func (l Layout) TLSAccessDir(core, name string) string {
+	return filepath.Join(l.TLSRoot(core), name)
+}
+
 func (l Layout) XrayServiceAccountMarkerPath() string {
 	return l.Resolve("/var/lib/proxyforge/state/xray-service-account.json")
 }

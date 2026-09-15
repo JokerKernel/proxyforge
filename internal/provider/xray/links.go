@@ -168,9 +168,15 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 		peer := link.Upstream
 		streamSettings := map[string]any{}
 		if domain.NormalizeLandingSecurity(peer.Security) == domain.LandingSecurityTLS {
+			if !domain.ValidCertificateSHA256(peer.CertificateSHA256) || !domain.ValidCertificatePublicKeySHA256(peer.CertificatePublicKeySHA256) {
+				return nil, fmt.Errorf("TLS 中转线路 %q 缺少合法证书指纹；请删除并使用新的落地连接文本重新创建", link.Name)
+			}
 			streamSettings = map[string]any{
 				"network": "raw", "security": "tls",
-				"tlsSettings": map[string]any{"serverName": peer.SNI, "fingerprint": "chrome", "minVersion": "1.3"},
+				"tlsSettings": map[string]any{
+					"serverName": peer.SNI, "fingerprint": "chrome", "minVersion": "1.3",
+					"allowInsecure": false, "pinnedPeerCertSha256": peer.CertificateSHA256,
+				},
 			}
 		} else {
 			streamSettings = map[string]any{

@@ -1,7 +1,9 @@
 package xray
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"proxyforge/internal/domain"
@@ -73,7 +75,8 @@ func TestRenderTLSLandingAndRelay(t *testing.T) {
 		}},
 		RelayLinks: []domain.RelayLink{{Name: "tls-upstream", UserName: "tls-upstream", UUID: "relay-uuid", Enabled: true, Upstream: domain.LandingPeer{
 			Core: domain.CoreSingBox, Security: domain.LandingSecurityTLS, Server: "exit.example.com", Port: 8443,
-			SNI: "tls.example.com", UUID: "upstream-uuid", Flow: domain.VisionFlow,
+			SNI: "tls.example.com", UUID: "upstream-uuid", CertificateSHA256: strings.Repeat("a", 64),
+			CertificatePublicKeySHA256: base64.StdEncoding.EncodeToString(make([]byte, 32)), Flow: domain.VisionFlow,
 		}}},
 	}
 	b, err := p.RenderServer(n)
@@ -96,7 +99,8 @@ func TestRenderTLSLandingAndRelay(t *testing.T) {
 	}
 	outbound := xrayTaggedObject(root["outbounds"].([]any), xrayRelayOutboundTag("tls-upstream"))
 	outboundStream := outbound["streamSettings"].(map[string]any)
-	if outboundStream["security"] != "tls" || outboundStream["realitySettings"] != nil {
+	outboundTLS := outboundStream["tlsSettings"].(map[string]any)
+	if outboundStream["security"] != "tls" || outboundStream["realitySettings"] != nil || outboundTLS["allowInsecure"] != false || outboundTLS["pinnedPeerCertSha256"] != strings.Repeat("a", 64) {
 		t.Fatalf("invalid TLS relay outbound: %#v", outboundStream)
 	}
 

@@ -157,6 +157,21 @@ func newServiceUserTestApp(t *testing.T, failRestart bool) (*App, *serviceUserRu
 
 func TestUseDedicatedXrayServiceUserMigratesOfficialUnits(t *testing.T) {
 	a, runner, root := newServiceUserTestApp(t, false)
+	tlsDir := a.Layout.TLSAccessDir(domain.CoreXray, "managed-tls")
+	if err := os.MkdirAll(tlsDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	certFile, keyFile := filepath.Join(tlsDir, "cert.pem"), filepath.Join(tlsDir, "key.pem")
+	for _, path := range []string{certFile, keyFile} {
+		if err := os.WriteFile(path, []byte("test"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := a.Store.Save(domain.NodeSpec{ManagedBy: "proxyforge", Core: domain.CoreXray, LandingAccesses: []domain.LandingAccess{{
+		Name: "managed-tls", Security: domain.LandingSecurityTLS, CertificateFile: certFile, KeyFile: keyFile, CertificateSHA256: strings.Repeat("a", 64),
+	}}}); err != nil {
+		t.Fatal(err)
+	}
 	change, err := a.UseDedicatedXrayServiceUser(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -188,6 +203,10 @@ func TestUseDedicatedXrayServiceUserMigratesOfficialUnits(t *testing.T) {
 		"getent passwd xray",
 		"getent group xray",
 		"runuser -u xray --",
+		"chown root:xray " + tlsDir,
+		"chmod 0750 " + tlsDir,
+		"chown root:xray " + certFile,
+		"chmod 0640 " + keyFile,
 		"systemctl daemon-reload",
 		"systemctl restart xray.service",
 	} {

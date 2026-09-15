@@ -116,10 +116,48 @@ func TestCreateLandingMenuOffersCurrentRealityAndIndependentTLS(t *testing.T) {
 	}
 }
 
+func TestTLSLandingCreationDoesNotAskForPortDomainOrCertificatePaths(t *testing.T) {
+	store := system.StateStore{Layout: system.Layout{Root: t.TempDir()}}
+	if err := store.Save(domain.NodeSpec{
+		ManagedBy: "proxyforge", Core: domain.CoreXray, Port: 443, InboundTag: "xray-one",
+		UUID: "123e4567-e89b-42d3-a456-426614174000",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	c := &commandSet{
+		app:    &app.App{Store: store, RootCheck: func() error { return nil }},
+		reader: bufio.NewReader(strings.NewReader("2\nauto-tls\nn\n")), out: &out,
+	}
+	err := c.addLandingInteractive(context.Background(), domain.CoreXray)
+	if !errors.Is(err, errReturnToMenu) {
+		t.Fatalf("error=%v", err)
+	}
+	for _, unwanted := range []string{"独立 TLS 监听端口（", "TLS 证书域名", "TLS 证书链文件", "TLS 私钥文件"} {
+		if strings.Contains(out.String(), unwanted) {
+			t.Fatalf("automatic TLS flow still prompted for %q: %s", unwanted, out.String())
+		}
+	}
+	if !strings.Contains(out.String(), "自动选择 30000–65000") || !strings.Contains(out.String(), "自签证书") {
+		t.Fatalf("automatic TLS confirmation missing: %s", out.String())
+	}
+}
+
+func TestTLSLandingCLIHasNoManualCertificateFlags(t *testing.T) {
+	c := &commandSet{}
+	cmd := c.landingAddCommand()
+	for _, name := range []string{"port", "server-name", "cert-file", "key-file"} {
+		if cmd.Flags().Lookup(name) != nil {
+			t.Fatalf("obsolete TLS flag --%s remains", name)
+		}
+	}
+}
+
 func TestManualTLSLandingPeerDoesNotRequestRealityKeys(t *testing.T) {
 	input := strings.Join([]string{
 		"tls-exit", "1", "2", "192.168.1.20", "8443", "tls.example.com",
 		"123e4567-e89b-42d3-a456-426614174000",
+		strings.Repeat("a", 64), "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
 	}, "\n") + "\n"
 	var out bytes.Buffer
 	c := &commandSet{reader: bufio.NewReader(strings.NewReader(input)), out: &out}
@@ -127,7 +165,7 @@ func TestManualTLSLandingPeerDoesNotRequestRealityKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if peer.Security != domain.LandingSecurityTLS || peer.PublicKey != "" || peer.ShortID != "" || peer.Port != 8443 {
+	if peer.Security != domain.LandingSecurityTLS || peer.PublicKey != "" || peer.ShortID != "" || peer.Port != 8443 || peer.CertificateSHA256 == "" || peer.CertificatePublicKeySHA256 == "" {
 		t.Fatalf("peer=%#v", peer)
 	}
 	if strings.Contains(out.String(), "REALITY 公钥") || strings.Contains(out.String(), "short ID") {

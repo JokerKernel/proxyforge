@@ -12,7 +12,7 @@ proxyforge cleanup <sing-box|xray|all> [--yes]
 proxyforge config generate <sing-box|xray> --server HOST --port PORT --sni DOMAIN [OPTIONS]
 proxyforge config client <sing-box|xray> [--format native|clash] [--output FILE] [--force]
 proxyforge config reset <sing-box|xray> [--sni DOMAIN] [--target HOST:PORT] [--yes]
-proxyforge config landing add <sing-box|xray> NAME [--security reality|tls] [TLS OPTIONS]
+proxyforge config landing add <sing-box|xray> NAME [--security reality|tls]
 proxyforge config relay add <sing-box|xray> NAME --upstream-stdin
 proxyforge config relay client <sing-box|xray> NAME [--format native|clash] [--output FILE]
 proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
@@ -107,7 +107,7 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 先在落地服务器创建独立接入。交互菜单会提供两种模式：
 
 - 使用当前协议：把落地用户加入当前 `VLESS + RAW + REALITY + Vision` 入站，不新增端口。
-- 创建独立 TLS：新增一个 `VLESS + RAW + TLS + Vision` 入站，默认从 `30000–65000` 随机选择可用端口，并使用独立证书域名、证书链和私钥。交互时可以修改随机结果。
+- 创建独立 TLS：新增一个 `VLESS + RAW + TLS + Vision` 入站，从 `30000–65000` 随机选择可用端口，并自动生成 ECDSA P-256 自签证书。SNI 和 SAN 使用随机的 `pf-<十六进制>.invalid`，不依赖 DNS。
 
 命令会把一段可复制的 JSON 连接文本直接显示在终端，不会默认生成文件。默认模式是复用当前 REALITY：
 
@@ -118,16 +118,12 @@ sudo proxyforge config landing add xray from-relay
 纯命令行创建独立 TLS 落地的示例：
 
 ```bash
-sudo proxyforge config landing add xray from-relay-tls \
-  --security tls \
-  --server-name exit.example.com \
-  --cert-file /etc/letsencrypt/live/exit.example.com/fullchain.pem \
-  --key-file /etc/letsencrypt/live/exit.example.com/privkey.pem
+sudo proxyforge config landing add xray from-relay-tls --security tls
 ```
 
-TLS 模式要求证书和私钥文件已存在、证书在有效期内且 SAN 与 `--server-name` 匹配；中转机按系统 CA 验证证书，不会自动启用跳过验证。证书路径只保存在落地服务器本地状态和内核配置里，不会写进连接文本。还需确保内核运行用户可读取证书文件，并在防火墙中放行所选 TCP 端口。
+TLS 模式的证书有效期为 10 年，保存在 `/var/lib/proxyforge/tls/<core>/<接入名>/cert.pem` 和 `key.pem`。ProxyForge 会按内核运行用户设置目录与文件权限；切换 Xray 专用运行用户时也会同步修正这些权限。还需在防火墙中放行程序显示的随机 TCP 端口。
 
-命令行使用 `--security tls` 时可以省略 `--port`，此时同样会在 `30000–65000` 中随机选择当前可用且未被 ProxyForge 管理的端口。
+中转端不依赖系统 CA，也不会跳过证书验证：Xray 使用完整证书的 SHA-256 十六进制指纹，sing-box 使用证书公钥的 SHA-256 Base64 指纹。两种指纹都由落地端写入连接文本。
 
 复制完整 JSON 文本。在中转服务器的交互菜单选择“添加中转线路”，程序会打开一个临时编辑文件；粘贴后保存并退出即可。临时文件权限为 `0600`，导入完成后会自动删除。
 
@@ -141,7 +137,7 @@ sudo proxyforge config relay client sing-box us \
   --format clash --output ./us-client.yaml
 ```
 
-连接文本包含安全协议、地址、端口、UUID 和 SNI；REALITY 模式还包含公钥与 short ID。连接文本不含 REALITY 服务端私钥、TLS 私钥或证书文件路径，但其中 UUID 仍是敏感凭据。支持 Xray 与 sing-box 两端任意组合，两种模式都使用 VLESS + Vision、RAW 传输。
+连接文本包含安全协议、地址、端口、UUID 和 SNI；REALITY 模式还包含公钥与 short ID，TLS 模式包含 Xray 与 sing-box 分别使用的两种证书指纹。连接文本不含 REALITY 服务端私钥、TLS 私钥或证书文件路径，但其中 UUID 和证书指纹仍应作为敏感连接资料处理。TLS 连接文本缺少任一合法指纹时会被拒绝；旧的无指纹 TLS 接入需要删除并重新创建，REALITY 连接文本不受影响。支持 Xray 与 sing-box 两端任意组合，两种模式都使用 VLESS + Vision、RAW 传输。
 
 `landing export`（别名 `landing show`）用于再次显示连接文本，`relay update --upstream-stdin` 用于粘贴更新。为兼容已有脚本，仍保留落地命令的 `--output FILE` 和中转命令的 `--upstream FILE`；新流程无需使用这两个文件参数。
 
@@ -166,7 +162,7 @@ sudo proxyforge config relay remove sing-box us --yes
 
 创建和更新中转线路时会先检查落地 TCP 端口。落地地址默认要求公网单播地址；为了局域网联调，允许直接使用 `192.168.0.0/16`，但 `10.0.0.0/8`、`172.16.0.0/12`、回环和其他保留地址仍会拒绝。该放行只适用于连接落地服务器，用户代理访问私网的拦截规则不变。确知落地暂时不可达但仍需保存时，可以显式添加 `--allow-unreachable`。每次线路变更都会生成候选配置、调用对应内核原生命令校验、备份并重启当前服务；失败时恢复原配置和状态。停用线路会从入站移除对应用户，而不是让它落入默认 `direct`。
 
-重置本节点 SNI、REALITY 密钥或 short ID 后，已经导出的本节点客户端需要重新导出，落地连接文本需要重新生成并粘贴到中转机。轮换某条中转线路 UUID 只影响该线路的客户端；轮换落地接入 UUID 后，需要重新生成连接文本并更新所有使用它的中转机。
+重置本节点 SNI、REALITY 密钥或 short ID 后，已经导出的本节点客户端需要重新导出，落地连接文本需要重新生成并粘贴到中转机。轮换某条中转线路 UUID 只影响该线路的客户端；轮换落地接入 UUID 后，需要重新生成连接文本并更新所有使用它的中转机，但不会更换 TLS 证书。停用 TLS 接入也会保留证书，再启用时指纹不变。需要更换 TLS 证书时，请删除并重建接入，然后在所有中转机重新导入连接文本。删除接入、使用 `--drop-links` 或清理内核会删除对应受管证书。
 
 ## DNS 设置
 

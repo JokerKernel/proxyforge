@@ -2,14 +2,11 @@ package app
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -33,11 +30,7 @@ type RelayAddOptions struct {
 }
 
 type LandingAddOptions struct {
-	Security        string
-	Port            int
-	SNI             string
-	CertificateFile string
-	KeyFile         string
+	Security string
 }
 
 var linkNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`)
@@ -89,14 +82,13 @@ func (a *App) AddLandingAccessWithOptions(ctx context.Context, core, name string
 	if security != domain.LandingSecurityReality && security != domain.LandingSecurityTLS {
 		return domain.LandingAccess{}, fmt.Errorf("落地安全协议无效: %q（可选 reality 或 tls）", opts.Security)
 	}
+	port := 0
 	if security == domain.LandingSecurityTLS {
-		if opts.Port == 0 {
-			opts.Port, err = a.PickLandingTLSPort(core)
-			if err != nil {
-				return domain.LandingAccess{}, err
-			}
+		port, err = a.PickLandingTLSPort(core)
+		if err != nil {
+			return domain.LandingAccess{}, err
 		}
-		if err := a.validateLandingTLS(n, core, opts); err != nil {
+		if err := a.validateLandingTLSPort(n, core, port); err != nil {
 			return domain.LandingAccess{}, err
 		}
 	}
@@ -106,14 +98,36 @@ func (a *App) AddLandingAccessWithOptions(ctx context.Context, core, name string
 	}
 	access := domain.LandingAccess{
 		Name: name, UserName: name, UUID: uuid, Security: security,
-		Port: opts.Port, SNI: strings.TrimSpace(opts.SNI), CertificateFile: strings.TrimSpace(opts.CertificateFile), KeyFile: strings.TrimSpace(opts.KeyFile),
+		Port:    port,
 		Enabled: true, UpdatedAt: a.Now().UTC(),
+	}
+	generatedTLS := false
+	if security == domain.LandingSecurityTLS {
+		p, getErr := a.Registry.Get(core)
+		if getErr != nil {
+			return domain.LandingAccess{}, getErr
+		}
+		certificate, generateErr := a.generateManagedTLSCertificate(core, name, a.Services.User(ctx, p.ServiceName()))
+		if generateErr != nil {
+			return domain.LandingAccess{}, generateErr
+		}
+		access.SNI = certificate.SNI
+		access.CertificateFile = certificate.CertificateFile
+		access.KeyFile = certificate.KeyFile
+		access.CertificateSHA256 = certificate.CertificateSHA256
+		access.CertificatePublicKeySHA256 = certificate.CertificatePublicKeySHA256
+		generatedTLS = true
 	}
 	if security == domain.LandingSecurityReality {
 		access.Port, access.SNI, access.CertificateFile, access.KeyFile = 0, "", "", ""
 	}
 	n.LandingAccesses = append(n.LandingAccesses, access)
 	if _, err := a.applyLinks(ctx, core, n, "落地接入"); err != nil {
+		if generatedTLS {
+			if cleanupErr := a.removeManagedTLSAccess(core, name); cleanupErr != nil {
+				return domain.LandingAccess{}, fmt.Errorf("%v；且清理新生成的 TLS 证书失败: %w", err, cleanupErr)
+			}
+		}
 		return domain.LandingAccess{}, err
 	}
 	if security == domain.LandingSecurityTLS {
@@ -196,9 +210,17 @@ func (a *App) RemoveLandingAccess(ctx context.Context, core, name string) error 
 	if !ok {
 		return fmt.Errorf("找不到落地接入 %q", name)
 	}
+	removed := n.LandingAccesses[index]
 	n.LandingAccesses = append(n.LandingAccesses[:index], n.LandingAccesses[index+1:]...)
-	_, err = a.applyLinks(ctx, core, n, "落地接入")
-	return err
+	if _, err = a.applyLinks(ctx, core, n, "落地接入"); err != nil {
+		return err
+	}
+	if a.isManagedTLSAccess(core, removed) {
+		if err := a.removeManagedTLSAccess(core, name); err != nil {
+			return fmt.Errorf("落地接入已删除，但清理受管 TLS 证书失败: %w", err)
+		}
+	}
+	return nil
 }
 
 func (a *App) LandingBundle(core, name string) (LandingBundle, error) {
@@ -217,11 +239,23 @@ func (a *App) LandingBundle(core, name string) (LandingBundle, error) {
 	security := domain.NormalizeLandingSecurity(access.Security)
 	peer := domain.LandingPeer{Name: access.Name, Core: core, Security: security, Server: n.Server, UUID: access.UUID, Flow: domain.VisionFlow}
 	if security == domain.LandingSecurityTLS {
+		if !domain.ValidCertificateSHA256(access.CertificateSHA256) || !domain.ValidCertificatePublicKeySHA256(access.CertificatePublicKeySHA256) {
+			return LandingBundle{}, fmt.Errorf("TLS 落地接入 %q 缺少合法证书指纹；请删除并重新创建该接入", name)
+		}
+		now := time.Now()
+		if a.Now != nil {
+			now = a.Now()
+		}
+		if err := validateManagedTLSCertificate(access, now); err != nil {
+			return LandingBundle{}, fmt.Errorf("TLS 落地接入 %q 无法导出: %w", name, err)
+		}
 		peer.Port, peer.SNI = access.Port, access.SNI
+		peer.CertificateSHA256 = access.CertificateSHA256
+		peer.CertificatePublicKeySHA256 = access.CertificatePublicKeySHA256
 	} else {
 		peer.Port, peer.SNI, peer.PublicKey, peer.ShortID = n.Port, n.SNI, n.PublicKey, n.ShortID
 	}
-	return LandingBundle{ManagedBy: "proxyforge", SchemaVersion: 2, Kind: landingBundleKind, Peer: peer}, nil
+	return LandingBundle{ManagedBy: "proxyforge", SchemaVersion: 3, Kind: landingBundleKind, Peer: peer}, nil
 }
 
 func (a *App) ExportLandingBundle(core, name, output string, force bool) ([]byte, error) {
@@ -245,7 +279,7 @@ func ParseLandingBundle(b []byte) (domain.LandingPeer, error) {
 	if err := json.Unmarshal(b, &bundle); err != nil {
 		return domain.LandingPeer{}, fmt.Errorf("解析落地连接文本: %w", err)
 	}
-	if bundle.ManagedBy != "proxyforge" || bundle.Kind != landingBundleKind || (bundle.SchemaVersion != 1 && bundle.SchemaVersion != 2) {
+	if bundle.ManagedBy != "proxyforge" || bundle.Kind != landingBundleKind || bundle.SchemaVersion < 1 || bundle.SchemaVersion > 3 {
 		return domain.LandingPeer{}, fmt.Errorf("落地连接文本标识或版本无效")
 	}
 	bundle.Peer.Security = domain.NormalizeLandingSecurity(strings.ToLower(strings.TrimSpace(bundle.Peer.Security)))
@@ -538,16 +572,19 @@ func validateAvailableLinkName(n domain.NodeSpec, name string) error {
 	return nil
 }
 
-func (a *App) validateLandingTLS(n domain.NodeSpec, core string, opts LandingAddOptions) error {
-	if err := system.ValidatePort(opts.Port); err != nil {
+func (a *App) validateLandingTLSPort(n domain.NodeSpec, core string, port int) error {
+	if port == 0 {
+		return nil
+	}
+	if err := system.ValidatePort(port); err != nil {
 		return fmt.Errorf("TLS 落地端口无效: %w", err)
 	}
-	if opts.Port == n.Port || opts.Port == nodeFallbackPort(n) {
-		return fmt.Errorf("TLS 落地端口 %d 与当前节点已有端口冲突", opts.Port)
+	if port == n.Port || port == nodeFallbackPort(n) {
+		return fmt.Errorf("TLS 落地端口 %d 与当前节点已有端口冲突", port)
 	}
 	for _, access := range n.LandingAccesses {
-		if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityTLS && access.Port == opts.Port {
-			return fmt.Errorf("TLS 落地端口 %d 已由接入 %q 使用", opts.Port, access.Name)
+		if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityTLS && access.Port == port {
+			return fmt.Errorf("TLS 落地端口 %d 已由接入 %q 使用", port, access.Name)
 		}
 	}
 	otherCore := domain.CoreXray
@@ -555,48 +592,19 @@ func (a *App) validateLandingTLS(n domain.NodeSpec, core string, opts LandingAdd
 		otherCore = domain.CoreSingBox
 	}
 	if other, err := a.Store.Load(otherCore); err == nil {
-		if opts.Port == other.Port || opts.Port == nodeFallbackPort(other) {
-			return fmt.Errorf("TLS 落地端口 %d 已由受管的 %s 节点使用", opts.Port, otherCore)
+		if port == other.Port || port == nodeFallbackPort(other) {
+			return fmt.Errorf("TLS 落地端口 %d 已由受管的 %s 节点使用", port, otherCore)
 		}
 		for _, access := range other.LandingAccesses {
-			if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityTLS && access.Port == opts.Port {
-				return fmt.Errorf("TLS 落地端口 %d 已由 %s 落地接入 %q 使用", opts.Port, otherCore, access.Name)
+			if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityTLS && access.Port == port {
+				return fmt.Errorf("TLS 落地端口 %d 已由 %s 落地接入 %q 使用", port, otherCore, access.Name)
 			}
 		}
 	}
 	if a.PortFree != nil {
-		if err := a.PortFree(opts.Port); err != nil {
+		if err := a.PortFree(port); err != nil {
 			return fmt.Errorf("TLS 落地端口不可用: %w", err)
 		}
-	}
-	sni := strings.TrimSpace(opts.SNI)
-	if err := system.ValidateSNI(sni); err != nil {
-		return fmt.Errorf("TLS 落地域名无效: %w", err)
-	}
-	certFile, keyFile := strings.TrimSpace(opts.CertificateFile), strings.TrimSpace(opts.KeyFile)
-	if !filepath.IsAbs(certFile) || !filepath.IsAbs(keyFile) {
-		return fmt.Errorf("TLS 证书和私钥必须使用绝对路径")
-	}
-	pair, err := tls.LoadX509KeyPair(certFile, keyFile)
-	if err != nil {
-		return fmt.Errorf("读取 TLS 证书或私钥: %w", err)
-	}
-	if len(pair.Certificate) == 0 {
-		return fmt.Errorf("TLS 证书链为空")
-	}
-	leaf, err := x509.ParseCertificate(pair.Certificate[0])
-	if err != nil {
-		return fmt.Errorf("解析 TLS 证书: %w", err)
-	}
-	if err := leaf.VerifyHostname(sni); err != nil {
-		return fmt.Errorf("TLS 证书不匹配域名 %s: %w", sni, err)
-	}
-	now := time.Now()
-	if a.Now != nil {
-		now = a.Now()
-	}
-	if now.Before(leaf.NotBefore) || now.After(leaf.NotAfter) {
-		return fmt.Errorf("TLS 证书当前不在有效期内（%s 至 %s）", leaf.NotBefore.Format(time.RFC3339), leaf.NotAfter.Format(time.RFC3339))
 	}
 	return nil
 }
@@ -641,6 +649,10 @@ func validateLandingPeer(peer domain.LandingPeer) error {
 		}
 		if !shortIDPattern.MatchString(peer.ShortID) || len(peer.ShortID)%2 != 0 {
 			return fmt.Errorf("落地 short ID 必须为 2-16 个十六进制字符")
+		}
+	} else {
+		if !domain.ValidCertificateSHA256(peer.CertificateSHA256) || !domain.ValidCertificatePublicKeySHA256(peer.CertificatePublicKeySHA256) {
+			return fmt.Errorf("TLS 落地连接文本缺少合法证书指纹；旧配置请在落地端删除并重新创建后再导入")
 		}
 	}
 	if peer.Flow != domain.VisionFlow {

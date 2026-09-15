@@ -314,6 +314,7 @@ func (a *App) Cleanup(ctx context.Context, target string) error {
 			a.Layout.StatePath(p.Name()),
 			a.Layout.TrustPath(p.Name()),
 			a.Layout.BackupRoot(p.Name()),
+			a.Layout.TLSRoot(p.Name()),
 		}
 		for _, path := range p.CleanupPaths() {
 			paths = append(paths, a.Layout.Resolve(path))
@@ -351,6 +352,7 @@ func (a *App) removeEmptyProxyForgeRoot() error {
 		filepath.Join(root, "state"),
 		filepath.Join(root, "trust"),
 		filepath.Join(root, "backups"),
+		filepath.Join(root, "tls"),
 		root,
 	} {
 		if err := removeEmptyCleanupDirectory(path); err != nil {

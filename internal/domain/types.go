@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"encoding/base64"
+	"encoding/hex"
 	"strings"
 	"time"
 )
@@ -16,35 +18,39 @@ const (
 	LandingTLSPortMax      = 65000
 	FallbackPortMin        = LandingTLSPortMin
 	FallbackPortMax        = LandingTLSPortMax
-	StateSchemaVersion     = 2
+	StateSchemaVersion     = 3
 )
 
 // LandingPeer is the portable, client-side description of a managed landing
 // access. It intentionally never contains the landing server's private key.
 type LandingPeer struct {
-	Name      string `json:"name"`
-	Core      string `json:"core"`
-	Security  string `json:"security"`
-	Server    string `json:"server"`
-	Port      int    `json:"port"`
-	SNI       string `json:"sni"`
-	UUID      string `json:"uuid"`
-	PublicKey string `json:"public_key,omitempty"`
-	ShortID   string `json:"short_id,omitempty"`
-	Flow      string `json:"flow"`
+	Name                       string `json:"name"`
+	Core                       string `json:"core"`
+	Security                   string `json:"security"`
+	Server                     string `json:"server"`
+	Port                       int    `json:"port"`
+	SNI                        string `json:"sni"`
+	UUID                       string `json:"uuid"`
+	PublicKey                  string `json:"public_key,omitempty"`
+	ShortID                    string `json:"short_id,omitempty"`
+	CertificateSHA256          string `json:"certificate_sha256,omitempty"`
+	CertificatePublicKeySHA256 string `json:"certificate_public_key_sha256,omitempty"`
+	Flow                       string `json:"flow"`
 }
 
 type LandingAccess struct {
-	Name            string    `json:"name"`
-	UserName        string    `json:"user_name"`
-	UUID            string    `json:"uuid"`
-	Security        string    `json:"security,omitempty"`
-	Port            int       `json:"port,omitempty"`
-	SNI             string    `json:"sni,omitempty"`
-	CertificateFile string    `json:"certificate_file,omitempty"`
-	KeyFile         string    `json:"key_file,omitempty"`
-	Enabled         bool      `json:"enabled"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	Name                       string    `json:"name"`
+	UserName                   string    `json:"user_name"`
+	UUID                       string    `json:"uuid"`
+	Security                   string    `json:"security,omitempty"`
+	Port                       int       `json:"port,omitempty"`
+	SNI                        string    `json:"sni,omitempty"`
+	CertificateFile            string    `json:"certificate_file,omitempty"`
+	KeyFile                    string    `json:"key_file,omitempty"`
+	CertificateSHA256          string    `json:"certificate_sha256,omitempty"`
+	CertificatePublicKeySHA256 string    `json:"certificate_public_key_sha256,omitempty"`
+	Enabled                    bool      `json:"enabled"`
+	UpdatedAt                  time.Time `json:"updated_at"`
 }
 
 func NormalizeLandingSecurity(security string) string {
@@ -53,6 +59,19 @@ func NormalizeLandingSecurity(security string) string {
 		return LandingSecurityReality
 	}
 	return security
+}
+
+func ValidCertificateSHA256(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	decoded, err := hex.DecodeString(value)
+	return err == nil && len(decoded) == 32
+}
+
+func ValidCertificatePublicKeySHA256(value string) bool {
+	decoded, err := base64.StdEncoding.DecodeString(value)
+	return err == nil && len(decoded) == 32 && base64.StdEncoding.EncodeToString(decoded) == value
 }
 
 func RelayOutboundTag(name string) string { return name + "-out" }

@@ -191,7 +191,24 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if err != nil {
 		return n, err
 	}
-	return a.applyServerConfig(ctx, p, core, n, old, hasOld, config, true)
+	applied, err := a.applyServerConfig(ctx, p, core, n, old, hasOld, config, true)
+	if err != nil {
+		return applied, err
+	}
+	if hasOld && opts.DropLinks {
+		var cleanupErrors []error
+		for _, access := range old.LandingAccesses {
+			if a.isManagedTLSAccess(core, access) {
+				if removeErr := a.removeManagedTLSAccess(core, access.Name); removeErr != nil {
+					cleanupErrors = append(cleanupErrors, removeErr)
+				}
+			}
+		}
+		if len(cleanupErrors) != 0 {
+			return applied, fmt.Errorf("配置已重新生成，但清理受管 TLS 证书失败: %w", errors.Join(cleanupErrors...))
+		}
+	}
+	return applied, nil
 }
 
 func (a *App) CoreVersion(ctx context.Context, core string) string {

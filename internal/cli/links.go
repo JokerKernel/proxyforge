@@ -28,10 +28,9 @@ func (c *commandSet) landingCommand() *cobra.Command {
 func (c *commandSet) landingAddCommand() *cobra.Command {
 	var output string
 	var force bool
-	var security, sni, certFile, keyFile string
-	var port int
+	var security string
 	cmd := &cobra.Command{Use: "add <sing-box|xray> <name>", Short: "创建落地接入并输出可复制的连接文本", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
-		opts := app.LandingAddOptions{Security: security, Port: port, SNI: sni, CertificateFile: certFile, KeyFile: keyFile}
+		opts := app.LandingAddOptions{Security: security}
 		if _, err := c.app.AddLandingAccessWithOptions(cmd.Context(), args[0], args[1], opts); err != nil {
 			return err
 		}
@@ -49,10 +48,6 @@ func (c *commandSet) landingAddCommand() *cobra.Command {
 	cmd.Flags().StringVarP(&output, "output", "o", "", "兼容选项：将连接文本写入文件（默认输出到终端）")
 	cmd.Flags().BoolVar(&force, "force", false, "覆盖已有输出文件")
 	cmd.Flags().StringVar(&security, "security", domain.LandingSecurityReality, "落地安全协议：reality 或 tls")
-	cmd.Flags().IntVar(&port, "port", 0, "TLS 落地独立监听端口（默认随机选择 30000-65000）")
-	cmd.Flags().StringVar(&sni, "server-name", "", "TLS 证书域名")
-	cmd.Flags().StringVar(&certFile, "cert-file", "", "TLS 证书链文件绝对路径")
-	cmd.Flags().StringVar(&keyFile, "key-file", "", "TLS 私钥文件绝对路径")
 	return cmd
 }
 
@@ -404,33 +399,7 @@ func (c *commandSet) addLandingInteractive(ctx context.Context, core string) err
 	confirmMessage := "将向当前 REALITY 入站添加独立接入用户；不新增端口，普通用户路由保持不变，应用时会重启当前服务。"
 	if protocolChoice == 2 {
 		opts.Security = domain.LandingSecurityTLS
-		randomPort, e := c.app.PickLandingTLSPort(core)
-		if e != nil {
-			return e
-		}
-		rawPort, e := c.askDefaultCancelable("独立 TLS 监听端口（已随机选择高位可用端口）", strconv.Itoa(randomPort))
-		if e != nil {
-			return e
-		}
-		opts.Port, e = strconv.Atoi(rawPort)
-		if e != nil {
-			return fmt.Errorf("TLS 落地端口无效: %w", e)
-		}
-		opts.SNI, e = c.askDefaultCancelable("TLS 证书域名", "")
-		if e != nil {
-			return e
-		}
-		defaultCert := "/etc/letsencrypt/live/" + opts.SNI + "/fullchain.pem"
-		defaultKey := "/etc/letsencrypt/live/" + opts.SNI + "/privkey.pem"
-		opts.CertificateFile, e = c.askDefaultCancelable("TLS 证书链文件", defaultCert)
-		if e != nil {
-			return e
-		}
-		opts.KeyFile, e = c.askDefaultCancelable("TLS 私钥文件", defaultKey)
-		if e != nil {
-			return e
-		}
-		confirmMessage = fmt.Sprintf("将新增独立 TLS 入站端口 %d；证书须受中转机系统信任，普通用户和当前 REALITY 入站保持不变，应用时会重启当前服务。", opts.Port)
+		confirmMessage = "将自动选择 30000–65000 的可用端口并生成 10 年有效的 ECDSA 自签证书；中转机使用连接文本中的指纹固定验证，普通用户和当前 REALITY 入站保持不变，应用时会重启当前服务。"
 	}
 	ok, err := c.confirmCancelable(confirmMessage)
 	if err != nil || !ok {
@@ -593,6 +562,15 @@ func (c *commandSet) askLandingPeer() (domain.LandingPeer, error) {
 			return peer, err
 		}
 		peer.ShortID, err = c.askDefaultCancelable("落地 short ID", "")
+		if err != nil {
+			return peer, err
+		}
+	} else {
+		peer.CertificateSHA256, err = c.askDefaultCancelable("落地证书 SHA-256 指纹（Xray，64 位十六进制）", "")
+		if err != nil {
+			return peer, err
+		}
+		peer.CertificatePublicKeySHA256, err = c.askDefaultCancelable("落地证书公钥 SHA-256 指纹（sing-box，Base64）", "")
 		if err != nil {
 			return peer, err
 		}
