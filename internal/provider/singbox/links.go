@@ -210,9 +210,9 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 	return marshalSingBox(root)
 }
 
-func relayOutboundTag(name string) string { return name + "-out" }
+func relayOutboundTag(name string) string { return domain.RelayOutboundTag(name) }
 func singBoxLandingTLSInboundTag(name string) string {
-	return name + "-in"
+	return domain.LandingTLSInboundTag(name)
 }
 
 func singBoxLinkIdentity(n domain.NodeSpec) (map[string]bool, map[string]bool, map[string]bool) {

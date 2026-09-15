@@ -55,6 +55,10 @@ func NormalizeLandingSecurity(security string) string {
 	return security
 }
 
+func RelayOutboundTag(name string) string { return name + "-out" }
+
+func LandingTLSInboundTag(name string) string { return name + "-in" }
+
 type RelayLink struct {
 	Name      string      `json:"name"`
 	UserName  string      `json:"user_name"`

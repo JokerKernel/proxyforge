@@ -157,8 +157,10 @@ func TestManageRelaySelectsLongLineNameByNumber(t *testing.T) {
 		t.Fatalf("error=%v", err)
 	}
 	for _, want := range []string{
-		"1   short · 192.168.1.10:443", "2   very-long-relay-line-name · 192.168.1.20:8443",
-		"[已启用]", "[已停用]", "管理中转线路  ›  very-long-relay-line-name", "当前落地：192.168.1.20:8443 · REALITY",
+		"1   用户 short · tag short-out · 192.168.1.10:443", "2   用户 very-long-relay-line-name · tag very-long-relay-line-name-out · 192.168.1.20:8443",
+		"[已启用]", "[已停用]", "管理中转线路  ›  very-long-relay-line-name-out",
+		"线路名称：very-long-relay-line-name · 客户端用户：very-long-relay-line-name · 出站 tag：very-long-relay-line-name-out",
+		"当前落地：192.168.1.20:8443 · REALITY",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("relay management output missing %q: %q", want, out.String())

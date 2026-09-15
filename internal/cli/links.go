@@ -198,8 +198,12 @@ func (c *commandSet) relayListCommand() *cobra.Command {
 			return nil
 		}
 		for _, item := range items {
-			fmt.Fprintf(c.out, "%s\t%s\t%s:%d\t%s\t%s\n", item.Name, item.UserName, item.Upstream.Server, item.Upstream.Port,
-				domain.NormalizeLandingSecurity(item.Upstream.Security), enabledLabel(item.Enabled))
+			userName := item.UserName
+			if userName == "" {
+				userName = item.Name
+			}
+			fmt.Fprintf(c.out, "用户 %s\ttag %s\t%s:%d\t%s\n", userName, domain.RelayOutboundTag(item.Name), item.Upstream.Server, item.Upstream.Port,
+				enabledLabel(item.Enabled))
 		}
 		return nil
 	}}
@@ -608,7 +612,11 @@ func (c *commandSet) manageRelayInteractive(ctx context.Context, core string) er
 	}
 	c.printPageHeader(core, "管理中转线路")
 	for i, item := range items {
-		title := fmt.Sprintf("%s · %s:%d", item.Name, item.Upstream.Server, item.Upstream.Port)
+		userName := item.UserName
+		if userName == "" {
+			userName = item.Name
+		}
+		title := fmt.Sprintf("用户 %s · tag %s · %s:%d", userName, domain.RelayOutboundTag(item.Name), item.Upstream.Server, item.Upstream.Port)
 		c.printMenuBadgeChoice(strconv.Itoa(i+1), title, "["+enabledLabel(item.Enabled)+"]")
 	}
 	c.printMenuChoice("0/q", "返回")
@@ -621,8 +629,13 @@ func (c *commandSet) manageRelayInteractive(ctx context.Context, core string) er
 	}
 	selected := &items[selectedNumber-1]
 	name := selected.Name
+	userName := selected.UserName
+	if userName == "" {
+		userName = name
+	}
 	c.clearScreen()
-	c.printPageHeader(core, "管理中转线路", name)
+	c.printPageHeader(core, "管理中转线路", domain.RelayOutboundTag(name))
+	fmt.Fprintf(c.out, "线路名称：%s · 客户端用户：%s · 出站 tag：%s\n", name, userName, domain.RelayOutboundTag(name))
 	fmt.Fprintf(c.out, "当前落地：%s:%d · %s · %s\n\n", selected.Upstream.Server, selected.Upstream.Port,
 		strings.ToUpper(domain.NormalizeLandingSecurity(selected.Upstream.Security)), enabledLabel(selected.Enabled))
 	c.printMenuChoice("1", "导出原生客户端配置")
