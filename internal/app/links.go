@@ -32,6 +32,7 @@ type RelayAddOptions struct {
 var linkNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`)
 var uuidPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 var shortIDPattern = regexp.MustCompile(`(?i)^[0-9a-f]{2,16}$`)
+var relayTestLAN = mustCIDR("192.168.0.0/16")
 
 func (a *App) LandingAccesses(core string) ([]domain.LandingAccess, error) {
 	n, err := a.Store.Load(core)
@@ -425,10 +426,11 @@ func validateLandingPeer(peer domain.LandingPeer) error {
 		return fmt.Errorf("落地地址无效: %w", err)
 	}
 	if ip := net.ParseIP(peer.Server); ip != nil {
-		blocked := !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsUnspecified() || ip.IsMulticast() || ip.IsLinkLocalUnicast()
+		allowTestLAN := relayTestLAN.Contains(ip)
+		blocked := !ip.IsGlobalUnicast() || (ip.IsPrivate() && !allowTestLAN) || ip.IsLoopback() || ip.IsUnspecified() || ip.IsMulticast() || ip.IsLinkLocalUnicast()
 		for _, raw := range domain.BlockedDestinationCIDRs() {
 			_, network, err := net.ParseCIDR(raw)
-			if err == nil && network.Contains(ip) {
+			if err == nil && network.Contains(ip) && !allowTestLAN {
 				blocked = true
 				break
 			}
@@ -456,6 +458,14 @@ func validateLandingPeer(peer domain.LandingPeer) error {
 		return fmt.Errorf("落地 flow 必须为 %s", domain.VisionFlow)
 	}
 	return nil
+}
+
+func mustCIDR(raw string) *net.IPNet {
+	_, network, err := net.ParseCIDR(raw)
+	if err != nil {
+		panic(err)
+	}
+	return network
 }
 
 func probeTCP(ctx context.Context, host string, port int) error {

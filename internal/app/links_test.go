@@ -152,6 +152,22 @@ func TestParseLandingBundleRejectsInvalidIdentity(t *testing.T) {
 	}
 }
 
+func TestLandingPeerAllowsOnlyRequestedTestLAN(t *testing.T) {
+	peer := domain.LandingPeer{Name: "test", Core: domain.CoreXray, Server: "192.168.10.20", Port: 443, SNI: "exit.example.com",
+		UUID: "123e4567-e89b-42d3-a456-426614174000", PublicKey: "public", ShortID: "0123456789abcdef", Flow: domain.VisionFlow}
+	if err := validateLandingPeer(peer); err != nil {
+		t.Fatalf("192.168/16 should be allowed for relay testing: %v", err)
+	}
+	peer.Server = "10.0.0.20"
+	if err := validateLandingPeer(peer); err == nil {
+		t.Fatal("10/8 should remain blocked")
+	}
+	peer.Server = "172.16.0.20"
+	if err := validateLandingPeer(peer); err == nil {
+		t.Fatal("172.16/12 should remain blocked")
+	}
+}
+
 func xrayConfigHasTag(root map[string]any, tag string) bool {
 	for _, raw := range root["outbounds"].([]any) {
 		if outbound, ok := raw.(map[string]any); ok && outbound["tag"] == tag {
