@@ -210,10 +210,16 @@ func TestManageRelaySelectsLongLineNameByNumber(t *testing.T) {
 		t.Fatalf("error=%v", err)
 	}
 	for _, want := range []string{
+		"╭─ 当前线路", "中转协议", "落地协议",
 		"1   short · short-out · 192.168.1.10:443", "2   very-long-relay-line-name · very-long-relay-line-name-out · 192.168.1.20:8443",
 		"[已启用]", "[已停用]", "管理中转线路  ›  very-long-relay-line-name-out",
-		"线路名称：very-long-relay-line-name · 客户端用户：very-long-relay-line-name · 出站 tag：very-long-relay-line-name-out",
-		"当前落地：192.168.1.20:8443 · REALITY",
+		"╭─ 当前中转",
+		"│ 线路名称  very-long-relay-line-name",
+		"│ 客户端用户 very-long-relay-line-name",
+		"│ 出站 tag  very-long-relay-line-name-out",
+		"│ 落地地址  192.168.1.20:8443",
+		"│ 落地协议  VLESS + RAW + REALITY + Vision",
+		"│ 状态      已停用",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("relay management output missing %q: %q", want, out.String())
@@ -243,8 +249,15 @@ func TestManageLandingSelectsLongAccessNameByNumber(t *testing.T) {
 		t.Fatalf("error=%v", err)
 	}
 	for _, want := range []string{
+		"╭─ 当前线路", "中转协议", "落地协议",
 		"1   first", "2   very-long-landing-access-name",
-		"管理落地接入  ›  very-long-landing-access-name", "当前状态：已停用",
+		"管理落地接入  ›  very-long-landing-access-name",
+		"╭─ 当前落地",
+		"│ 接入名称  very-long-landing-access-name",
+		"│ 接入用户  very-long-landing-access-name",
+		"│ 落地协议  VLESS + RAW + REALITY + Vision",
+		"│ 接入方式  复用当前 REALITY 入站",
+		"│ 状态      已停用",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("landing management output missing %q: %q", want, out.String())
@@ -313,6 +326,47 @@ func TestLinkStatusCardShowsUsedRelayAndLandingProtocols(t *testing.T) {
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("link status card missing %q: %q", want, got)
+		}
+	}
+}
+
+func TestRelayAndLandingDetailCards(t *testing.T) {
+	var relayOut bytes.Buffer
+	(&commandSet{out: &relayOut}).printRelayLinkCard(domain.RelayLink{
+		Name: "us-exit", UserName: "relay-user", Enabled: true,
+		Upstream: domain.LandingPeer{Server: "192.168.1.20", Port: 8443, Security: domain.LandingSecurityTLS},
+	})
+	gotRelay := relayOut.String()
+	for _, want := range []string{
+		"╭─ 当前中转",
+		"│ 线路名称  us-exit",
+		"│ 客户端用户 relay-user",
+		"│ 出站 tag  us-exit-out",
+		"│ 落地地址  192.168.1.20:8443",
+		"│ 落地协议  VLESS + RAW + TLS + Vision",
+		"│ 状态      已启用",
+	} {
+		if !strings.Contains(gotRelay, want) {
+			t.Fatalf("relay detail card missing %q: %q", want, gotRelay)
+		}
+	}
+
+	var landingOut bytes.Buffer
+	(&commandSet{out: &landingOut}).printLandingAccessCard(domain.LandingAccess{
+		Name: "relay-1", UserName: "relay-1", Enabled: false, Security: domain.LandingSecurityTLS,
+		Port: 31234, SNI: "tls.invalid",
+	})
+	gotLanding := landingOut.String()
+	for _, want := range []string{
+		"╭─ 当前落地",
+		"│ 接入名称  relay-1",
+		"│ 接入用户  relay-1",
+		"│ 落地协议  VLESS + RAW + TLS + Vision",
+		"│ 接入方式  独立 TLS 端口 31234 · tls.invalid",
+		"│ 状态      已停用",
+	} {
+		if !strings.Contains(gotLanding, want) {
+			t.Fatalf("landing detail card missing %q: %q", want, gotLanding)
 		}
 	}
 }

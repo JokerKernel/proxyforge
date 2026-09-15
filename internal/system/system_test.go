@@ -210,6 +210,15 @@ func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
 		"│ 中转协议  VLESS + RAW + REALITY + Vision\n",
 		"│ 落地      未开启  -- 0 条规则\n",
 		"│ 落地协议  未使用\n",
+		"│ 线路名称  us-exit\n",
+		"│ 客户端用户  relay-user\n",
+		"│ 出站 tag  us-exit-out\n",
+		"│ 落地地址  192.168.1.20:8443\n",
+		"│ 接入名称  relay-1\n",
+		"│ 接入用户  relay-1\n",
+		"│ 接入方式  复用当前 REALITY 入站\n",
+		"│ 状态      已启用\n",
+		"│ 状态      已停用\n",
 	} {
 		if _, err := io.WriteString(w, line); err != nil {
 			t.Fatal(err)
@@ -263,6 +272,15 @@ func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
 		"\x1b[38;5;208m│\x1b[0m 中转协议  VLESS + RAW + REALITY + Vision",
 		"\x1b[38;5;208m│\x1b[0m 落地      \x1b[90m未开启\x1b[0m  \x1b[90m-- 0 条规则\x1b[0m",
 		"\x1b[38;5;208m│\x1b[0m 落地协议  \x1b[90m未使用\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 线路名称  us-exit",
+		"\x1b[38;5;208m│\x1b[0m 客户端用户  relay-user",
+		"\x1b[38;5;208m│\x1b[0m 出站 tag  us-exit-out",
+		"\x1b[38;5;208m│\x1b[0m 落地地址  \x1b[1;38;5;208m192.168.1.20:8443\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 接入名称  relay-1",
+		"\x1b[38;5;208m│\x1b[0m 接入用户  relay-1",
+		"\x1b[38;5;208m│\x1b[0m 接入方式  复用当前 REALITY 入站",
+		"\x1b[38;5;208m│\x1b[0m 状态      \x1b[38;5;208m已启用\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 状态      \x1b[90m已停用\x1b[0m",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("colored output missing %q: %q", want, got)

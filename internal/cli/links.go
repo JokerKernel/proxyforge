@@ -395,6 +395,46 @@ func (c *commandSet) printLinkStatusCard(node domain.NodeSpec) {
 	})
 }
 
+func (c *commandSet) printRelayLinkCard(link domain.RelayLink) {
+	userName := link.UserName
+	if userName == "" {
+		userName = link.Name
+	}
+	c.printLabeledCard("当前中转", [][2]string{
+		{"线路名称", link.Name},
+		{"客户端用户", userName},
+		{"出站 tag", domain.RelayOutboundTag(link.Name)},
+		{"落地地址", fmt.Sprintf("%s:%d", link.Upstream.Server, link.Upstream.Port)},
+		{"落地协议", landingProtocolLabel(link.Upstream.Security)},
+		{"状态", enabledLabel(link.Enabled)},
+	})
+}
+
+func (c *commandSet) printLandingAccessCard(access domain.LandingAccess) {
+	userName := access.UserName
+	if userName == "" {
+		userName = access.Name
+	}
+	c.printLabeledCard("当前落地", [][2]string{
+		{"接入名称", access.Name},
+		{"接入用户", userName},
+		{"落地协议", landingProtocolLabel(access.Security)},
+		{"接入方式", landingAccessEndpoint(access)},
+		{"状态", enabledLabel(access.Enabled)},
+	})
+}
+
+func landingAccessEndpoint(access domain.LandingAccess) string {
+	if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityTLS {
+		endpoint := fmt.Sprintf("独立 TLS 端口 %d", access.Port)
+		if sni := strings.TrimSpace(access.SNI); sni != "" {
+			return endpoint + " · " + sni
+		}
+		return endpoint
+	}
+	return "复用当前 REALITY 入站"
+}
+
 func relayProtocolCardDisplay(links []domain.RelayLink) string {
 	securities := make([]string, 0, len(links))
 	for _, link := range links {
@@ -684,15 +724,17 @@ func (c *commandSet) askLandingPeer() (domain.LandingPeer, error) {
 }
 
 func (c *commandSet) manageRelayInteractive(ctx context.Context, core string) error {
-	items, err := c.app.RelayLinks(core)
+	node, err := c.app.Store.Load(core)
 	if err != nil {
 		return err
 	}
+	items := node.RelayLinks
 	if len(items) == 0 {
 		fmt.Fprintln(c.out, "尚未配置中转线路。")
 		return nil
 	}
 	c.printPageHeader(core, "管理中转线路")
+	c.printLinkStatusCard(node)
 	for i, item := range items {
 		userName := item.UserName
 		if userName == "" {
@@ -711,15 +753,9 @@ func (c *commandSet) manageRelayInteractive(ctx context.Context, core string) er
 	}
 	selected := &items[selectedNumber-1]
 	name := selected.Name
-	userName := selected.UserName
-	if userName == "" {
-		userName = name
-	}
 	c.clearScreen()
 	c.printPageHeader(core, "管理中转线路", domain.RelayOutboundTag(name))
-	fmt.Fprintf(c.out, "线路名称：%s · 客户端用户：%s · 出站 tag：%s\n", name, userName, domain.RelayOutboundTag(name))
-	fmt.Fprintf(c.out, "当前落地：%s:%d · %s · %s\n\n", selected.Upstream.Server, selected.Upstream.Port,
-		strings.ToUpper(domain.NormalizeLandingSecurity(selected.Upstream.Security)), enabledLabel(selected.Enabled))
+	c.printRelayLinkCard(*selected)
 	c.printMenuChoice("1", "导出原生客户端配置")
 	c.printMenuChoice("2", "测试落地 TCP 连通性")
 	c.printMenuChoice("3", "粘贴新的落地连接文本")
@@ -784,15 +820,17 @@ func (c *commandSet) manageRelayInteractive(ctx context.Context, core string) er
 }
 
 func (c *commandSet) manageLandingInteractive(ctx context.Context, core string) error {
-	items, err := c.app.LandingAccesses(core)
+	node, err := c.app.Store.Load(core)
 	if err != nil {
 		return err
 	}
+	items := node.LandingAccesses
 	if len(items) == 0 {
 		fmt.Fprintln(c.out, "尚未配置落地接入。")
 		return nil
 	}
 	c.printPageHeader(core, "管理落地接入")
+	c.printLinkStatusCard(node)
 	for i, item := range items {
 		title := item.Name
 		if item.UserName != "" && item.UserName != item.Name {
@@ -817,12 +855,7 @@ func (c *commandSet) manageLandingInteractive(ctx context.Context, core string) 
 	name := selected.Name
 	c.clearScreen()
 	c.printPageHeader(core, "管理落地接入", name)
-	security := domain.NormalizeLandingSecurity(selected.Security)
-	endpoint := "复用当前 REALITY 入站"
-	if security == domain.LandingSecurityTLS {
-		endpoint = fmt.Sprintf("独立 TLS 端口 %d · %s", selected.Port, selected.SNI)
-	}
-	fmt.Fprintf(c.out, "当前状态：%s · %s\n\n", enabledLabel(selected.Enabled), endpoint)
+	c.printLandingAccessCard(*selected)
 	c.printMenuChoice("1", "显示可复制的落地连接文本")
 	c.printMenuChoice("2", "轮换接入 UUID")
 	if selected.Enabled {
