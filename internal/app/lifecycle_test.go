@@ -469,9 +469,11 @@ func TestInstalledServiceRunning(t *testing.T) {
 }
 
 func TestPrintInstallSuccessDistinguishesInstallAndUpgrade(t *testing.T) {
-	var installed, upgraded bytes.Buffer
-	printInstallSuccess(&installed, domain.CoreSingBox, "安装", "", "sing-box version 1.13.16", true)
-	printInstallSuccess(&upgraded, domain.CoreXray, "升级", "Xray 25.1.1", "Xray 25.2.0", false)
+	var installed, upgraded, unchanged bytes.Buffer
+	printInstallSuccess(&installed, domain.CoreSingBox, "", "sing-box version 1.13.16", true)
+	printInstallSuccess(&upgraded, domain.CoreXray, "Xray 25.1.1", "Xray 25.2.0", false)
+	same := "Xray 26.3.27 (Xray, Penetrates Everything.) d2758a0 (go1.26.1 linux/amd64)"
+	printInstallSuccess(&unchanged, domain.CoreXray, same, same, true)
 
 	for _, want := range []string{"sing-box 安装成功", "版本：sing-box version 1.13.16", "服务：active（运行中）"} {
 		if !strings.Contains(installed.String(), want) {
@@ -482,5 +484,13 @@ func TestPrintInstallSuccessDistinguishesInstallAndUpgrade(t *testing.T) {
 		if !strings.Contains(upgraded.String(), want) {
 			t.Fatalf("upgrade result missing %q: %q", want, upgraded.String())
 		}
+	}
+	for _, want := range []string{"xray 版本未变化", "（与安装前相同）", same} {
+		if !strings.Contains(unchanged.String(), want) {
+			t.Fatalf("unchanged result missing %q: %q", want, unchanged.String())
+		}
+	}
+	if strings.Contains(unchanged.String(), "->") {
+		t.Fatalf("unchanged result should not show a version arrow: %q", unchanged.String())
 	}
 }

@@ -30,10 +30,8 @@ func (a *App) Install(ctx context.Context, core string, opts install.Options) er
 	if err != nil {
 		return err
 	}
-	resultAction := "安装"
 	previousVersion := ""
 	if _, lookErr := a.lookPath(p.Binary()); lookErr == nil {
-		resultAction = "升级"
 		previousVersion, _ = p.Version(ctx, a.Runner)
 	}
 	config := a.Layout.Resolve(p.ConfigPath())
@@ -92,31 +90,41 @@ func (a *App) Install(ctx context.Context, core string, opts install.Options) er
 		return fmt.Errorf("安装完成但服务状态异常（%s）: %w", status.Detail, err)
 	}
 	if running {
-		printInstallSuccess(a.Out, core, resultAction, previousVersion, version, true)
+		printInstallSuccess(a.Out, core, previousVersion, version, true)
 		return nil
 	}
-	printInstallSuccess(a.Out, core, resultAction, previousVersion, version, false)
+	printInstallSuccess(a.Out, core, previousVersion, version, false)
 	fmt.Fprintln(a.Out, "[提示] 服务当前为 inactive；这是尚未生成服务端配置时的正常状态。请继续选择“生成服务端配置”，配置成功后服务会自动启动。")
 	return nil
 }
 
-func printInstallSuccess(w io.Writer, core, action, previousVersion, version string, running bool) {
+func printInstallSuccess(w io.Writer, core, previousVersion, version string, running bool) {
 	const border = "========================================================"
 	serviceStatus := "inactive（尚未运行）"
 	if running {
 		serviceStatus = "active（运行中）"
 	}
+	title, versionLine := installResultSummary(previousVersion, version)
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, border)
-	fmt.Fprintf(w, "  [结果] %s %s成功\n", core, action)
+	fmt.Fprintf(w, "  [结果] %s %s\n", core, title)
 	fmt.Fprintln(w, border)
-	if action == "升级" && previousVersion != "" {
-		fmt.Fprintf(w, "版本：%s  ->  %s\n", previousVersion, version)
-	} else {
-		fmt.Fprintf(w, "版本：%s\n", version)
-	}
+	fmt.Fprintln(w, versionLine)
 	fmt.Fprintf(w, "服务：%s\n", serviceStatus)
 	fmt.Fprintln(w, border)
+}
+
+func installResultSummary(previous, current string) (string, string) {
+	previous = strings.TrimSpace(previous)
+	current = strings.TrimSpace(current)
+	switch {
+	case previous == "":
+		return "安装成功", "版本：" + current
+	case previous == current:
+		return "版本未变化", "版本：" + current + "（与安装前相同）"
+	default:
+		return "升级成功", "版本：" + previous + "  ->  " + current
+	}
 }
 
 func (a *App) Uninstall(ctx context.Context, core string, opts install.Options) error {
