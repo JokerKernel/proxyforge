@@ -22,7 +22,8 @@ func TestRenderClient(t *testing.T) {
 		"mixed-port: 7890", `type: vless`, `server: "server.example.com"`,
 		"port: 443", `uuid: "123e4567-e89b-42d3-a456-426614174000"`,
 		"flow: xtls-rprx-vision", "packet-encoding: xudp", "client-fingerprint: chrome",
-		`public-key: "public-key"`, `short-id: "0123456789abcdef"`, "- MATCH,PROXY",
+		`public-key: "public-key"`, `short-id: "0123456789abcdef"`,
+		"support-x25519mlkem768: true", "- MATCH,PROXY",
 	} {
 		if !strings.Contains(config, want) {
 			t.Errorf("config missing %q:\n%s", want, config)

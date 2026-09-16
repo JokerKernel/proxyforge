@@ -45,6 +45,7 @@ proxies:
     reality-opts:
       public-key: %q
       short-id: %q
+      support-x25519mlkem768: true
     encryption: ""
 
 proxy-groups:
