@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"proxyforge/internal/provider/singbox"
 	"proxyforge/internal/provider/xray"
 	"proxyforge/internal/system"
 )
@@ -228,6 +229,42 @@ func TestRunPassesRuntimeProxyToXrayScript(t *testing.T) {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("labeled output missing %q: %s", want, output.String())
 		}
+	}
+}
+
+func TestRunPassesBetaToXrayScript(t *testing.T) {
+	script := []byte("#!/usr/bin/env bash\nexit 0\n")
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: make(http.Header), Body: io.NopCloser(strings.NewReader(string(script))), Request: r}, nil
+	})
+	runner := &streamingRunnerStub{}
+	i := Installer{
+		Client: &http.Client{Transport: transport}, Runner: runner,
+		Layout: system.Layout{Root: t.TempDir()}, Output: io.Discard,
+	}
+	if _, err := i.Run(context.Background(), xray.New(), Options{
+		Beta: true, NonInteractive: true, TrustScriptSHA256: system.SHA256(script),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(runner.args) < 3 || runner.args[1] != "install" || runner.args[2] != "--beta" {
+		t.Fatalf("args=%v, want <script> install --beta", runner.args)
+	}
+}
+
+func TestRunRejectsBetaWithVersion(t *testing.T) {
+	i := Installer{Layout: system.Layout{Root: t.TempDir()}, Output: io.Discard}
+	_, err := i.Run(context.Background(), xray.New(), Options{Beta: true, Version: "v26.9.9"})
+	if err == nil || !strings.Contains(err.Error(), "预发布与指定版本不能同时使用") {
+		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestRunRejectsBetaForSingBox(t *testing.T) {
+	i := Installer{Layout: system.Layout{Root: t.TempDir()}, Output: io.Discard}
+	_, err := i.Run(context.Background(), singbox.New(), Options{Beta: true})
+	if err == nil || !strings.Contains(err.Error(), "不支持预发布安装") {
+		t.Fatalf("error=%v", err)
 	}
 }
 

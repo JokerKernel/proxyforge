@@ -23,8 +23,8 @@ func (*Provider) OfficialScriptURL() string { return "https://sing-box.app/insta
 func (*Provider) ScriptHosts() []string {
 	return []string{"sing-box.app", "sing-box.sagernet.org", "raw.githubusercontent.com", "github.com"}
 }
-func (*Provider) InstallArgs(version string) []string {
-	if version == "" {
+func (*Provider) InstallArgs(version string, beta bool) []string {
+	if beta || version == "" {
 		return nil
 	}
 	return []string{"--version", version}

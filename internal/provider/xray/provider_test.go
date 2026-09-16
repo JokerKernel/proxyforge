@@ -17,6 +17,26 @@ func (r outputRunner) Run(context.Context, string, ...string) ([]byte, error) {
 	return []byte(r.output), nil
 }
 
+func TestInstallArgs(t *testing.T) {
+	p := New()
+	tests := []struct {
+		version string
+		beta    bool
+		want    []string
+	}{
+		{want: []string{"install"}},
+		{version: "v26.9.9", want: []string{"install", "--version", "v26.9.9"}},
+		{beta: true, want: []string{"install", "--beta"}},
+		{version: "v26.9.9", beta: true, want: []string{"install", "--beta"}},
+	}
+	for _, tt := range tests {
+		got := p.InstallArgs(tt.version, tt.beta)
+		if !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("InstallArgs(%q, %v)=%v, want %v", tt.version, tt.beta, got, tt.want)
+		}
+	}
+}
+
 func TestGoldenConfigs(t *testing.T) {
 	p := New()
 	n := domain.NodeSpec{InboundTag: domain.DefaultInboundTag(domain.CoreXray), Server: "203.0.113.10", Port: 443, SNI: "example.com", Target: "example.com:443", UserName: domain.DefaultUserName, UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private-key", PublicKey: "public-key", ShortID: "0123456789abcdef"}

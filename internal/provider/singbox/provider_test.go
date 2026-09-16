@@ -18,6 +18,19 @@ func (r outputRunner) Run(context.Context, string, ...string) ([]byte, error) {
 	return []byte(r.output), nil
 }
 
+func TestInstallArgs(t *testing.T) {
+	p := New()
+	if got := p.InstallArgs("", false); got != nil {
+		t.Fatalf("stable args=%v, want nil", got)
+	}
+	if got := p.InstallArgs("1.12.0", false); !reflect.DeepEqual(got, []string{"--version", "1.12.0"}) {
+		t.Fatalf("version args=%v", got)
+	}
+	if got := p.InstallArgs("", true); got != nil {
+		t.Fatalf("beta args=%v, want nil", got)
+	}
+}
+
 func TestGoldenConfigs(t *testing.T) {
 	p := New()
 	n := domain.NodeSpec{InboundTag: domain.DefaultInboundTag(domain.CoreSingBox), Server: "203.0.113.10", Port: 443, SNI: "example.com", Target: "example.com:443", UserName: domain.DefaultUserName, UUID: "123e4567-e89b-42d3-a456-426614174000", PrivateKey: "private-key", PublicKey: "public-key", ShortID: "0123456789abcdef"}

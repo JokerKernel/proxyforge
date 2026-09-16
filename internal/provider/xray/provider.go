@@ -138,10 +138,13 @@ func (*Provider) OfficialScriptURL() string {
 func (*Provider) ScriptHosts() []string {
 	return []string{"github.com", "raw.githubusercontent.com", "objects.githubusercontent.com"}
 }
-func (*Provider) InstallArgs(version string) []string {
+func (*Provider) InstallArgs(version string, beta bool) []string {
 	args := []string{"install"}
+	if beta {
+		return append(args, "--beta")
+	}
 	if version != "" {
-		args = append(args, "--version", version)
+		return append(args, "--version", version)
 	}
 	return args
 }

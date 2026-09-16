@@ -58,12 +58,18 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 		shouldPause := true
 		switch choice {
 		case 1:
-			var confirmed bool
-			confirmed, err = c.confirmInstall(core)
-			if err == nil && confirmed {
-				err = c.app.Install(ctx, core, install.Options{Confirm: c.confirm})
-			} else if err == nil {
-				fmt.Fprintln(c.out, "已取消安装/升级。")
+			c.printPageHeader(core, "安装/升级内核")
+			var opts install.Options
+			opts, err = c.chooseInstallVersion(core)
+			if err == nil {
+				var confirmed bool
+				confirmed, err = c.confirmInstall(core, opts)
+				if err == nil && confirmed {
+					opts.Confirm = c.confirm
+					err = c.app.Install(ctx, core, opts)
+				} else if err == nil {
+					fmt.Fprintln(c.out, "已取消安装/升级。")
+				}
 			}
 		case 2:
 			shouldPause = false

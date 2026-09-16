@@ -5,7 +5,7 @@
 ## CLI 概览
 
 ```text
-proxyforge install <sing-box|xray> [--version VERSION]
+proxyforge install <sing-box|xray> [--version VERSION] [--beta]
 proxyforge update [--yes]
 proxyforge uninstall <sing-box|xray> [--yes]
 proxyforge cleanup <sing-box|xray|all> [--yes]

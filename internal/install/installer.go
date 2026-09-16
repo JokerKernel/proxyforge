@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"proxyforge/internal/domain"
 	"proxyforge/internal/provider"
 	"proxyforge/internal/system"
 )
@@ -27,6 +28,7 @@ type ConfirmFunc func(summary string) (bool, error)
 type Options struct {
 	URL               string
 	Version           string
+	Beta              bool
 	NonInteractive    bool
 	TrustScriptSHA256 string
 	Confirm           ConfirmFunc
@@ -49,8 +51,21 @@ type DownloadedScript struct {
 	SHA256    string
 }
 
+func (o Options) validate(core string) error {
+	if o.Beta && strings.TrimSpace(o.Version) != "" {
+		return fmt.Errorf("预发布与指定版本不能同时使用")
+	}
+	if o.Beta && core != domain.CoreXray {
+		return fmt.Errorf("%s 不支持预发布安装", core)
+	}
+	return nil
+}
+
 func (i Installer) Run(ctx context.Context, p provider.CoreProvider, opts Options) (string, error) {
-	args := p.InstallArgs(opts.Version)
+	if err := opts.validate(p.Name()); err != nil {
+		return "", err
+	}
+	args := p.InstallArgs(opts.Version, opts.Beta)
 	if proxyProvider, ok := p.(provider.ScriptProxyProvider); ok {
 		proxyURL, err := i.runtimeProxy(p.OfficialScriptURL())
 		if err != nil {

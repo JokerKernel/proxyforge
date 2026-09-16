@@ -76,7 +76,7 @@ type CoreProvider interface {
 	ConfigPath() string
 	OfficialScriptURL() string
 	ScriptHosts() []string
-	InstallArgs(version string) []string
+	InstallArgs(version string, beta bool) []string
 	PackageName() string
 	UninstallArgs() []string
 	CleanupPaths() []string

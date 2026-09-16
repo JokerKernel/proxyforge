@@ -1,13 +1,19 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/spf13/cobra"
 
+	"proxyforge/internal/domain"
 	"proxyforge/internal/install"
 	"proxyforge/internal/selfupdate"
 )
+
+var specifiedCoreVersionPattern = regexp.MustCompile(`^v?[0-9][0-9A-Za-z._+-]*$`)
 
 func (c *commandSet) updateCommand() *cobra.Command {
 	return &cobra.Command{
@@ -83,22 +89,111 @@ func (c *commandSet) cleanupCommand() *cobra.Command {
 
 func (c *commandSet) installCommand() *cobra.Command {
 	var version, trust, scriptURL string
+	var beta bool
 	cmd := &cobra.Command{
 		Use: "install <sing-box|xray>", Aliases: []string{"upgrade"}, Short: "安装或升级内核", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateInstallVersionFlags(args[0], version, beta); err != nil {
+				return err
+			}
 			nonInteractive := c.yes || !readerInteractive(c.in)
 			if !nonInteractive {
 				c.clearScreen()
 				c.printPageHeader(args[0], "安装/升级内核")
+				if version == "" && !beta {
+					chosen, err := c.chooseInstallVersion(args[0])
+					if err != nil {
+						if errors.Is(err, errReturnToMenu) {
+							fmt.Fprintln(c.out, "已取消安装/升级。")
+							return nil
+						}
+						return err
+					}
+					version = chosen.Version
+					beta = chosen.Beta
+				}
 			}
-			opts := install.Options{URL: scriptURL, Version: version, NonInteractive: nonInteractive, TrustScriptSHA256: trust, Confirm: c.confirm}
+			opts := install.Options{URL: scriptURL, Version: version, Beta: beta, NonInteractive: nonInteractive, TrustScriptSHA256: trust, Confirm: c.confirm}
 			return c.app.Install(cmd.Context(), args[0], opts)
 		},
 	}
-	cmd.Flags().StringVar(&version, "version", "", "指定内核版本（默认最新稳定版）")
+	cmd.Flags().StringVar(&version, "version", "", "指定内核版本（默认最新稳定版；与 --beta 互斥）")
+	cmd.Flags().BoolVar(&beta, "beta", false, "安装官方最新预发布（仅 xray；与 --version 互斥）")
 	cmd.Flags().StringVar(&trust, "trust-script-sha256", "", "非交互模式固定的官方脚本 SHA-256")
 	cmd.Flags().StringVar(&scriptURL, "script-url", "", "官方安装脚本地址（高级选项，仍受主机白名单限制）")
 	return cmd
+}
+
+func validateInstallVersionFlags(core, version string, beta bool) error {
+	if beta && strings.TrimSpace(version) != "" {
+		return fmt.Errorf("--beta 与 --version 不能同时使用")
+	}
+	if beta && core != domain.CoreXray {
+		return fmt.Errorf("%s 不支持 --beta（仅 xray 可安装官方预发布）", core)
+	}
+	return nil
+}
+
+func (c *commandSet) chooseInstallVersion(core string) (install.Options, error) {
+	fmt.Fprintln(c.out, "安装版本")
+	c.printMenuChoice("1", "最新稳定版（默认；官方当前正式版）")
+	maxChoice := 2
+	specifiedChoice := 2
+	if core == domain.CoreXray {
+		c.printMenuChoice("2", "最新预发布（官方安装脚本 --beta）")
+		c.printMenuChoice("3", "指定版本号（输入官方 GitHub 版本号）")
+		maxChoice = 3
+		specifiedChoice = 3
+	} else {
+		c.printMenuChoice("2", "指定版本号（输入官方 GitHub 版本号）")
+	}
+	choice, err := c.chooseNumberCancelable("请选择安装版本", 1, maxChoice, 1)
+	if err != nil {
+		return install.Options{}, err
+	}
+	if choice == 1 {
+		return install.Options{}, nil
+	}
+	if core == domain.CoreXray && choice == 2 {
+		return install.Options{Beta: true}, nil
+	}
+	if choice != specifiedChoice {
+		return install.Options{}, fmt.Errorf("无效的安装版本选择")
+	}
+	for {
+		fmt.Fprintln(c.out)
+		value, err := c.askDefaultCancelable("版本号", "")
+		if err != nil {
+			return install.Options{}, err
+		}
+		version, err := parseSpecifiedCoreVersion(value)
+		if err != nil {
+			fmt.Fprintf(c.out, "%v。\n", err)
+			continue
+		}
+		return install.Options{Version: version}, nil
+	}
+}
+
+func parseSpecifiedCoreVersion(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", fmt.Errorf("版本号不能为空")
+	}
+	if !specifiedCoreVersionPattern.MatchString(value) {
+		return "", fmt.Errorf("版本号无效，请输入类似 v26.9.9 的官方版本")
+	}
+	return value, nil
+}
+
+func installVersionLabel(opts install.Options) string {
+	if opts.Beta {
+		return "最新预发布"
+	}
+	if version := strings.TrimSpace(opts.Version); version != "" {
+		return "指定版本 " + version
+	}
+	return "最新稳定版"
 }
 
 func (c *commandSet) confirmUninstall(core string) (bool, error) {
@@ -126,10 +221,10 @@ func (c *commandSet) confirmUninstall(core string) (bool, error) {
 	return c.confirm("卸载并清理 " + core + "？")
 }
 
-func (c *commandSet) confirmInstall(core string) (bool, error) {
+func (c *commandSet) confirmInstall(core string, opts install.Options) (bool, error) {
 	c.printConfirmationPanel(
 		"操作确认：安装/升级内核",
-		[]string{"目标内核：" + core},
+		[]string{"目标内核：" + core, "安装版本：" + installVersionLabel(opts)},
 		confirmationSection{title: "将执行", items: []string{
 			"下载并执行官方管理脚本",
 			"安装或升级 " + core + " 内核二进制",
