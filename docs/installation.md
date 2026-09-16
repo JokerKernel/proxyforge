@@ -27,11 +27,12 @@ curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts
 ```bash
 sudo proxyforge install sing-box
 sudo proxyforge install xray
+sudo proxyforge install sing-box --beta
 sudo proxyforge install xray --beta
 sudo proxyforge install xray --version VERSION
 ```
 
-交互菜单的「安装/升级」会先选择版本：最新稳定版（默认）、Xray 最新预发布，或指定官方 GitHub 版本号。命令行在终端中运行且未指定 `--version` / `--beta` 时同样会询问。`--beta` 仅适用于 Xray，对应官方安装脚本的预发布安装，不能与 `--version` 同时使用。
+交互菜单的「安装/升级」会先选择版本：最新稳定版（默认）、最新预发布，或指定官方 GitHub 版本号。命令行在终端中运行且未指定 `--version` / `--beta` 时同样会询问。`--beta` 对应官方安装脚本的预发布安装（sing-box 与 Xray 都支持），不能与 `--version` 同时使用。
 
 首次交互安装会展示来源、最终重定向地址、大小、风险摘要和 SHA-256，只有输入 `yes`、`y` 或 `Y` 才执行。脚本发生变化后必须重新确认信任。
 

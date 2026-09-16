@@ -24,7 +24,10 @@ func (*Provider) ScriptHosts() []string {
 	return []string{"sing-box.app", "sing-box.sagernet.org", "raw.githubusercontent.com", "github.com"}
 }
 func (*Provider) InstallArgs(version string, beta bool) []string {
-	if beta || version == "" {
+	if beta {
+		return []string{"--beta"}
+	}
+	if version == "" {
 		return nil
 	}
 	return []string{"--version", version}

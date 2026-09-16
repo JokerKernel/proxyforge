@@ -60,7 +60,7 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 		case 1:
 			c.printPageHeader(core, "安装/升级内核")
 			var opts install.Options
-			opts, err = c.chooseInstallVersion(core)
+			opts, err = c.chooseInstallVersion()
 			if err == nil {
 				var confirmed bool
 				confirmed, err = c.confirmInstall(core, opts)

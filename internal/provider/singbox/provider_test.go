@@ -26,8 +26,8 @@ func TestInstallArgs(t *testing.T) {
 	if got := p.InstallArgs("1.12.0", false); !reflect.DeepEqual(got, []string{"--version", "1.12.0"}) {
 		t.Fatalf("version args=%v", got)
 	}
-	if got := p.InstallArgs("", true); got != nil {
-		t.Fatalf("beta args=%v, want nil", got)
+	if got := p.InstallArgs("", true); !reflect.DeepEqual(got, []string{"--beta"}) {
+		t.Fatalf("beta args=%v", got)
 	}
 }
 

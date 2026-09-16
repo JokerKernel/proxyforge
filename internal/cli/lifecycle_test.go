@@ -149,20 +149,10 @@ func TestInstallCommandRejectsBetaWithVersion(t *testing.T) {
 	}
 }
 
-func TestInstallCommandRejectsBetaForSingBox(t *testing.T) {
-	c := &commandSet{out: io.Discard}
-	cmd := c.installCommand()
-	cmd.SetArgs([]string{"sing-box", "--beta"})
-	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "不支持 --beta") {
-		t.Fatalf("error=%v", err)
-	}
-}
-
 func TestChooseInstallVersionDefaultsToStable(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{reader: bufio.NewReader(strings.NewReader("\n")), out: &out}
-	opts, err := c.chooseInstallVersion(domain.CoreXray)
+	opts, err := c.chooseInstallVersion()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +166,7 @@ func TestChooseInstallVersionDefaultsToStable(t *testing.T) {
 
 func TestChooseInstallVersionXrayBeta(t *testing.T) {
 	c := &commandSet{reader: bufio.NewReader(strings.NewReader("2\n")), out: io.Discard}
-	opts, err := c.chooseInstallVersion(domain.CoreXray)
+	opts, err := c.chooseInstallVersion()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +177,7 @@ func TestChooseInstallVersionXrayBeta(t *testing.T) {
 
 func TestChooseInstallVersionSpecifiedTag(t *testing.T) {
 	c := &commandSet{reader: bufio.NewReader(strings.NewReader("3\nv26.9.9\n")), out: io.Discard}
-	opts, err := c.chooseInstallVersion(domain.CoreXray)
+	opts, err := c.chooseInstallVersion()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,18 +186,14 @@ func TestChooseInstallVersionSpecifiedTag(t *testing.T) {
 	}
 }
 
-func TestChooseInstallVersionSingBoxHasNoBeta(t *testing.T) {
-	var out bytes.Buffer
-	c := &commandSet{reader: bufio.NewReader(strings.NewReader("2\n1.12.0\n")), out: &out}
-	opts, err := c.chooseInstallVersion(domain.CoreSingBox)
+func TestChooseInstallVersionSingBoxBeta(t *testing.T) {
+	c := &commandSet{reader: bufio.NewReader(strings.NewReader("2\n")), out: io.Discard}
+	opts, err := c.chooseInstallVersion()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if opts.Beta || opts.Version != "1.12.0" {
-		t.Fatalf("opts=%+v, want specified sing-box version", opts)
-	}
-	if strings.Contains(out.String(), "最新预发布") {
-		t.Fatalf("sing-box menu offered pre-release: %q", out.String())
+	if !opts.Beta || opts.Version != "" {
+		t.Fatalf("opts=%+v, want sing-box beta", opts)
 	}
 }
 

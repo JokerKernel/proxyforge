@@ -260,11 +260,23 @@ func TestRunRejectsBetaWithVersion(t *testing.T) {
 	}
 }
 
-func TestRunRejectsBetaForSingBox(t *testing.T) {
-	i := Installer{Layout: system.Layout{Root: t.TempDir()}, Output: io.Discard}
-	_, err := i.Run(context.Background(), singbox.New(), Options{Beta: true})
-	if err == nil || !strings.Contains(err.Error(), "不支持预发布安装") {
-		t.Fatalf("error=%v", err)
+func TestRunPassesBetaToSingBoxScript(t *testing.T) {
+	script := []byte("#!/usr/bin/env bash\nexit 0\n")
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: make(http.Header), Body: io.NopCloser(strings.NewReader(string(script))), Request: r}, nil
+	})
+	runner := &streamingRunnerStub{}
+	i := Installer{
+		Client: &http.Client{Transport: transport}, Runner: runner,
+		Layout: system.Layout{Root: t.TempDir()}, Output: io.Discard,
+	}
+	if _, err := i.Run(context.Background(), singbox.New(), Options{
+		Beta: true, NonInteractive: true, TrustScriptSHA256: system.SHA256(script),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(runner.args) < 2 || runner.args[1] != "--beta" {
+		t.Fatalf("args=%v, want <script> --beta", runner.args)
 	}
 }
 

@@ -15,7 +15,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"proxyforge/internal/domain"
 	"proxyforge/internal/provider"
 	"proxyforge/internal/system"
 )
@@ -51,18 +50,15 @@ type DownloadedScript struct {
 	SHA256    string
 }
 
-func (o Options) validate(core string) error {
+func (o Options) validate() error {
 	if o.Beta && strings.TrimSpace(o.Version) != "" {
 		return fmt.Errorf("预发布与指定版本不能同时使用")
-	}
-	if o.Beta && core != domain.CoreXray {
-		return fmt.Errorf("%s 不支持预发布安装", core)
 	}
 	return nil
 }
 
 func (i Installer) Run(ctx context.Context, p provider.CoreProvider, opts Options) (string, error) {
-	if err := opts.validate(p.Name()); err != nil {
+	if err := opts.validate(); err != nil {
 		return "", err
 	}
 	args := p.InstallArgs(opts.Version, opts.Beta)
