@@ -84,6 +84,22 @@ var defaultSNICandidates = []string{
 	"github.gallerycdn.vsassets.io",
 	"ms-vscode.gallerycdn.vsassets.io",
 	"ms-python.gallerycdn.vsassets.io",
+	"academy.nvidia.com",
+	"addons.mozilla.org",
+	"aod.itunes.apple.com",
+	"gateway.icloud.com",
+	"download-installer.cdn.mozilla.net",
+	"images-na.ssl-images-amazon.com",
+	"itunes.apple.com",
+	"lol.secure.dyn.riotcdn.net",
+	"m.media-amazon.com",
+	"mensura.cdn-apple.com",
+	"osxapps.itunes.apple.com",
+	"player.live-video.net",
+	"software.download.prss.microsoft.com",
+	"swcdn.apple.com",
+	"swdist.apple.com",
+	"updates.cdn-apple.com",
 }
 
 const sniResultPageSize = 20
