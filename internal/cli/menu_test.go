@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -346,17 +348,44 @@ func TestCoreMenusUseGlobalPageHeader(t *testing.T) {
 	}
 }
 
-func TestCoreMenuCanCancelInstallBeforeCallingApp(t *testing.T) {
-	var out bytes.Buffer
-	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("1\nq\n\n0\n")),
-		out:    &out,
-	}
-	if err := c.coreMenu(context.Background(), domain.CoreSingBox); err != nil {
+type menuTerminalBuffer struct{ bytes.Buffer }
+
+func (*menuTerminalBuffer) IsTerminal() bool { return true }
+
+// Limit reads so simulated terminal input is not treated as a multiline paste.
+type menuByteReader struct{ io.Reader }
+
+func (r menuByteReader) Read(p []byte) (int, error) { return r.Reader.Read(p[:1]) }
+
+func TestCoreMenuReturnsDirectlyFromInstallPage(t *testing.T) {
+	t.Setenv("TERM", "xterm")
+	input, err := os.Open("/dev/null")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "已取消安装/升级") {
-		t.Fatalf("cancel output=%q", out.String())
+	defer input.Close()
+	for _, core := range []string{domain.CoreSingBox, domain.CoreXray} {
+		for _, back := range []string{"0", "q", "Q"} {
+			t.Run(core+"/"+back, func(t *testing.T) {
+				var out menuTerminalBuffer
+				c := &commandSet{
+					in: input, out: &out,
+					reader: bufio.NewReader(menuByteReader{strings.NewReader("1\n" + back + "\n0\n")}),
+				}
+				if !c.interactiveUI() {
+					t.Fatal("test must exercise terminal pause behavior")
+				}
+				if err := c.coreMenu(context.Background(), core); err != nil {
+					t.Fatalf("return consumed input intended for the parent menu: %v", err)
+				}
+				if strings.Contains(out.String(), "按 Enter 返回菜单") || strings.Contains(out.String(), "已取消安装/升级") {
+					t.Fatalf("return unexpectedly paused or reported a cancellation: %q", out.String())
+				}
+				if strings.Count(out.String(), "安装/升级") != 2 {
+					t.Fatalf("parent menu was not shown again: %q", out.String())
+				}
+			})
+		}
 	}
 }
 

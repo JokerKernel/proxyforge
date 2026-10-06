@@ -60,6 +60,9 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 		case 1:
 			var opts install.Options
 			opts, err = c.chooseInstallOptions(ctx, core, install.Options{Confirm: c.confirm})
+			if errors.Is(err, errReturnToMenu) {
+				continue
+			}
 			if err == nil {
 				err = c.app.Install(ctx, core, opts)
 			}
