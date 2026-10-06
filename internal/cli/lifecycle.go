@@ -12,6 +12,7 @@ import (
 	"proxyforge/internal/app"
 	"proxyforge/internal/install"
 	"proxyforge/internal/selfupdate"
+	"proxyforge/internal/system"
 )
 
 var specifiedCoreVersionPattern = regexp.MustCompile(`^v?[0-9][0-9A-Za-z._+-]*$`)
@@ -99,7 +100,7 @@ func (c *commandSet) installCommand() *cobra.Command {
 			}
 			nonInteractive := c.yes || !readerInteractive(c.in)
 			opts := install.Options{URL: scriptURL, Version: version, Beta: beta, NonInteractive: nonInteractive, TrustScriptSHA256: trust, Confirm: c.confirm}
-			if !nonInteractive && version == "" && !beta {
+			if !nonInteractive && !cmd.Flags().Changed("version") && !cmd.Flags().Changed("beta") {
 				chosen, err := c.chooseInstallOptions(cmd.Context(), args[0], opts)
 				if err != nil {
 					if errors.Is(err, errReturnToMenu) {
@@ -128,6 +129,13 @@ func validateInstallVersionFlags(version string, beta bool) error {
 }
 
 func (c *commandSet) chooseInstallOptions(ctx context.Context, core string, opts install.Options) (install.Options, error) {
+	if opts.Version == "" && !opts.Beta {
+		channel, err := c.app.PreferredInstallChannel(core)
+		if err != nil {
+			return opts, err
+		}
+		opts.Beta = channel == system.InstallChannelBeta
+	}
 	status := c.app.CoreInstallStatus(ctx, core)
 	for {
 		c.clearScreen()
@@ -158,7 +166,7 @@ func (c *commandSet) chooseInstallOptions(ctx context.Context, core string, opts
 		case 2:
 			c.clearScreen()
 			c.printPageHeader(core, "安装/更新内核", "选择版本")
-			c.printMenuChoice("1", "稳定版（默认）")
+			c.printMenuChoice("1", "稳定版")
 			c.printMenuChoice("2", "开发版（最新预发布）")
 			c.printMenuChoice("0/q", "返回")
 			def := 1
@@ -248,7 +256,7 @@ func installVersionLabel(opts install.Options) string {
 func (c *commandSet) confirmUninstall(core string) (bool, error) {
 	permanentDeletes := []string{
 		"服务端配置、运行数据和文件日志",
-		"ProxyForge 状态、信任记录和历史备份",
+		"ProxyForge 状态、信任记录、安装偏好和历史备份",
 	}
 	if core == "xray" {
 		permanentDeletes = append(permanentDeletes, "ProxyForge 创建且身份未变化的 xray 专用系统用户和组")

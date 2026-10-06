@@ -89,6 +89,9 @@ func (a *App) Install(ctx context.Context, core string, opts install.Options) er
 	if err != nil {
 		return fmt.Errorf("安装完成但服务状态异常（%s）: %w", status.Detail, err)
 	}
+	if err := a.rememberInstallChannel(core, opts); err != nil {
+		return fmt.Errorf("内核安装完成，但保存版本渠道失败: %w", err)
+	}
 	if running {
 		printInstallSuccess(a.Out, core, previousVersion, version, true)
 		return nil
@@ -321,6 +324,7 @@ func (a *App) Cleanup(ctx context.Context, target string) error {
 		paths := []string{
 			a.Layout.StatePath(p.Name()),
 			a.Layout.TrustPath(p.Name()),
+			a.Layout.InstallPreferencesPath(p.Name()),
 			a.Layout.BackupRoot(p.Name()),
 			a.Layout.TLSRoot(p.Name()),
 		}
@@ -359,6 +363,7 @@ func (a *App) removeEmptyProxyForgeRoot() error {
 	for _, path := range []string{
 		filepath.Join(root, "state"),
 		filepath.Join(root, "trust"),
+		filepath.Join(root, "preferences"),
 		filepath.Join(root, "backups"),
 		filepath.Join(root, "tls"),
 		root,

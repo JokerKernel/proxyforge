@@ -20,6 +20,9 @@ func (l Layout) StatePath(core string) string {
 func (l Layout) TrustPath(core string) string {
 	return l.Resolve("/var/lib/proxyforge/trust/" + core + ".sha256")
 }
+func (l Layout) InstallPreferencesPath(core string) string {
+	return l.Resolve("/var/lib/proxyforge/preferences/" + core + ".json")
+}
 func (l Layout) BackupRoot(core string) string {
 	return l.Resolve("/var/lib/proxyforge/backups/" + core)
 }

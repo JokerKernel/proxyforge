@@ -44,6 +44,12 @@ func TestUninstallAutomaticallyCleansSelectedCoreData(t *testing.T) {
 	if err := os.WriteFile(a.Layout.TrustPath(domain.CoreSingBox), []byte("trusted\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	prefs := system.InstallPreferencesStore{Layout: a.Layout}
+	for _, core := range []string{domain.CoreSingBox, domain.CoreXray} {
+		if err := prefs.SaveChannel(core, system.InstallChannelBeta); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	if err := a.Uninstall(context.Background(), domain.CoreSingBox, install.Options{}); err != nil {
 		t.Fatal(err)
@@ -57,10 +63,13 @@ func TestUninstallAutomaticallyCleansSelectedCoreData(t *testing.T) {
 	if got, err := a.Store.Load(domain.CoreXray); err != nil || got.Port != otherState.Port {
 		t.Fatalf("other core state changed: state=%#v error=%v", got, err)
 	}
-	for _, path := range []string{a.Layout.BackupRoot(domain.CoreSingBox), a.Layout.TrustPath(domain.CoreSingBox)} {
+	for _, path := range []string{a.Layout.BackupRoot(domain.CoreSingBox), a.Layout.TrustPath(domain.CoreSingBox), a.Layout.InstallPreferencesPath(domain.CoreSingBox)} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Fatalf("automatic cleanup left %s: %v", path, err)
 		}
+	}
+	if got, err := prefs.LoadChannel(domain.CoreXray); err != nil || got != system.InstallChannelBeta {
+		t.Fatalf("other core preference changed: %q %v", got, err)
 	}
 	if !strings.Contains(r.callLog(), "dpkg --purge sing-box") {
 		t.Fatalf("package removal was not called: %s", r.callLog())
@@ -157,6 +166,9 @@ func TestUninstallAlreadyAbsentSkipsInstallerAndCleansManagedData(t *testing.T) 
 	if err := a.Store.Save(domain.NodeSpec{
 		ManagedBy: "proxyforge", Core: domain.CoreXray, ConfigSHA256: system.SHA256(config),
 	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := (system.InstallPreferencesStore{Layout: a.Layout}).SaveChannel(domain.CoreXray, system.InstallChannelBeta); err != nil {
 		t.Fatal(err)
 	}
 

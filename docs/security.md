@@ -6,12 +6,13 @@
 |---|---|---|
 | 服务端配置 | `/etc/sing-box/config.json` | `/usr/local/etc/xray/config.json` |
 | 状态 | `/var/lib/proxyforge/state/sing-box.json` | `/var/lib/proxyforge/state/xray.json` |
+| 安装渠道偏好 | `/var/lib/proxyforge/preferences/sing-box.json` | `/var/lib/proxyforge/preferences/xray.json` |
 | 自动 TLS 证书 | `/var/lib/proxyforge/tls/sing-box/<接入名>/` | `/var/lib/proxyforge/tls/xray/<接入名>/` |
 | systemd unit | `sing-box.service` | `xray.service` |
 
 信任记录位于 `/var/lib/proxyforge/trust/`，备份位于 `/var/lib/proxyforge/backups/<core>/<timestamp>/`。每个内核只保留最近 3 份 ProxyForge 时间戳备份。
 
-状态、信任和备份都是 root-only。服务配置与自动 TLS 证书会根据 systemd unit 的实际 `User=` 设置为 root 私有，或 root 所有且仅允许服务组读取，不会设为世界可读。自签证书的信任依赖首次安全传递连接文本；中转配置固定校验证书或公钥 SHA-256，并保持 `allowInsecure`/`insecure=false`。
+状态、信任、安装渠道偏好和备份都是 root-only。服务配置与自动 TLS 证书会根据 systemd unit 的实际 `User=` 设置为 root 私有，或 root 所有且仅允许服务组读取，不会设为世界可读。自签证书的信任依赖首次安全传递连接文本；中转配置固定校验证书或公钥 SHA-256，并保持 `allowInsecure`/`insecure=false`。
 
 ## 配置事务
 

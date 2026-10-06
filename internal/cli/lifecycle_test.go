@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -12,6 +14,7 @@ import (
 	"proxyforge/internal/domain"
 	"proxyforge/internal/install"
 	"proxyforge/internal/selfupdate"
+	"proxyforge/internal/system"
 )
 
 func TestUpdateCommandPassesYes(t *testing.T) {
@@ -195,6 +198,89 @@ func TestInstallPageReturnsWithoutInstallingOnCancelOrEOF(t *testing.T) {
 		_, err := c.chooseInstallOptions(context.Background(), domain.CoreSingBox, install.Options{})
 		if err == nil {
 			t.Fatalf("input=%q returned an installation target without confirmation", input)
+		}
+	}
+}
+
+func TestInstallPageRestoresSavedChannelWithoutSavingUninstalledChoices(t *testing.T) {
+	for _, core := range []string{domain.CoreSingBox, domain.CoreXray} {
+		for _, tt := range []struct {
+			name, saved, input string
+			beta, canceled     bool
+		}{
+			{name: "remember development", saved: system.InstallChannelBeta, input: "1\nyes\n", beta: true},
+			{name: "remember stable", saved: system.InstallChannelStable, input: "1\nyes\n"},
+			{name: "switch to stable without installing", saved: system.InstallChannelBeta, input: "2\n1\n1\nyes\n"},
+			{name: "switch to development then cancel", saved: system.InstallChannelStable, input: "2\n2\n0\n", canceled: true},
+		} {
+			t.Run(core+"/"+tt.name, func(t *testing.T) {
+				layout := system.Layout{Root: t.TempDir()}
+				store := system.InstallPreferencesStore{Layout: layout}
+				if err := store.SaveChannel(core, tt.saved); err != nil {
+					t.Fatal(err)
+				}
+				var out bytes.Buffer
+				c := &commandSet{app: &app.App{Layout: layout}, reader: bufio.NewReader(strings.NewReader(tt.input)), out: &out}
+				opts, err := c.chooseInstallOptions(context.Background(), core, install.Options{})
+				if tt.canceled {
+					if err != errReturnToMenu {
+						t.Fatalf("err=%v", err)
+					}
+				} else if err != nil || opts.Beta != tt.beta {
+					t.Fatalf("opts=%+v err=%v", opts, err)
+				}
+				if got, err := store.LoadChannel(core); err != nil || got != tt.saved {
+					t.Fatalf("selection was saved before installation: %q %v", got, err)
+				}
+				other := domain.CoreXray
+				if core == other {
+					other = domain.CoreSingBox
+				}
+				if _, err := os.Stat(layout.InstallPreferencesPath(other)); !os.IsNotExist(err) {
+					t.Fatalf("other core preference unexpectedly created: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestInteractiveInstallCommandUsesPreferencesOnlyWithoutExplicitFlags(t *testing.T) {
+	input, err := os.Open("/dev/null")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.Close()
+	for _, core := range []string{domain.CoreSingBox, domain.CoreXray} {
+		for _, flag := range []string{"", "--beta=false", "--beta", "--version=1.2.3"} {
+			t.Run(core+"/"+flag, func(t *testing.T) {
+				layout := system.Layout{Root: t.TempDir()}
+				store := system.InstallPreferencesStore{Layout: layout}
+				if err := store.SaveChannel(core, system.InstallChannelBeta); err != nil {
+					t.Fatal(err)
+				}
+				stop := errors.New("stop before installation")
+				var out bytes.Buffer
+				c := &commandSet{
+					app: &app.App{Layout: layout, RootCheck: func() error { return stop }},
+					in:  input, reader: bufio.NewReader(strings.NewReader("1\nyes\n")), out: &out,
+				}
+				cmd := c.installCommand()
+				args := []string{core}
+				if flag != "" {
+					args = append(args, flag)
+				}
+				cmd.SetArgs(args)
+				if err := cmd.Execute(); !errors.Is(err, stop) {
+					t.Fatalf("err=%v", err)
+				}
+				if flag == "" {
+					if !strings.Contains(out.String(), "所选版本  开发版（最新预发布）") {
+						t.Fatalf("saved selection not restored: %q", out.String())
+					}
+				} else if out.Len() != 0 {
+					t.Fatalf("explicit flag unexpectedly opened the preference menu: %q", out.String())
+				}
+			})
 		}
 	}
 }
