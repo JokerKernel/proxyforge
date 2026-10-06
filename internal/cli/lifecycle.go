@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"proxyforge/internal/app"
 	"proxyforge/internal/install"
 	"proxyforge/internal/selfupdate"
 )
@@ -96,23 +98,18 @@ func (c *commandSet) installCommand() *cobra.Command {
 				return err
 			}
 			nonInteractive := c.yes || !readerInteractive(c.in)
-			if !nonInteractive {
-				c.clearScreen()
-				c.printPageHeader(args[0], "安装/升级内核")
-				if version == "" && !beta {
-					chosen, err := c.chooseInstallVersion()
-					if err != nil {
-						if errors.Is(err, errReturnToMenu) {
-							fmt.Fprintln(c.out, "已取消安装/升级。")
-							return nil
-						}
-						return err
-					}
-					version = chosen.Version
-					beta = chosen.Beta
-				}
-			}
 			opts := install.Options{URL: scriptURL, Version: version, Beta: beta, NonInteractive: nonInteractive, TrustScriptSHA256: trust, Confirm: c.confirm}
+			if !nonInteractive && version == "" && !beta {
+				chosen, err := c.chooseInstallOptions(cmd.Context(), args[0], opts)
+				if err != nil {
+					if errors.Is(err, errReturnToMenu) {
+						fmt.Fprintln(c.out, "已取消安装/升级。")
+						return nil
+					}
+					return err
+				}
+				opts = chosen
+			}
 			return c.app.Install(cmd.Context(), args[0], opts)
 		},
 	}
@@ -130,33 +127,107 @@ func validateInstallVersionFlags(version string, beta bool) error {
 	return nil
 }
 
-func (c *commandSet) chooseInstallVersion() (install.Options, error) {
-	fmt.Fprintln(c.out, "安装版本")
-	c.printMenuChoice("1", "最新稳定版（默认；官方当前正式版）")
-	c.printMenuChoice("2", "最新预发布（官方安装脚本 --beta）")
-	c.printMenuChoice("3", "指定版本号（输入官方 GitHub 版本号）")
-	choice, err := c.chooseNumberCancelable("请选择安装版本", 1, 3, 1)
-	if err != nil {
-		return install.Options{}, err
+func (c *commandSet) chooseInstallOptions(ctx context.Context, core string, opts install.Options) (install.Options, error) {
+	status := c.app.CoreInstallStatus(ctx, core)
+	for {
+		c.clearScreen()
+		c.printPageHeader(core, "安装/更新内核")
+		c.printInstallStatusCard(core, status, opts)
+		c.printMenuChoice("1", "安装/更新")
+		c.printMenuChoice("2", "选择版本")
+		c.printMenuChoice("3", "指定版本")
+		c.printMenuChoice("0/q", "返回")
+		choice, err := c.chooseNumber("请选择", 0, 3, -1)
+		if err != nil {
+			return opts, err
+		}
+		switch choice {
+		case 0:
+			return opts, errReturnToMenu
+		case 1:
+			confirmed, err := c.confirmInstall(core, opts)
+			if errors.Is(err, errReturnToMenu) {
+				continue
+			}
+			if err != nil {
+				return opts, err
+			}
+			if confirmed {
+				return opts, nil
+			}
+		case 2:
+			c.clearScreen()
+			c.printPageHeader(core, "安装/更新内核", "选择版本")
+			c.printMenuChoice("1", "稳定版（默认）")
+			c.printMenuChoice("2", "开发版（最新预发布）")
+			c.printMenuChoice("0/q", "返回")
+			def := 1
+			if opts.Beta {
+				def = 2
+			}
+			channel, err := c.chooseNumberCancelable("请选择版本渠道", 1, 2, def)
+			if errors.Is(err, errReturnToMenu) {
+				continue
+			}
+			if err != nil {
+				return opts, err
+			}
+			opts.Beta, opts.Version = channel == 2, ""
+		case 3:
+			c.clearScreen()
+			c.printPageHeader(core, "安装/更新内核", "指定版本")
+			version, err := c.askInstallVersion()
+			if errors.Is(err, errReturnToMenu) {
+				continue
+			}
+			if err != nil {
+				return opts, err
+			}
+			opts.Version, opts.Beta = version, false
+		}
 	}
-	if choice == 1 {
-		return install.Options{}, nil
+}
+
+func (c *commandSet) printInstallStatusCard(core string, status app.CoreInstallStatus, opts install.Options) {
+	version, channel := status.Version, "未知"
+	if !status.Installed {
+		version, channel = "尚未安装", "未安装"
+	} else if version == "" {
+		version = "无法读取"
 	}
-	if choice == 2 {
-		return install.Options{Beta: true}, nil
+	switch status.Channel {
+	case app.InstallChannelStable:
+		channel = "稳定版"
+	case app.InstallChannelDevelopment:
+		channel = "开发版"
 	}
+	target := "稳定版（最新正式版）"
+	if opts.Beta {
+		target = "开发版（最新预发布）"
+	} else if opts.Version != "" {
+		target = "指定版本 " + opts.Version
+	}
+	c.printLabeledCard("当前内核", [][2]string{
+		{"内核", coreDisplayName(core)},
+		{"版本号", version},
+		{"当前版本", channel},
+		{"安装目标", target},
+	})
+}
+
+func (c *commandSet) askInstallVersion() (string, error) {
 	for {
 		fmt.Fprintln(c.out)
 		value, err := c.askDefaultCancelable("版本号", "")
 		if err != nil {
-			return install.Options{}, err
+			return "", err
 		}
 		version, err := parseSpecifiedCoreVersion(value)
 		if err != nil {
 			fmt.Fprintf(c.out, "%v。\n", err)
 			continue
 		}
-		return install.Options{Version: version}, nil
+		return version, nil
 	}
 }
 

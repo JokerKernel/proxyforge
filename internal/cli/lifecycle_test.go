@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"proxyforge/internal/app"
 	"proxyforge/internal/domain"
 	"proxyforge/internal/install"
 	"proxyforge/internal/selfupdate"
@@ -149,51 +150,71 @@ func TestInstallCommandRejectsBetaWithVersion(t *testing.T) {
 	}
 }
 
-func TestChooseInstallVersionDefaultsToStable(t *testing.T) {
-	var out bytes.Buffer
-	c := &commandSet{reader: bufio.NewReader(strings.NewReader("\n")), out: &out}
-	opts, err := c.chooseInstallVersion()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if opts.Beta || opts.Version != "" {
-		t.Fatalf("opts=%+v, want stable default", opts)
-	}
-	if !strings.Contains(out.String(), "最新稳定版") || !strings.Contains(out.String(), "最新预发布") {
-		t.Fatalf("xray version menu missing channels: %q", out.String())
+func TestInstallPageSelectsTargetForBothCores(t *testing.T) {
+	for _, core := range []string{domain.CoreSingBox, domain.CoreXray} {
+		for _, tt := range []struct {
+			name, input, version, target string
+			beta                         bool
+		}{
+			{name: "default stable", input: "1\nyes\n", target: "稳定版（最新正式版）"},
+			{name: "development", input: "2\n2\n1\nyes\n", beta: true, target: "开发版（最新预发布）"},
+			{name: "specified after development", input: "2\n2\n3\nv26.9.9\n1\nyes\n", version: "v26.9.9", target: "指定版本 v26.9.9"},
+			{name: "stable clears specified", input: "3\nv26.9.9\n2\n1\n1\nyes\n", target: "稳定版（最新正式版）"},
+			{name: "development clears specified", input: "3\nv26.9.9\n2\n2\n1\nyes\n", beta: true, target: "开发版（最新预发布）"},
+			{name: "cancel confirmation retains target", input: "2\n2\n1\nq\n1\nyes\n", beta: true, target: "开发版（最新预发布）"},
+			{name: "cancel selection retains target", input: "2\n2\n2\nq\n3\nq\n1\nyes\n", beta: true, target: "开发版（最新预发布）"},
+			{name: "invalid specified version retries", input: "3\n--beta\nv26.9.9\n1\nyes\n", version: "v26.9.9", target: "指定版本 v26.9.9"},
+		} {
+			t.Run(core+"/"+tt.name, func(t *testing.T) {
+				var out bytes.Buffer
+				c := &commandSet{reader: bufio.NewReader(strings.NewReader(tt.input)), out: &out}
+				base := install.Options{URL: "https://example.com/install.sh", TrustScriptSHA256: "fixed-hash"}
+				opts, err := c.chooseInstallOptions(context.Background(), core, base)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if opts.Beta != tt.beta || opts.Version != tt.version || opts.URL != base.URL || opts.TrustScriptSHA256 != base.TrustScriptSHA256 {
+					t.Fatalf("opts=%+v", opts)
+				}
+				// Inspect the last page before confirmation, so stale targets
+				// displayed on an earlier page cannot satisfy the assertion.
+				page := out.String()[strings.LastIndex(out.String(), "╭─ 当前内核"):]
+				for _, want := range []string{"版本号", "尚未安装", "当前版本", "安装目标", tt.target, "1   安装/更新", "2   选择版本\n", "3   指定版本"} {
+					if !strings.Contains(page, want) {
+						t.Fatalf("page missing %q: %q", want, page)
+					}
+				}
+			})
+		}
 	}
 }
 
-func TestChooseInstallVersionXrayBeta(t *testing.T) {
-	c := &commandSet{reader: bufio.NewReader(strings.NewReader("2\n")), out: io.Discard}
-	opts, err := c.chooseInstallVersion()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !opts.Beta || opts.Version != "" {
-		t.Fatalf("opts=%+v, want beta", opts)
-	}
-}
-
-func TestChooseInstallVersionSpecifiedTag(t *testing.T) {
-	c := &commandSet{reader: bufio.NewReader(strings.NewReader("3\nv26.9.9\n")), out: io.Discard}
-	opts, err := c.chooseInstallVersion()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if opts.Beta || opts.Version != "v26.9.9" {
-		t.Fatalf("opts=%+v, want specified version", opts)
+func TestInstallPageReturnsWithoutInstallingOnCancelOrEOF(t *testing.T) {
+	for _, input := range []string{"0\n", "q\n", "2\n2\nq\n", "3\n"} {
+		c := &commandSet{reader: bufio.NewReader(strings.NewReader(input)), out: io.Discard}
+		_, err := c.chooseInstallOptions(context.Background(), domain.CoreSingBox, install.Options{})
+		if err == nil {
+			t.Fatalf("input=%q returned an installation target without confirmation", input)
+		}
 	}
 }
 
-func TestChooseInstallVersionSingBoxBeta(t *testing.T) {
-	c := &commandSet{reader: bufio.NewReader(strings.NewReader("2\n")), out: io.Discard}
-	opts, err := c.chooseInstallVersion()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !opts.Beta || opts.Version != "" {
-		t.Fatalf("opts=%+v, want sing-box beta", opts)
+func TestInstallCardSeparatesCurrentChannelFromTarget(t *testing.T) {
+	for _, core := range []string{domain.CoreSingBox, domain.CoreXray} {
+		for _, tt := range []struct{ channel, label string }{
+			{app.InstallChannelDevelopment, "开发版"},
+			{app.InstallChannelStable, "稳定版"},
+			{"", "未知"},
+		} {
+			var out bytes.Buffer
+			c := &commandSet{out: &out}
+			c.printInstallStatusCard(core, app.CoreInstallStatus{Installed: true, Version: "current-version", Channel: tt.channel}, install.Options{})
+			for _, want := range []string{"版本号    current-version", "当前版本  " + tt.label, "安装目标  稳定版（最新正式版）"} {
+				if !strings.Contains(out.String(), want) {
+					t.Fatalf("core=%s card missing %q: %q", core, want, out.String())
+				}
+			}
+		}
 	}
 }
 

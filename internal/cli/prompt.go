@@ -108,6 +108,9 @@ func (c *commandSet) askDefaultInput(label, def string, cancelable bool) (string
 	}
 	line, err := c.reader.ReadString('\n')
 	c.discardBufferedInput()
+	if err != nil && len(line) == 0 {
+		return "", err
+	}
 	if err == nil || len(line) > 0 {
 		v := strings.TrimSpace(line)
 		if cancelable && strings.EqualFold(v, "q") {
