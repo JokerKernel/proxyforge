@@ -488,7 +488,7 @@ func (c *commandSet) printCoreStatusCard(ctx context.Context, core string) {
 	} else if channel == system.InstallChannelBeta {
 		channelLabel = "开发版"
 	}
-	fmt.Fprintf(c.out, "│ 更新渠道  %s\n", channelLabel)
+	fmt.Fprintf(c.out, "│ 更新渠道  [%s]\n", channelLabel)
 	fmt.Fprintln(c.out, proxyForgeHeaderRule)
 	fmt.Fprintln(c.out)
 }

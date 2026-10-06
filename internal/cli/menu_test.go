@@ -309,8 +309,16 @@ func TestCoreMenuDisplaysSavedUpdateChannel(t *testing.T) {
 					Runner:   installedVersionRunner{}, Layout: layout,
 				}, out: &out}
 				c.printCoreMenu(context.Background(), core)
-				if !strings.Contains(out.String(), "│ 更新渠道  "+tt.label) {
+				if !strings.Contains(out.String(), "│ 更新渠道  ["+tt.label+"]") {
 					t.Fatalf("saved update channel not displayed: %q", out.String())
+				}
+				if tt.saved != "invalid" {
+					out.Reset()
+					c.out = system.NewColorWriter(&out, true)
+					c.printCoreMenu(context.Background(), core)
+					if !strings.Contains(out.String(), "\x1b[38;5;208m["+tt.label+"]\x1b[0m") {
+						t.Fatalf("update channel not colored orange: %q", out.String())
+					}
 				}
 			})
 		}

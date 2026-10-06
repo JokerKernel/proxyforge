@@ -251,6 +251,8 @@ func decorateSourceLabels(value string) string {
 		{"[官方脚本/风险]", ansiBoldYellow},
 		{"[默认]", ansiBoldYellow},
 		{"[已安装]", ansiOrange},
+		{"[稳定版]", ansiOrange},
+		{"[开发版]", ansiOrange},
 		{"[未安装]", ansiBrightBlack},
 		{"[当前]", ansiOrange},
 	}
