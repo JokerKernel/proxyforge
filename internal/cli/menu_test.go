@@ -284,6 +284,39 @@ func TestCoreMenuShowsInstalledCoreVersion(t *testing.T) {
 	}
 }
 
+func TestCoreMenuDisplaysSavedUpdateChannel(t *testing.T) {
+	for _, core := range []string{domain.CoreSingBox, domain.CoreXray} {
+		for _, tt := range []struct{ name, saved, label string }{
+			{"default", "", "稳定版"},
+			{"stable", system.InstallChannelStable, "稳定版"},
+			{"development", system.InstallChannelBeta, "开发版"},
+			{"invalid preference", "invalid", "无法读取"},
+		} {
+			t.Run(core+"/"+tt.name, func(t *testing.T) {
+				layout := system.Layout{Root: t.TempDir()}
+				if tt.saved == "invalid" {
+					if err := system.AtomicWrite(layout.InstallPreferencesPath(core), []byte("{"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				} else if tt.saved != "" {
+					if err := (system.InstallPreferencesStore{Layout: layout}).SaveChannel(core, tt.saved); err != nil {
+						t.Fatal(err)
+					}
+				}
+				var out bytes.Buffer
+				c := &commandSet{app: &app.App{
+					Registry: provider.NewRegistry(singbox.New(), xray.New()),
+					Runner:   installedVersionRunner{}, Layout: layout,
+				}, out: &out}
+				c.printCoreMenu(context.Background(), core)
+				if !strings.Contains(out.String(), "│ 更新渠道  "+tt.label) {
+					t.Fatalf("saved update channel not displayed: %q", out.String())
+				}
+			})
+		}
+	}
+}
+
 func TestCoreMenuAlignsAndDimsDescriptions(t *testing.T) {
 	var plain bytes.Buffer
 	(&commandSet{out: &plain}).printCoreMenu(context.Background(), domain.CoreSingBox)

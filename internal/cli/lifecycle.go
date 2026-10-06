@@ -212,7 +212,7 @@ func (c *commandSet) printInstallStatusCard(core string, status app.CoreInstallS
 	c.printLabeledCard("当前内核", [][2]string{
 		{"内核", coreDisplayName(core)},
 		{"版本号", version},
-		{"所选版本", target},
+		{"安装渠道", target},
 	})
 }
 

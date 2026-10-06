@@ -182,7 +182,7 @@ func TestInstallPageSelectsTargetForBothCores(t *testing.T) {
 				// Inspect the last page before confirmation, so stale targets
 				// displayed on an earlier page cannot satisfy the assertion.
 				page := out.String()[strings.LastIndex(out.String(), "╭─ 当前内核"):]
-				for _, want := range []string{"版本号", "尚未安装", "所选版本", tt.target, "1   安装/更新", "2   选择版本\n", "3   指定版本"} {
+				for _, want := range []string{"版本号", "尚未安装", "安装渠道", tt.target, "1   安装/更新", "2   选择版本\n", "3   指定版本"} {
 					if !strings.Contains(page, want) {
 						t.Fatalf("page missing %q: %q", want, page)
 					}
@@ -274,7 +274,7 @@ func TestInteractiveInstallCommandUsesPreferencesOnlyWithoutExplicitFlags(t *tes
 					t.Fatalf("err=%v", err)
 				}
 				if flag == "" {
-					if !strings.Contains(out.String(), "所选版本  开发版（最新预发布）") {
+					if !strings.Contains(out.String(), "安装渠道  开发版（最新预发布）") {
 						t.Fatalf("saved selection not restored: %q", out.String())
 					}
 				} else if out.Len() != 0 {
@@ -298,7 +298,7 @@ func TestInstallCardShowsVersionAndTargetForBothCores(t *testing.T) {
 			var out bytes.Buffer
 			c := &commandSet{out: &out}
 			c.printInstallStatusCard(core, app.CoreInstallStatus{Installed: true, Version: "current-version"}, tt.opts)
-			for _, want := range []string{"版本号    current-version", "所选版本  " + tt.label} {
+			for _, want := range []string{"版本号    current-version", "安装渠道  " + tt.label} {
 				if !strings.Contains(out.String(), want) {
 					t.Fatalf("core=%s card missing %q: %q", core, want, out.String())
 				}

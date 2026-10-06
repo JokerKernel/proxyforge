@@ -12,6 +12,7 @@ import (
 	"proxyforge/internal/domain"
 	"proxyforge/internal/install"
 	"proxyforge/internal/provider"
+	"proxyforge/internal/system"
 )
 
 const proxyForgeHeaderRule = "╰──────────────────────────────────────────────"
@@ -480,6 +481,14 @@ func (c *commandSet) printCoreStatusCard(ctx context.Context, core string) {
 	if installed {
 		fmt.Fprintf(c.out, "│ %s\n", version)
 	}
+	channel, err := c.app.PreferredInstallChannel(core)
+	channelLabel := "稳定版"
+	if err != nil {
+		channelLabel = "无法读取"
+	} else if channel == system.InstallChannelBeta {
+		channelLabel = "开发版"
+	}
+	fmt.Fprintf(c.out, "│ 更新渠道  %s\n", channelLabel)
 	fmt.Fprintln(c.out, proxyForgeHeaderRule)
 	fmt.Fprintln(c.out)
 }
