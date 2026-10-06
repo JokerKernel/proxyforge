@@ -179,7 +179,7 @@ func TestInstallPageSelectsTargetForBothCores(t *testing.T) {
 				// Inspect the last page before confirmation, so stale targets
 				// displayed on an earlier page cannot satisfy the assertion.
 				page := out.String()[strings.LastIndex(out.String(), "╭─ 当前内核"):]
-				for _, want := range []string{"版本号", "尚未安装", "当前版本", "安装目标", tt.target, "1   安装/更新", "2   选择版本\n", "3   指定版本"} {
+				for _, want := range []string{"版本号", "尚未安装", "所选版本", tt.target, "1   安装/更新", "2   选择版本\n", "3   指定版本"} {
 					if !strings.Contains(page, want) {
 						t.Fatalf("page missing %q: %q", want, page)
 					}
@@ -199,20 +199,26 @@ func TestInstallPageReturnsWithoutInstallingOnCancelOrEOF(t *testing.T) {
 	}
 }
 
-func TestInstallCardSeparatesCurrentChannelFromTarget(t *testing.T) {
+func TestInstallCardShowsVersionAndTargetForBothCores(t *testing.T) {
 	for _, core := range []string{domain.CoreSingBox, domain.CoreXray} {
-		for _, tt := range []struct{ channel, label string }{
-			{app.InstallChannelDevelopment, "开发版"},
-			{app.InstallChannelStable, "稳定版"},
-			{"", "未知"},
+		for _, tt := range []struct {
+			opts  install.Options
+			label string
+		}{
+			{install.Options{}, "稳定版（最新正式版）"},
+			{install.Options{Beta: true}, "开发版（最新预发布）"},
+			{install.Options{Version: "v26.9.9"}, "指定版本 v26.9.9"},
 		} {
 			var out bytes.Buffer
 			c := &commandSet{out: &out}
-			c.printInstallStatusCard(core, app.CoreInstallStatus{Installed: true, Version: "current-version", Channel: tt.channel}, install.Options{})
-			for _, want := range []string{"版本号    current-version", "当前版本  " + tt.label, "安装目标  稳定版（最新正式版）"} {
+			c.printInstallStatusCard(core, app.CoreInstallStatus{Installed: true, Version: "current-version"}, tt.opts)
+			for _, want := range []string{"版本号    current-version", "所选版本  " + tt.label} {
 				if !strings.Contains(out.String(), want) {
 					t.Fatalf("core=%s card missing %q: %q", core, want, out.String())
 				}
+			}
+			if strings.Contains(out.String(), "当前版本") || strings.Contains(out.String(), "当前渠道") {
+				t.Fatalf("card still displays the installed channel: %q", out.String())
 			}
 		}
 	}

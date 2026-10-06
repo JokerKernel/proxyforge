@@ -189,17 +189,11 @@ func (c *commandSet) chooseInstallOptions(ctx context.Context, core string, opts
 }
 
 func (c *commandSet) printInstallStatusCard(core string, status app.CoreInstallStatus, opts install.Options) {
-	version, channel := status.Version, "未知"
+	version := status.Version
 	if !status.Installed {
-		version, channel = "尚未安装", "未安装"
+		version = "尚未安装"
 	} else if version == "" {
 		version = "无法读取"
-	}
-	switch status.Channel {
-	case app.InstallChannelStable:
-		channel = "稳定版"
-	case app.InstallChannelDevelopment:
-		channel = "开发版"
 	}
 	target := "稳定版（最新正式版）"
 	if opts.Beta {
@@ -210,8 +204,7 @@ func (c *commandSet) printInstallStatusCard(core string, status app.CoreInstallS
 	c.printLabeledCard("当前内核", [][2]string{
 		{"内核", coreDisplayName(core)},
 		{"版本号", version},
-		{"当前版本", channel},
-		{"安装目标", target},
+		{"所选版本", target},
 	})
 }
 
