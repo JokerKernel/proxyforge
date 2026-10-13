@@ -282,6 +282,45 @@ func TestCleanupRemovesOnlySelectedCoreResidue(t *testing.T) {
 	}
 }
 
+func TestCleanupSelectedCoreRemovesEmptyDataDirectories(t *testing.T) {
+	for _, core := range []string{domain.CoreXray, domain.CoreSingBox} {
+		for _, keepCustom := range []bool{false, true} {
+			name := core + "/empty"
+			if keepCustom {
+				name = core + "/custom"
+			}
+			t.Run(name, func(t *testing.T) {
+				r := &fakeRunner{missingBinary: true, unitRemoved: true, serviceStopped: true}
+				a, _ := testApp(t, r)
+				if err := a.Store.Save(domain.NodeSpec{ManagedBy: "proxyforge", Core: core}); err != nil {
+					t.Fatal(err)
+				}
+				custom := filepath.Join(filepath.Dir(a.Layout.AccessPolicyPath(core)), "custom.json")
+				if keepCustom {
+					if err := os.WriteFile(custom, []byte("keep"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := a.Cleanup(context.Background(), core); err != nil {
+					t.Fatal(err)
+				}
+				for _, file := range []string{a.Layout.StatePath(core), a.Layout.LandingPath(core), a.Layout.RelayPath(core)} {
+					if _, err := os.Stat(filepath.Dir(file)); !os.IsNotExist(err) {
+						t.Fatalf("empty directory retained at %s: %v", filepath.Dir(file), err)
+					}
+				}
+				if keepCustom {
+					if data, err := os.ReadFile(custom); err != nil || string(data) != "keep" {
+						t.Fatalf("custom file changed: %q, err=%v", data, err)
+					}
+				} else if _, err := os.Stat(a.Layout.Resolve("/var/lib/proxyforge")); !os.IsNotExist(err) {
+					t.Fatalf("empty data root retained: %v", err)
+				}
+			})
+		}
+	}
+}
+
 func TestCleanupAllRemovesBothCoresAndProxyForgeData(t *testing.T) {
 	r := &fakeRunner{missingBinary: true, unitRemoved: true, serviceStopped: true}
 	a, _ := testApp(t, r)

@@ -350,16 +350,6 @@ func (a *App) Cleanup(ctx context.Context, target string) error {
 	} else if err := a.removeEmptyProxyForgeRoot(); err != nil {
 		cleanupErrors = append(cleanupErrors, err)
 	}
-	for _, path := range []string{
-		a.Layout.Resolve("/etc/proxyforge/access"),
-		a.Layout.Resolve("/etc/proxyforge/landings"),
-		a.Layout.Resolve("/etc/proxyforge/relays"),
-		a.Layout.Resolve("/etc/proxyforge"),
-	} {
-		if err := removeEmptyCleanupDirectory(path); err != nil {
-			cleanupErrors = append(cleanupErrors, fmt.Errorf("删除空目录 %s: %w", path, err))
-		}
-	}
 	a.progressf("刷新 systemd unit 缓存")
 	if err := a.Services.DaemonReload(ctx); err != nil {
 		cleanupErrors = append(cleanupErrors, fmt.Errorf("清理后刷新 systemd: %w", err))
@@ -375,6 +365,9 @@ func (a *App) removeEmptyProxyForgeRoot() error {
 	root := a.Layout.Resolve("/var/lib/proxyforge")
 	for _, path := range []string{
 		filepath.Join(root, "state"),
+		filepath.Join(root, "access"),
+		filepath.Join(root, "landings"),
+		filepath.Join(root, "relays"),
 		filepath.Join(root, "trust"),
 		filepath.Join(root, "preferences"),
 		filepath.Join(root, "backups"),

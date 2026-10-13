@@ -18,13 +18,13 @@ func (l Layout) StatePath(core string) string {
 	return l.Resolve("/var/lib/proxyforge/state/" + core + ".json")
 }
 func (l Layout) AccessPolicyPath(core string) string {
-	return l.Resolve("/etc/proxyforge/access/" + core + ".json")
+	return l.Resolve("/var/lib/proxyforge/access/" + core + ".json")
 }
 func (l Layout) LandingPath(core string) string {
-	return l.Resolve("/etc/proxyforge/landings/" + core + ".json")
+	return l.Resolve("/var/lib/proxyforge/landings/" + core + ".json")
 }
 func (l Layout) RelayPath(core string) string {
-	return l.Resolve("/etc/proxyforge/relays/" + core + ".json")
+	return l.Resolve("/var/lib/proxyforge/relays/" + core + ".json")
 }
 func (l Layout) TrustPath(core string) string {
 	return l.Resolve("/var/lib/proxyforge/trust/" + core + ".sha256")

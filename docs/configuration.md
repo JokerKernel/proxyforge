@@ -134,7 +134,7 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 “服务端配置 → 修改配置 → 访问控制”可以切换模式、添加和删除白名单/黑名单。策略按内核独立管理，适用于该内核的普通用户、复用主入站的落地用户、独立 TLS 落地接入和中转线路；REALITY 未认证回落的 SNI/Host 防护继续使用原来的规则。
 
-访问模式、白名单和黑名单保存在独立配置文件中：Xray 使用 `/etc/proxyforge/access/xray.json`，sing-box 使用 `/etc/proxyforge/access/sing-box.json`。文件权限为 `0600`，目录权限为 `0700`。节点状态文件不再保存 `access_policy`，也不读取或迁移旧字段。独立文件不存在时使用默认模式和空名单；文件损坏、规则无效或权限不安全时会报错。
+访问模式、白名单和黑名单保存在独立配置文件中：Xray 使用 `/var/lib/proxyforge/access/xray.json`，sing-box 使用 `/var/lib/proxyforge/access/sing-box.json`。文件权限为 `0600`，目录权限为 `0700`。节点状态文件不再保存 `access_policy`，也不读取或迁移旧字段。独立文件不存在时使用默认模式和空名单；文件损坏、规则无效或权限不安全时会报错。
 
 文件格式如下，两份名单为空时也保留数组：
 
@@ -200,8 +200,8 @@ sudo proxyforge config access remove xray white api.example.com --exact --yes
 
 | 内容 | Xray | sing-box |
 |---|---|---|
-| 落地接入 | `/etc/proxyforge/landings/xray.json` | `/etc/proxyforge/landings/sing-box.json` |
-| 中转线路 | `/etc/proxyforge/relays/xray.json` | `/etc/proxyforge/relays/sing-box.json` |
+| 落地接入 | `/var/lib/proxyforge/landings/xray.json` | `/var/lib/proxyforge/landings/sing-box.json` |
+| 中转线路 | `/var/lib/proxyforge/relays/xray.json` | `/var/lib/proxyforge/relays/sing-box.json` |
 
 文件内容为 JSON 数组，每条记录保留完整字段；没有记录时写入 `[]`，文件不存在时按空列表处理。落地记录包括名称、用户名、UUID、协议、端口、SNI、证书路径、指纹、启用状态和更新时间；中转记录包括名称、用户凭据、完整远程落地信息、启用状态和更新时间。证书和私钥实体仍在 `/var/lib/proxyforge/tls/`，主节点证书记录仍属于主节点状态。
 

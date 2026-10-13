@@ -6,9 +6,9 @@
 |---|---|---|
 | 服务端配置 | `/etc/sing-box/config.json` | `/usr/local/etc/xray/config.json` |
 | 状态 | `/var/lib/proxyforge/state/sing-box.json` | `/var/lib/proxyforge/state/xray.json` |
-| 访问控制配置 | `/etc/proxyforge/access/sing-box.json` | `/etc/proxyforge/access/xray.json` |
-| 落地接入配置 | `/etc/proxyforge/landings/sing-box.json` | `/etc/proxyforge/landings/xray.json` |
-| 中转线路配置 | `/etc/proxyforge/relays/sing-box.json` | `/etc/proxyforge/relays/xray.json` |
+| 访问控制配置 | `/var/lib/proxyforge/access/sing-box.json` | `/var/lib/proxyforge/access/xray.json` |
+| 落地接入配置 | `/var/lib/proxyforge/landings/sing-box.json` | `/var/lib/proxyforge/landings/xray.json` |
+| 中转线路配置 | `/var/lib/proxyforge/relays/sing-box.json` | `/var/lib/proxyforge/relays/xray.json` |
 | 安装渠道偏好 | `/var/lib/proxyforge/preferences/sing-box.json` | `/var/lib/proxyforge/preferences/xray.json` |
 | 自动 TLS 证书 | `/var/lib/proxyforge/tls/sing-box/<接入名或主证书名>/` | `/var/lib/proxyforge/tls/xray/<接入名或主证书名>/` |
 | systemd unit | `sing-box.service` | `xray.service` |
