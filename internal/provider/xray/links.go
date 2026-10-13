@@ -5,12 +5,20 @@ import (
 	"fmt"
 
 	"proxyforge/internal/domain"
+	"proxyforge/internal/provider/accesspolicy"
 )
 
 func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, error) {
+	next.Core = domain.CoreXray
 	var root map[string]any
 	if err := json.Unmarshal(config, &root); err != nil {
 		return nil, fmt.Errorf("解析现有 Xray 配置: %w", err)
+	}
+	if old.AccessPolicy.Active() || next.AccessPolicy.Active() {
+		if err := accesspolicy.ValidateRoot(root, next.Core); err != nil {
+			return nil, err
+		}
+		accesspolicy.Strip(root, next.Core)
 	}
 	inbound, err := xrayInbound(root, next.InboundTag)
 	if err != nil {
@@ -231,6 +239,11 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 		})
 	}
 	routing["rules"] = rules
+	if next.AccessPolicy.Active() {
+		if err := accesspolicy.Apply(root, next); err != nil {
+			return nil, err
+		}
+	}
 	return marshalXray(root)
 }
 

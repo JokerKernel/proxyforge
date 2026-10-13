@@ -115,6 +115,7 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 			c.printMenuChoice("8", "专用运行用户（修复 systemd 的 nobody 安全警告）")
 			maxChoice = 8
 		}
+
 		c.printMenuChoice("0/q", "返回")
 		choice, err := c.chooseNumber("请选择", 0, maxChoice, 0)
 		if err != nil {
@@ -222,6 +223,9 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 			c.printMenuChoice(strconv.Itoa(next+1), "重置节点凭证（UUID、REALITY 密钥和 short ID；保留 SNI/target）")
 			c.printMenuChoice(strconv.Itoa(next+2), "REALITY SNI 候选检测（重新测试，不修改配置）")
 		}
+		accessChoice := maxChoice + 1
+		c.printMenuChoice(strconv.Itoa(accessChoice), "访问控制（白名单、黑名单与仅允许白名单）")
+		maxChoice = accessChoice
 		c.printMenuChoice("0/q", "返回")
 		choice, err := c.chooseNumber("请选择", 0, maxChoice, 0)
 		if err != nil {
@@ -243,6 +247,8 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 			err = c.resetChoice(ctx, core, 1)
 		case choice == next+1:
 			err = c.resetChoice(ctx, core, 2)
+		case choice == accessChoice:
+			err = c.accessPolicyMenu(ctx, core)
 		case choice == next+2:
 			err = c.retestSNICandidates(ctx, core)
 		}
@@ -330,6 +336,9 @@ func (c *commandSet) printModifyConfigCard(ctx context.Context, core string) {
 	sni := strings.TrimSpace(status.SNI)
 	if sni == "" {
 		sni = "未生成"
+	}
+	if status.Security != "" {
+		rows = append(rows, [2]string{"访问模式", accessModeLabel(status.AccessMode)}, [2]string{"访问名单", fmt.Sprintf("白名单 %d 条 · 黑名单 %d 条", status.WhiteEntries, status.BlackEntries)})
 	}
 	rows = append(rows, [2]string{"端口", portCardDisplay(status)})
 	rows = append(rows, [2]string{"SNI", sni})

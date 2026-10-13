@@ -2,6 +2,7 @@ package singbox
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"regexp"
@@ -10,6 +11,7 @@ import (
 
 	"proxyforge/internal/domain"
 	"proxyforge/internal/provider"
+	"proxyforge/internal/provider/accesspolicy"
 )
 
 type Provider struct{}
@@ -72,7 +74,7 @@ func (*Provider) GenerateKeyPair(ctx context.Context, r provider.Runner) (domain
 	return pair, nil
 }
 
-func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
+func renderServer(n domain.NodeSpec) ([]byte, error) {
 	if n.SingBoxFallbackGuard && !n.IsTLS() {
 		b, err := renderFallbackGuardServer(n)
 		if err != nil || (len(n.RelayLinks) == 0 && len(n.LandingAccesses) == 0) {
@@ -185,6 +187,7 @@ func fallbackDomainMatchField(exact bool) string {
 }
 
 func (*Provider) RenderClient(n domain.NodeSpec) ([]byte, error) {
+	n.Core = domain.CoreSingBox
 	v := map[string]any{
 		"log":      map[string]any{"level": "info", "timestamp": true},
 		"inbounds": []any{map[string]any{"type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1", "listen_port": 2080}},
@@ -205,6 +208,18 @@ func (*Provider) RenderClient(n domain.NodeSpec) ([]byte, error) {
 		tls["insecure"] = false
 		tls["min_version"] = "1.3"
 		tls["certificate_public_key_sha256"] = []string{n.TLSCertificate.CertificatePublicKeySHA256}
+	}
+	if len(n.AccessPolicy.Whitelist) > 0 {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		var root map[string]any
+		if err := json.Unmarshal(b, &root); err != nil {
+			return nil, err
+		}
+		accesspolicy.AllowClient(root, n)
+		return marshalSingBox(root)
 	}
 	return marshalSingBox(v)
 }

@@ -57,6 +57,16 @@ SING_BOX_BIN=/path/to/sing-box XRAY_BIN=/path/to/xray MIHOMO_BIN=/path/to/mihomo
 
 测试启动临时内核进程，使用随机本机端口，结束后停止进程。测试配置仅为访问本机测试 HTTPS 服务放行 loopback，不改变生成配置中的私网拦截策略。
 
+访问控制本机验收覆盖域名与子域名、精确域名、单 IP、CIDR、白名单优先于黑名单/私网拦截、空白名单拒绝以及默认行为：
+
+```bash
+PROXYFORGE_ACCESS_CONNECT_TEST=1 \
+SING_BOX_BIN=/path/to/sing-box XRAY_BIN=/path/to/xray \
+  go test -v ./internal/integration -run TestRealAccessPolicy
+```
+
+测试使用临时自签 TLS 节点、本机 HTTP 服务和固定测试 DNS 映射，不访问外部网站。部分黑名单/空白名单用例在测试配置中放行 loopback，以单独检验名单规则；其他用例保留默认私网拦截，验证明确白名单例外。测试退出时停止临时内核并删除临时配置。
+
 一次性 Debian/Ubuntu 或 Rocky/AlmaLinux systemd VM 可以运行 `scripts/smoke-systemd.sh`。该脚本会真实安装两个内核、生成 443/8443 节点、验证客户端并确认服务 active，不应直接用于生产主机。
 
 REALITY SNI 黑盒测试见 [REALITY SNI 检测指南](reality-sni-check.md)。

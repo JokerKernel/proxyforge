@@ -2,6 +2,7 @@ package xray
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 
 	"proxyforge/internal/domain"
 	"proxyforge/internal/provider"
+	"proxyforge/internal/provider/accesspolicy"
 )
 
 type Provider struct{}
@@ -214,7 +216,7 @@ func (*Provider) GenerateKeyPair(ctx context.Context, r provider.Runner) (domain
 	return pair, nil
 }
 
-func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
+func renderServer(n domain.NodeSpec) ([]byte, error) {
 	if n.IsTLS() {
 		return renderTLSServer(n)
 	}
@@ -311,6 +313,7 @@ func xrayFullDomain(name string) string {
 }
 
 func (*Provider) RenderClient(n domain.NodeSpec) ([]byte, error) {
+	n.Core = domain.CoreXray
 	stream := streamSettings{Network: "raw", Security: "reality", RealitySettings: clientRealitySettings{
 		ServerName: n.SNI, Fingerprint: "chrome", Password: n.PublicKey, ShortID: n.ShortID, SpiderX: "/",
 	}}
@@ -336,6 +339,18 @@ func (*Provider) RenderClient(n domain.NodeSpec) ([]byte, error) {
 			Tag: "proxy", StreamSettings: &stream,
 		}, blockedOutbound()},
 		Routing: privateNetworkRouting(),
+	}
+	if len(n.AccessPolicy.Whitelist) > 0 {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		var root map[string]any
+		if err := json.Unmarshal(b, &root); err != nil {
+			return nil, err
+		}
+		accesspolicy.AllowClient(root, n)
+		return marshalXray(root)
 	}
 	return marshalXray(v)
 }

@@ -14,6 +14,7 @@ import (
 
 	"proxyforge/internal/domain"
 	"proxyforge/internal/provider"
+	"proxyforge/internal/provider/accesspolicy"
 	"proxyforge/internal/system"
 )
 
@@ -174,6 +175,9 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		XrayFallbackExactDomain: opts.XrayFallbackExactDomain,
 		CoreVersion:             version, UpdatedAt: a.Now().UTC(),
 	}
+	if hasOld {
+		n.AccessPolicy = old.AccessPolicy
+	}
 	if hasOld && !opts.DropLinks {
 		n.LandingAccesses = append([]domain.LandingAccess(nil), old.LandingAccesses...)
 		n.RelayLinks = append([]domain.RelayLink(nil), old.RelayLinks...)
@@ -240,6 +244,18 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 			}()
 		}
 		n.SNI = n.TLSCertificate.SNI
+	}
+	if n.AccessPolicy.Active() {
+		base := n
+		base.AccessPolicy = domain.AccessPolicy{}
+		raw, renderErr := p.RenderServer(base)
+		if renderErr != nil {
+			return n, renderErr
+		}
+		n.AccessPolicySniffing, err = accesspolicy.SnapshotSniffing(raw, n)
+		if err != nil {
+			return n, err
+		}
 	}
 	config, err := p.RenderServer(n)
 	if err != nil {

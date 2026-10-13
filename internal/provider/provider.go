@@ -69,6 +69,10 @@ type FallbackIPProvider interface {
 	PatchFallbackIPStrategy([]byte, string) ([]byte, error)
 }
 
+type AccessPolicyProvider interface {
+	PatchAccessPolicy([]byte, domain.NodeSpec, domain.NodeSpec) ([]byte, error)
+}
+
 type CoreProvider interface {
 	Name() string
 	Binary() string

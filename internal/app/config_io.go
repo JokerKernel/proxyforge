@@ -30,6 +30,14 @@ func (a *App) applyServerSetting(ctx context.Context, p provider.CoreProvider, c
 	}
 	managedState := hasState && oldState.ConfigSHA256 != "" && oldState.ConfigSHA256 == system.SHA256(oldConfig)
 
+	if hasState && oldState.AccessPolicy.Active() {
+		if policyProvider, ok := p.(provider.AccessPolicyProvider); ok {
+			patched, err = policyProvider.PatchAccessPolicy(patched, oldState, oldState)
+			if err != nil {
+				return false, err
+			}
+		}
+	}
 	a.progressf("使用 %s 原生命令校验 %s 配置", core, setting)
 	if err := validateRendered(ctx, p, a.Runner, configPath, patched); err != nil {
 		return false, err

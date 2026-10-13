@@ -15,6 +15,10 @@ proxyforge config reset <sing-box|xray> [--sni DOMAIN] [--target HOST:PORT] [--y
 proxyforge config landing add <sing-box|xray> NAME [--security current|reality|tls]
 proxyforge config relay add <sing-box|xray> NAME --upstream-stdin
 proxyforge config relay client <sing-box|xray> NAME [--format native|clash] [--output FILE]
+proxyforge config access list <sing-box|xray>
+proxyforge config access mode <sing-box|xray> <default|whitelist|blacklist>
+proxyforge config access add <sing-box|xray> <white|black> TARGET [--exact]
+proxyforge config access remove <sing-box|xray> <white|black> TARGET [--exact]
 proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
 ```
 
@@ -123,6 +127,48 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 自签 TLS 导出保持证书验证开启：Xray 和 Mihomo 固定证书 SHA-256，sing-box 固定公钥 SHA-256（需要 sing-box 1.13 或更高版本）。导出前会检查受管证书、私钥、有效期、名称和指纹是否一致。客户端配置需通过可信方式传递，不能将指纹替换为跳过证书验证。
 
 交互菜单的“客户端配置”同时提供普通节点和中转节点入口。选择中转节点后会列出当前线路及启用状态，再选择原生 JSON 或 Clash YAML，配置内容直接显示在终端。
+
+## 访问控制
+
+“服务端配置 → 修改配置 → 访问控制”可以切换模式、添加和删除白名单/黑名单。策略按内核独立管理，适用于该内核的普通用户、复用主入站的落地用户、独立 TLS 落地接入和中转线路；REALITY 未认证回落的 SNI/Host 防护继续使用原来的规则。
+
+规则优先级固定如下：
+
+1. 命中白名单立即放行；普通用户及落地用户走当前 `direct`，中转用户继续走该线路指定的落地。
+2. 黑名单模式下，命中黑名单拒绝。
+3. 现有私网、保留地址等拦截规则兜底。
+4. 默认模式和黑名单模式最终放行；仅允许白名单模式最终拒绝。
+
+白名单优先于黑名单和现有私网拦截。明确将 `192.168.1.0/24` 加入白名单后，该网段可以访问；其他未允许的私网仍拦截。内网地址必须能从最终出口访问到。白名单为空时，`whitelist` 模式拒绝全部代理目标；黑名单为空时，`blacklist` 模式保留原有拦截行为。
+
+两份名单独立保存，切换模式不会清空：白名单在三个模式中都优先生效，黑名单仅在 `blacklist` 模式中生效。配置重新生成、凭据重置和中转/落地增删也会保留并重新应用策略。
+
+```bash
+# 域名及全部子域名：example.com、www.example.com、a.b.example.com
+sudo proxyforge config access add xray white example.com --yes
+
+# 只匹配这个完整域名
+sudo proxyforge config access add xray white api.example.com --exact --yes
+
+# 单个 IP 和网段；192.168.1.0 不会自动代表整个网段
+sudo proxyforge config access add xray white 192.168.1.10 --yes
+sudo proxyforge config access add xray white 192.168.1.0/24 --yes
+
+sudo proxyforge config access add xray black denied.example.com --yes
+sudo proxyforge config access mode xray whitelist --yes
+sudo proxyforge config access mode xray blacklist --yes
+sudo proxyforge config access mode xray default --yes
+sudo proxyforge config access list xray
+
+# 删除时使用相同的匹配类型；精确域名需带 --exact
+sudo proxyforge config access remove xray white api.example.com --exact --yes
+```
+
+把 `xray` 替换为 `sing-box` 可管理另一个内核。IPv6 地址和 IPv6 CIDR 同样支持。输入域名时不要包含协议、路径、端口或通配符；默认已经包含全部子域名。单 IP 会标准化，CIDR 会转换为网络地址，重复条目不会重复添加。
+
+域名匹配使用代理请求提供的实际目标名称。直接按 IP 访问时，需要命中对应 IP/网段规则；仅伪造 HTTP Host 或 TLS SNI 不会获得域名白名单放行。Xray 在访问策略生效期间停用受管用户入站的内容嗅探，策略不再生效时恢复原设置；REALITY 回落防护的内部嗅探不受影响。域名黑名单不等于阻止该站点所有 IP，按 IP 访问需要另行加入 IP/网段黑名单。
+
+修改前使用内核校验配置并备份，失败时回滚配置和状态。策略修改会重启并启用当前内核服务。原生客户端导出会在原有私网拦截前添加白名单例外；如果需要访问新允许的私网目标，请重新导出原生客户端配置。Mihomo YAML 继续将目标送到代理，由服务端执行访问策略。
 
 ## 中转与落地
 

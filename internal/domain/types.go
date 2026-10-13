@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"strings"
 	"time"
 )
@@ -19,7 +20,7 @@ const (
 	LandingTLSPortMax      = 65000
 	FallbackPortMin        = LandingTLSPortMin
 	FallbackPortMax        = LandingTLSPortMax
-	StateSchemaVersion     = 4
+	StateSchemaVersion     = 5
 )
 
 // LandingPeer is the portable, client-side description of a managed landing
@@ -89,35 +90,37 @@ type RelayLink struct {
 }
 
 type NodeSpec struct {
-	Security                   string          `json:"security,omitempty"`
-	TLSCertificate             *LandingAccess  `json:"tls_certificate,omitempty"`
-	SchemaVersion              int             `json:"schema_version,omitempty"`
-	ManagedBy                  string          `json:"managed_by"`
-	Core                       string          `json:"core"`
-	InboundTag                 string          `json:"inbound_tag"`
-	Server                     string          `json:"server"`
-	Port                       int             `json:"port"`
-	SNI                        string          `json:"sni"`
-	Target                     string          `json:"target"`
-	UserName                   string          `json:"user_name"`
-	SimplifiedConfig           bool            `json:"simplified_config,omitempty"`
-	SingBoxFallbackGuard       bool            `json:"sing_box_fallback_guard,omitempty"`
-	SingBoxFallbackPort        int             `json:"sing_box_fallback_port,omitempty"`
-	SingBoxFallbackHTTPDomain  bool            `json:"sing_box_fallback_http_domain,omitempty"`
-	SingBoxFallbackExactDomain bool            `json:"sing_box_fallback_exact_domain,omitempty"`
-	XrayFallbackGuard          bool            `json:"xray_fallback_guard,omitempty"`
-	XrayFallbackPort           int             `json:"xray_fallback_port,omitempty"`
-	XrayFallbackHTTPDomain     bool            `json:"xray_fallback_http_domain,omitempty"`
-	XrayFallbackExactDomain    bool            `json:"xray_fallback_exact_domain,omitempty"`
-	UUID                       string          `json:"uuid"`
-	PrivateKey                 string          `json:"private_key"`
-	PublicKey                  string          `json:"public_key"`
-	ShortID                    string          `json:"short_id"`
-	CoreVersion                string          `json:"core_version"`
-	ConfigSHA256               string          `json:"config_sha256"`
-	UpdatedAt                  time.Time       `json:"updated_at"`
-	LandingAccesses            []LandingAccess `json:"landing_accesses,omitempty"`
-	RelayLinks                 []RelayLink     `json:"relay_links,omitempty"`
+	AccessPolicySniffing       map[string]json.RawMessage `json:"access_policy_sniffing,omitempty"`
+	AccessPolicy               AccessPolicy               `json:"access_policy,omitempty"`
+	Security                   string                     `json:"security,omitempty"`
+	TLSCertificate             *LandingAccess             `json:"tls_certificate,omitempty"`
+	SchemaVersion              int                        `json:"schema_version,omitempty"`
+	ManagedBy                  string                     `json:"managed_by"`
+	Core                       string                     `json:"core"`
+	InboundTag                 string                     `json:"inbound_tag"`
+	Server                     string                     `json:"server"`
+	Port                       int                        `json:"port"`
+	SNI                        string                     `json:"sni"`
+	Target                     string                     `json:"target"`
+	UserName                   string                     `json:"user_name"`
+	SimplifiedConfig           bool                       `json:"simplified_config,omitempty"`
+	SingBoxFallbackGuard       bool                       `json:"sing_box_fallback_guard,omitempty"`
+	SingBoxFallbackPort        int                        `json:"sing_box_fallback_port,omitempty"`
+	SingBoxFallbackHTTPDomain  bool                       `json:"sing_box_fallback_http_domain,omitempty"`
+	SingBoxFallbackExactDomain bool                       `json:"sing_box_fallback_exact_domain,omitempty"`
+	XrayFallbackGuard          bool                       `json:"xray_fallback_guard,omitempty"`
+	XrayFallbackPort           int                        `json:"xray_fallback_port,omitempty"`
+	XrayFallbackHTTPDomain     bool                       `json:"xray_fallback_http_domain,omitempty"`
+	XrayFallbackExactDomain    bool                       `json:"xray_fallback_exact_domain,omitempty"`
+	UUID                       string                     `json:"uuid"`
+	PrivateKey                 string                     `json:"private_key"`
+	PublicKey                  string                     `json:"public_key"`
+	ShortID                    string                     `json:"short_id"`
+	CoreVersion                string                     `json:"core_version"`
+	ConfigSHA256               string                     `json:"config_sha256"`
+	UpdatedAt                  time.Time                  `json:"updated_at"`
+	LandingAccesses            []LandingAccess            `json:"landing_accesses,omitempty"`
+	RelayLinks                 []RelayLink                `json:"relay_links,omitempty"`
 }
 
 type GenerateOptions struct {

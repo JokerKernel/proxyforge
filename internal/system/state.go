@@ -40,6 +40,9 @@ func (s StateStore) Load(core string) (domain.NodeSpec, error) {
 	if security != domain.LandingSecurityReality && security != domain.LandingSecurityTLS {
 		return n, fmt.Errorf("状态文件安全协议无效: %s", path)
 	}
+	if _, err := n.AccessPolicy.Normalize(); err != nil {
+		return n, fmt.Errorf("状态文件访问策略无效: %w", err)
+	}
 	return n, nil
 }
 
