@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"reflect"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -156,11 +155,7 @@ func TestAccessMenuReturnsWithoutExtraPause(t *testing.T) {
 					if err := c.app.SetAccessPolicy(context.Background(), core, before); err != nil {
 						t.Fatal(err)
 					}
-					accessChoice := 6
-					if c.coreHasFallback(core) {
-						accessChoice++
-					}
-					sequence := strconv.Itoa(accessChoice) + "\n" + step.input + back + "\n"
+					sequence := "1\n" + step.input + back + "\n"
 					if step.input != "" {
 						sequence += "0\n"
 					}

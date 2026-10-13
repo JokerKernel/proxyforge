@@ -64,7 +64,7 @@ func TestOutboundIPDisplayAndModifyMenu(t *testing.T) {
 	if err := c.modifyConfigMenu(context.Background(), domain.CoreSingBox); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "2   出站 IP") || !strings.Contains(out.String(), "优先或仅使用 IPv4") {
+	if !strings.Contains(out.String(), "4   出站 IP") || !strings.Contains(out.String(), "优先或仅使用 IPv4") {
 		t.Fatalf("modify menu=%q", out.String())
 	}
 	if strings.Contains(out.String(), "回落 IP") {
@@ -88,9 +88,10 @@ func TestModifyConfigMenuShowsFallbackIPWhenEnabled(t *testing.T) {
 	if err := c.modifyConfigMenu(context.Background(), domain.CoreXray); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "2   出站 IP") || !strings.Contains(out.String(), "3   回落 IP") ||
-		!strings.Contains(out.String(), "4   重置 SNI") || !strings.Contains(out.String(), "6   REALITY SNI") {
-		t.Fatalf("fallback modify menu=%q", out.String())
+	for _, want := range []string{"1   访问控制", "2   重置节点凭证", "3   重置 SNI", "4   出站 IP", "5   回落 IP", "6   DNS 设置", "7   REALITY SNI"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("missing %q in fallback modify menu=%q", want, out.String())
+		}
 	}
 }
 

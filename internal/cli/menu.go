@@ -199,33 +199,36 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 		c.clearScreen()
 		c.printPageHeader(core, "修改配置")
 		c.printModifyConfigCard(ctx, core)
-		c.printMenuChoice("1", "DNS 设置（系统 DNS、明文 DNS 或 DoH）")
-		c.printMenuChoice("2", "出站 IP（优先或仅使用 IPv4 / IPv6）")
-		next := 3
-		hasFallback := c.coreHasFallback(core)
-		if hasFallback {
-			c.printMenuChoice("3", "回落 IP（回落访问目标站的 IPv4 / IPv6）")
-			next = 4
-		}
+		c.printMenuChoice("1", "访问控制（白名单、黑名单与仅允许白名单）")
 		tlsMode := false
 		if c.app != nil {
 			if node, err := c.app.Store.Load(core); err == nil {
 				tlsMode = node.IsTLS()
 			}
 		}
-		maxChoice := next + 2
 		if tlsMode {
-			c.printMenuChoice(strconv.Itoa(next), "重新生成 TLS 证书（保留 UUID）")
-			c.printMenuChoice(strconv.Itoa(next+1), "重置 UUID（保留 TLS 证书）")
-			maxChoice = next + 1
+			c.printMenuChoice("2", "重置 UUID（保留 TLS 证书）")
+			c.printMenuChoice("3", "重新生成 TLS 证书（保留 UUID）")
 		} else {
-			c.printMenuChoice(strconv.Itoa(next), "重置 SNI/target（保留节点凭证）")
-			c.printMenuChoice(strconv.Itoa(next+1), "重置节点凭证（UUID、REALITY 密钥和 short ID；保留 SNI/target）")
-			c.printMenuChoice(strconv.Itoa(next+2), "REALITY SNI 候选检测（重新测试，不修改配置）")
+			c.printMenuChoice("2", "重置节点凭证（UUID、REALITY 密钥和 short ID；保留 SNI/target）")
+			c.printMenuChoice("3", "重置 SNI/target（保留节点凭证）")
 		}
-		accessChoice := maxChoice + 1
-		c.printMenuChoice(strconv.Itoa(accessChoice), "访问控制（白名单、黑名单与仅允许白名单）")
-		maxChoice = accessChoice
+		c.printMenuChoice("4", "出站 IP（优先或仅使用 IPv4 / IPv6）")
+		maxChoice := 4
+		hasFallback := c.coreHasFallback(core)
+		if hasFallback {
+			c.printMenuChoice("5", "回落 IP（回落访问目标站的 IPv4 / IPv6）")
+			maxChoice = 5
+		}
+		maxChoice++
+		dnsChoice := maxChoice
+		c.printMenuChoice(strconv.Itoa(dnsChoice), "DNS 设置（系统 DNS、明文 DNS 或 DoH）")
+		sniChoice := 0
+		if !tlsMode {
+			maxChoice++
+			sniChoice = maxChoice
+			c.printMenuChoice(strconv.Itoa(sniChoice), "REALITY SNI 候选检测（重新测试，不修改配置）")
+		}
 		c.printMenuChoice("0/q", "返回")
 		choice, err := c.chooseNumber("请选择", 0, maxChoice, 0)
 		if err != nil {
@@ -239,19 +242,19 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 		shouldPause := true
 		switch {
 		case choice == 1:
-			err = c.dnsSettingsMenu(ctx, core)
-		case choice == 2:
-			err = c.outboundIPMenu(ctx, core)
-		case hasFallback && choice == 3:
-			err = c.fallbackIPMenu(ctx, core)
-		case choice == next:
-			err = c.resetChoice(ctx, core, 1)
-		case choice == next+1:
-			err = c.resetChoice(ctx, core, 2)
-		case choice == accessChoice:
 			shouldPause = false
 			err = c.accessPolicyMenu(ctx, core)
-		case choice == next+2:
+		case choice == 2:
+			err = c.resetChoice(ctx, core, 2)
+		case choice == 3:
+			err = c.resetChoice(ctx, core, 1)
+		case choice == 4:
+			err = c.outboundIPMenu(ctx, core)
+		case hasFallback && choice == 5:
+			err = c.fallbackIPMenu(ctx, core)
+		case choice == dnsChoice:
+			err = c.dnsSettingsMenu(ctx, core)
+		case choice == sniChoice:
 			err = c.retestSNICandidates(ctx, core)
 		}
 		if errors.Is(err, errReturnToMenu) {
