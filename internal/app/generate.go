@@ -36,9 +36,14 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		return domain.NodeSpec{}, loadErr
 	}
 	policy := old.AccessPolicy
+	landings, relays := old.LandingAccesses, old.RelayLinks
 	if !hasOld {
 		var err error
 		policy, err = (system.AccessPolicyStore{Layout: a.Layout}).Load(core)
+		if err != nil {
+			return domain.NodeSpec{}, err
+		}
+		landings, relays, err = (system.LinkStore{Layout: a.Layout}).Load(core)
 		if err != nil {
 			return domain.NodeSpec{}, err
 		}
@@ -184,9 +189,9 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		XrayFallbackExactDomain: opts.XrayFallbackExactDomain,
 		CoreVersion:             version, UpdatedAt: a.Now().UTC(),
 	}
-	if hasOld && !opts.DropLinks {
-		n.LandingAccesses = append([]domain.LandingAccess(nil), old.LandingAccesses...)
-		n.RelayLinks = append([]domain.RelayLink(nil), old.RelayLinks...)
+	if !opts.DropLinks {
+		n.LandingAccesses = append([]domain.LandingAccess(nil), landings...)
+		n.RelayLinks = append([]domain.RelayLink(nil), relays...)
 	}
 	for i := range n.LandingAccesses {
 		if n.LandingAccesses[i].UsesPrimaryInbound() {
@@ -418,8 +423,8 @@ func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, co
 	rollback := func(cause error) error {
 		a.progressf("操作失败，正在恢复旧配置、状态和服务")
 		restoreErr := restoreFile(configPath, oldConfig, hadConfig, oldMetadata)
-		// StateStore.Save restores the policy file if saving node state fails.
-		// Earlier failures leave both files untouched.
+		// StateStore.Save restores completed writes if saving any file fails.
+		// Earlier failures leave node state and standalone settings untouched.
 		_ = a.Services.Restart(ctx, p.ServiceName())
 		if restoreErr != nil {
 			return fmt.Errorf("%v；且恢复旧配置失败: %w", cause, restoreErr)
@@ -442,7 +447,7 @@ func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, co
 	if err := a.Services.Enable(ctx, p.ServiceName()); err != nil {
 		return n, rollback(fmt.Errorf("启用 %s 开机启动失败: %w", p.ServiceName(), err))
 	}
-	a.progressf("保存 ProxyForge 节点状态与访问控制配置")
+	a.progressf("保存 ProxyForge 节点状态、访问控制与线路配置")
 	if err := a.Store.Save(n); err != nil {
 		return n, rollback(fmt.Errorf("保存状态失败: %w", err))
 	}

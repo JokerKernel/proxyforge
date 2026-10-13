@@ -13,6 +13,7 @@ import (
 	"encoding/pem"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -20,6 +21,7 @@ import (
 
 	"proxyforge/internal/domain"
 	"proxyforge/internal/provider/xray"
+	"proxyforge/internal/system"
 )
 
 func TestLandingAndRelayLifecycle(t *testing.T) {
@@ -88,6 +90,63 @@ func TestLandingAndRelayLifecycle(t *testing.T) {
 	state, err := a.Store.Load(domain.CoreXray)
 	if err != nil || len(state.RelayLinks) != 1 || state.RelayLinks[0].Enabled {
 		t.Fatalf("state=%#v err=%v", state, err)
+	}
+}
+
+func TestGenerateReadsStandaloneLinksBeforeFirstNode(t *testing.T) {
+	for _, core := range []string{domain.CoreXray, domain.CoreSingBox} {
+		t.Run(core, func(t *testing.T) {
+			runner := &fakeRunner{port: freePort(t)}
+			a, _ := testApp(t, runner)
+			landings := []domain.LandingAccess{{Name: "prelanding", UserName: "prelanding", UUID: "123e4567-e89b-42d3-a456-426614174000", Security: domain.LandingSecurityReality, Enabled: true}}
+			relays := []domain.RelayLink{{Name: "prerelay", UserName: "prerelay", UUID: "26831be5-da6c-4d2d-b983-9280601670ae", Enabled: true,
+				Upstream: domain.LandingPeer{Name: "remote", Core: domain.CoreXray, Security: domain.LandingSecurityReality,
+					Server: "exit.example.com", Port: 443, SNI: "example.com", UUID: "5d5c5537-56a4-4b1a-a3bf-9e5a1b378769", PublicKey: "public", ShortID: "0123456789abcdef", Flow: domain.VisionFlow},
+			}}
+			store := system.LinkStore{Layout: a.Layout}
+			if err := store.Save(core, landings, relays); err != nil {
+				t.Fatal(err)
+			}
+			paths := []string{a.Layout.LandingPath(core), a.Layout.RelayPath(core)}
+			before := make([][]byte, len(paths))
+			for i, path := range paths {
+				var err error
+				before[i], err = os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			opts := domain.GenerateOptions{Server: "server.example.com", Port: runner.port, SNI: "example.com", StandardConfig: true}
+			runner.failRestart = true
+			if _, err := a.Generate(context.Background(), core, opts); err == nil {
+				t.Fatal("expected injected restart failure")
+			}
+			for i, path := range paths {
+				after, err := os.ReadFile(path)
+				if err != nil || !bytes.Equal(before[i], after) {
+					t.Fatalf("failed first generation changed %s: %v", path, err)
+				}
+			}
+			n, err := a.Generate(context.Background(), core, opts)
+			if err != nil || !reflect.DeepEqual(n.LandingAccesses, landings) || !reflect.DeepEqual(n.RelayLinks, relays) {
+				t.Fatalf("first node omitted standalone links: %#v err=%v", n, err)
+			}
+			p, _ := a.Registry.Get(core)
+			config, err := os.ReadFile(a.Layout.Resolve(p.ConfigPath()))
+			if err != nil || !bytes.Contains(config, []byte("prelanding")) || !bytes.Contains(config, []byte("prerelay-out")) {
+				t.Fatalf("standalone links not applied: %s err=%v", config, err)
+			}
+			opts.DropLinks = true
+			if _, err := a.Generate(context.Background(), core, opts); err != nil {
+				t.Fatal(err)
+			}
+			for _, path := range paths {
+				b, err := os.ReadFile(path)
+				if err != nil || string(bytes.TrimSpace(b)) != "[]" {
+					t.Fatalf("explicit drop retained records in %s: %s err=%v", path, b, err)
+				}
+			}
+		})
 	}
 }
 
@@ -238,6 +297,14 @@ func TestRelayMutationRollsBackConfigAndState(t *testing.T) {
 	p, _ := a.Registry.Get(domain.CoreSingBox)
 	beforeConfig, _ := os.ReadFile(a.Layout.Resolve(p.ConfigPath()))
 	beforeState, _ := os.ReadFile(a.Layout.StatePath(domain.CoreSingBox))
+	beforeLandings, err := os.ReadFile(a.Layout.LandingPath(domain.CoreSingBox))
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeRelays, err := os.ReadFile(a.Layout.RelayPath(domain.CoreSingBox))
+	if err != nil {
+		t.Fatal(err)
+	}
 	runner.failRestart = true
 	err = a.RemoveRelayLink(context.Background(), domain.CoreSingBox, "la")
 	if err == nil || !strings.Contains(err.Error(), "已恢复") {
@@ -245,7 +312,9 @@ func TestRelayMutationRollsBackConfigAndState(t *testing.T) {
 	}
 	afterConfig, _ := os.ReadFile(a.Layout.Resolve(p.ConfigPath()))
 	afterState, _ := os.ReadFile(a.Layout.StatePath(domain.CoreSingBox))
-	if !bytes.Equal(beforeConfig, afterConfig) || !bytes.Equal(beforeState, afterState) {
+	afterLandings, landingErr := os.ReadFile(a.Layout.LandingPath(domain.CoreSingBox))
+	afterRelays, relayErr := os.ReadFile(a.Layout.RelayPath(domain.CoreSingBox))
+	if landingErr != nil || relayErr != nil || !bytes.Equal(beforeLandings, afterLandings) || !bytes.Equal(beforeRelays, afterRelays) || !bytes.Equal(beforeConfig, afterConfig) || !bytes.Equal(beforeState, afterState) {
 		t.Fatal("rollback did not restore config and state")
 	}
 }

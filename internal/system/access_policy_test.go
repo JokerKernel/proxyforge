@@ -148,7 +148,7 @@ func TestStateSaveFailureRestoresAccessPolicyFile(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			// A directory in place of node state makes its final rename fail.
+			// An invalid node state destination must leave policy files untouched.
 			if err := os.MkdirAll(store.Layout.StatePath(domain.CoreXray), 0700); err != nil {
 				t.Fatal(err)
 			}

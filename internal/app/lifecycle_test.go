@@ -225,6 +225,8 @@ func TestCleanupRemovesOnlySelectedCoreResidue(t *testing.T) {
 		a.Layout.Resolve("/var/lib/sing-box/cache.db"),
 		a.Layout.StatePath(domain.CoreSingBox),
 		a.Layout.AccessPolicyPath(domain.CoreSingBox),
+		a.Layout.LandingPath(domain.CoreSingBox),
+		a.Layout.RelayPath(domain.CoreSingBox),
 		a.Layout.TrustPath(domain.CoreSingBox),
 		filepath.Join(a.Layout.BackupRoot(domain.CoreSingBox), "old", "config.json"),
 		filepath.Join(a.Layout.TLSAccessDir(domain.CoreSingBox, "landing"), "cert.pem"),
@@ -241,6 +243,11 @@ func TestCleanupRemovesOnlySelectedCoreResidue(t *testing.T) {
 	xrayPolicy := a.Layout.AccessPolicyPath(domain.CoreXray)
 	if err := system.AtomicWrite(xrayPolicy, []byte("keep"), 0600); err != nil {
 		t.Fatal(err)
+	}
+	for _, path := range []string{a.Layout.LandingPath(domain.CoreXray), a.Layout.RelayPath(domain.CoreXray)} {
+		if err := system.AtomicWrite(path, []byte("keep"), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := os.MkdirAll(filepath.Dir(xrayState), 0700); err != nil {
 		t.Fatal(err)
@@ -268,7 +275,7 @@ func TestCleanupRemovesOnlySelectedCoreResidue(t *testing.T) {
 			t.Fatalf("residue still exists at %s: %v", path, err)
 		}
 	}
-	for _, path := range []string{xrayState, xrayPolicy, xrayTLS, clientExport} {
+	for _, path := range []string{xrayState, xrayPolicy, a.Layout.LandingPath(domain.CoreXray), a.Layout.RelayPath(domain.CoreXray), xrayTLS, clientExport} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("unrelated file was removed at %s: %v", path, err)
 		}
@@ -291,6 +298,10 @@ func TestCleanupAllRemovesBothCoresAndProxyForgeData(t *testing.T) {
 		a.Layout.StatePath(domain.CoreSingBox),
 		a.Layout.AccessPolicyPath(domain.CoreSingBox),
 		a.Layout.AccessPolicyPath(domain.CoreXray),
+		a.Layout.LandingPath(domain.CoreSingBox),
+		a.Layout.LandingPath(domain.CoreXray),
+		a.Layout.RelayPath(domain.CoreSingBox),
+		a.Layout.RelayPath(domain.CoreXray),
 		a.Layout.TrustPath(domain.CoreXray),
 		filepath.Join(a.Layout.BackupRoot(domain.CoreXray), "old", "config.json"),
 		filepath.Join(a.Layout.TLSAccessDir(domain.CoreSingBox, "landing"), "cert.pem"),

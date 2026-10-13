@@ -20,6 +20,12 @@ func (l Layout) StatePath(core string) string {
 func (l Layout) AccessPolicyPath(core string) string {
 	return l.Resolve("/etc/proxyforge/access/" + core + ".json")
 }
+func (l Layout) LandingPath(core string) string {
+	return l.Resolve("/etc/proxyforge/landings/" + core + ".json")
+}
+func (l Layout) RelayPath(core string) string {
+	return l.Resolve("/etc/proxyforge/relays/" + core + ".json")
+}
 func (l Layout) TrustPath(core string) string {
 	return l.Resolve("/var/lib/proxyforge/trust/" + core + ".sha256")
 }

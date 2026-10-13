@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"proxyforge/internal/domain"
 )
@@ -44,48 +43,34 @@ func (s StateStore) Load(core string) (domain.NodeSpec, error) {
 	if err != nil {
 		return n, err
 	}
+	n.LandingAccesses, n.RelayLinks, err = (LinkStore{Layout: s.Layout}).Load(core)
+	if err != nil {
+		return n, err
+	}
 	return n, nil
 }
 
 func (s StateStore) Save(n domain.NodeSpec) error {
-	b, err := json.MarshalIndent(n, "", "  ")
+	nodeFile, err := preparePrivateJSON(s.Layout.StatePath(n.Core), n)
 	if err != nil {
 		return err
 	}
-	b = append(b, '\n')
-	path := s.Layout.StatePath(n.Core)
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return err
-	}
-	if err := os.Chmod(filepath.Dir(path), 0700); err != nil {
-		return err
-	}
-	policyPath := s.Layout.AccessPolicyPath(n.Core)
-	oldPolicy, hadPolicy, err := readAccessPolicyFile(policyPath)
+	policyFile, err := (AccessPolicyStore{Layout: s.Layout}).prepare(n.Core, n.AccessPolicy)
 	if err != nil {
 		return err
 	}
-	if err := (AccessPolicyStore{Layout: s.Layout}).Save(n.Core, n.AccessPolicy); err != nil {
+	linkFiles, err := (LinkStore{Layout: s.Layout}).prepare(n.Core, n.LandingAccesses, n.RelayLinks)
+	if err != nil {
 		return err
 	}
-	if err := AtomicWrite(path, b, 0600); err != nil {
-		var restoreErr error
-		if hadPolicy {
-			restoreErr = AtomicWrite(policyPath, oldPolicy, 0600)
-		} else {
-			restoreErr = removeAccessPolicyFile(policyPath)
-		}
-		if restoreErr != nil {
-			return fmt.Errorf("%v；且恢复访问控制配置失败: %w", err, restoreErr)
-		}
-		return err
-	}
-	return nil
+	files := append([]privateJSONFile{policyFile}, linkFiles...)
+	return writePrivateFiles(append(files, nodeFile))
 }
 
 func (s StateStore) Delete(core string) error {
 	return errors.Join(
-		removeAccessPolicyFile(s.Layout.StatePath(core)),
+		removeOptionalFile(s.Layout.StatePath(core)),
 		(AccessPolicyStore{Layout: s.Layout}).Delete(core),
+		(LinkStore{Layout: s.Layout}).Delete(core),
 	)
 }

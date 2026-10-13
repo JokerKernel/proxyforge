@@ -20,7 +20,7 @@ const (
 	LandingTLSPortMax      = 65000
 	FallbackPortMin        = LandingTLSPortMin
 	FallbackPortMax        = LandingTLSPortMax
-	StateSchemaVersion     = 6
+	StateSchemaVersion     = 7
 )
 
 // LandingPeer is the portable, client-side description of a managed landing
@@ -119,8 +119,8 @@ type NodeSpec struct {
 	CoreVersion                string                     `json:"core_version"`
 	ConfigSHA256               string                     `json:"config_sha256"`
 	UpdatedAt                  time.Time                  `json:"updated_at"`
-	LandingAccesses            []LandingAccess            `json:"landing_accesses,omitempty"`
-	RelayLinks                 []RelayLink                `json:"relay_links,omitempty"`
+	LandingAccesses            []LandingAccess            `json:"-"`
+	RelayLinks                 []RelayLink                `json:"-"`
 }
 
 type GenerateOptions struct {

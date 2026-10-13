@@ -324,6 +324,8 @@ func (a *App) Cleanup(ctx context.Context, target string) error {
 		paths := []string{
 			a.Layout.StatePath(p.Name()),
 			a.Layout.AccessPolicyPath(p.Name()),
+			a.Layout.LandingPath(p.Name()),
+			a.Layout.RelayPath(p.Name()),
 			a.Layout.TrustPath(p.Name()),
 			a.Layout.InstallPreferencesPath(p.Name()),
 			a.Layout.BackupRoot(p.Name()),
@@ -348,7 +350,12 @@ func (a *App) Cleanup(ctx context.Context, target string) error {
 	} else if err := a.removeEmptyProxyForgeRoot(); err != nil {
 		cleanupErrors = append(cleanupErrors, err)
 	}
-	for _, path := range []string{a.Layout.Resolve("/etc/proxyforge/access"), a.Layout.Resolve("/etc/proxyforge")} {
+	for _, path := range []string{
+		a.Layout.Resolve("/etc/proxyforge/access"),
+		a.Layout.Resolve("/etc/proxyforge/landings"),
+		a.Layout.Resolve("/etc/proxyforge/relays"),
+		a.Layout.Resolve("/etc/proxyforge"),
+	} {
 		if err := removeEmptyCleanupDirectory(path); err != nil {
 			cleanupErrors = append(cleanupErrors, fmt.Errorf("删除空目录 %s: %w", path, err))
 		}
