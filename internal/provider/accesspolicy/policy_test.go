@@ -177,3 +177,99 @@ func TestPolicyRejectsMalformedManualRouting(t *testing.T) {
 		}
 	}
 }
+
+func TestXrayAccessRuleTagsReapplyAndRemoveWithoutDuplicates(t *testing.T) {
+	p := xray.New()
+	n := policyNode(domain.CoreXray)
+	original, err := p.RenderServer(n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := rootOf(t, original)
+	route := root["routing"].(map[string]any)
+	// Similar names belong to manually maintained routes, not access control.
+	route["rules"] = append(route["rules"].([]any), map[string]any{
+		"ruleTag": "white-domain-custom", "domain": []string{"full:manual.example"}, "outboundTag": "direct",
+	})
+	original, err = json.Marshal(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := n
+	next.AccessPolicy = domain.AccessPolicy{
+		Mode: domain.AccessModeBlacklist,
+		Whitelist: []domain.AccessEntry{
+			{Type: domain.AccessEntryDomain, Value: "allowed.com", IncludeSubdomains: true},
+			{Type: domain.AccessEntryIP, Value: "192.168.1.10"},
+		},
+		Blacklist: []domain.AccessEntry{
+			{Type: domain.AccessEntryDomain, Value: "denied.com", IncludeSubdomains: true},
+			{Type: domain.AccessEntryCIDR, Value: "192.168.2.0/24"},
+		},
+	}
+	next.AccessPolicySniffing, err = accesspolicy.SnapshotSniffing(original, n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	generated, err := p.PatchAccessPolicy(original, n, next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tags := map[string]int{"white-domain": 0, "white-ip": 0, "black-domain": 0, "black-ip": 0}
+	root = rootOf(t, generated)
+	route = root["routing"].(map[string]any)
+	rules := route["rules"].([]any)
+	for _, item := range rules {
+		rule := item.(map[string]any)
+		tag, _ := rule["ruleTag"].(string)
+		if _, ok := tags[tag]; ok {
+			tags[tag]++
+		}
+	}
+	for tag, count := range tags {
+		if count != 1 {
+			t.Fatalf("expected one %s rule, got %d", tag, count)
+		}
+	}
+	updated, err := p.PatchAccessPolicy(generated, next, next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(rootOf(t, updated), rootOf(t, generated)) {
+		t.Fatal("reapplying policy changed rules or retained duplicate rules")
+	}
+	restored, err := p.PatchAccessPolicy(updated, next, n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(rootOf(t, restored), rootOf(t, original)) {
+		t.Fatal("disabling policy retained access rules or removed manual routes")
+	}
+}
+
+func TestXrayAccessRuleTagsRejectReservedNameCollision(t *testing.T) {
+	p := xray.New()
+	n := policyNode(domain.CoreXray)
+	base, err := p.RenderServer(n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := n
+	next.AccessPolicy = domain.AccessPolicy{Mode: domain.AccessModeWhitelist}
+	for _, tag := range []string{"white-domain", "white-ip", "black-domain", "black-ip"} {
+		t.Run(tag, func(t *testing.T) {
+			root := rootOf(t, base)
+			route := root["routing"].(map[string]any)
+			route["rules"] = append(route["rules"].([]any), map[string]any{
+				"ruleTag": tag, "domain": []string{"full:manual.example"}, "outboundTag": "direct",
+			})
+			config, err := json.Marshal(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := p.PatchAccessPolicy(config, n, next); err == nil {
+				t.Fatal("reserved name collision silently replaced a manual rule")
+			}
+		})
+	}
+}

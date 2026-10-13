@@ -143,6 +143,8 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 两份名单独立保存，切换模式不会清空：白名单在三个模式中都优先生效，黑名单仅在 `blacklist` 模式中生效。配置重新生成、凭据重置和中转/落地增删也会保留并重新应用策略。
 
+Xray 的域名和 IP/网段规则分别使用 `white-domain`、`white-ip`、`black-domain`、`black-ip` 作为 `ruleTag`，不兼容这四类规则原来的 `pf-access-` 标签；使用旧标签的配置需要重新生成。
+
 ```bash
 # 域名及全部子域名：example.com、www.example.com、a.b.example.com
 sudo proxyforge config access add xray white example.com --yes

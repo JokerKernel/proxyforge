@@ -43,7 +43,12 @@ func clone(m map[string]any) map[string]any {
 
 func ownedRule(rule map[string]any, core string) bool {
 	if core == domain.CoreXray {
-		return strings.HasPrefix(str(rule["ruleTag"]), Prefix)
+		tag := str(rule["ruleTag"])
+		switch tag {
+		case "white-domain", "white-ip", "black-domain", "black-ip", Prefix + "final":
+			return true
+		}
+		return strings.HasPrefix(tag, Prefix+"white-relay-")
 	}
 	for _, tag := range list(rule["rule_set"]) {
 		if str(tag) == scopeSet || str(tag) == whiteSet || str(tag) == blackSet {
@@ -246,7 +251,11 @@ func applyXray(root map[string]any, n domain.NodeSpec, p domain.AccessPolicy) er
 		// Xray combines domain and IP fields with AND; each kind gets its own rule.
 		for _, field := range []string{"domain", "ip"} {
 			if value, ok := match[field]; ok {
-				rule := map[string]any{"inboundTag": tags, field: value, "outboundTag": outbound, "ruleTag": Prefix + label + "-" + field}
+				tag := Prefix + label + "-" + field
+				if label == "white" || label == "black" {
+					tag = label + "-" + field
+				}
+				rule := map[string]any{"inboundTag": tags, field: value, "outboundTag": outbound, "ruleTag": tag}
 				if user != "" {
 					rule["inboundTag"] = []string{n.InboundTag}
 					rule["user"] = []string{user}
