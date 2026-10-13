@@ -21,6 +21,7 @@ type AccessEntry struct {
 }
 
 type AccessPolicy struct {
+	Disabled  bool          `json:"disabled,omitempty"`
 	Mode      string        `json:"mode,omitempty"`
 	Whitelist []AccessEntry `json:"whitelist,omitempty"`
 	Blacklist []AccessEntry `json:"blacklist,omitempty"`
@@ -34,11 +35,14 @@ func (p AccessPolicy) EffectiveMode() string {
 }
 
 func (p AccessPolicy) Active() bool {
+	if p.Disabled {
+		return false
+	}
 	return len(p.Whitelist) > 0 || p.EffectiveMode() == AccessModeWhitelist || (p.BlacklistEnabled() && len(p.Blacklist) > 0)
 }
 
 func (p AccessPolicy) BlacklistEnabled() bool {
-	return p.EffectiveMode() == AccessModeDefault
+	return !p.Disabled && p.EffectiveMode() == AccessModeDefault
 }
 
 func (p AccessPolicy) ClearList(listName string) (AccessPolicy, error) {

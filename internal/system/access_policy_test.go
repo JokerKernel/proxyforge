@@ -18,7 +18,7 @@ func TestAccessPolicyStoredSeparatelyAndIsolatedByCore(t *testing.T) {
 			{Type: domain.AccessEntryDomain, Value: "Example.COM", IncludeSubdomains: true},
 			{Type: domain.AccessEntryCIDR, Value: "192.168.1.10/24"},
 		}},
-		domain.CoreSingBox: {Mode: domain.AccessModeDefault, Blacklist: []domain.AccessEntry{
+		domain.CoreSingBox: {Disabled: true, Mode: domain.AccessModeDefault, Blacklist: []domain.AccessEntry{
 			{Type: domain.AccessEntryIP, Value: "192.168.1.1"},
 		}},
 	}
@@ -55,7 +55,7 @@ func TestAccessPolicyStoredSeparatelyAndIsolatedByCore(t *testing.T) {
 		if err := json.Unmarshal(b, &saved); err != nil {
 			t.Fatal(err)
 		}
-		if len(saved) != 3 || saved["mode"] != policy.Mode || saved["whitelist"] == nil || saved["blacklist"] == nil {
+		if len(saved) != 4 || saved["disabled"] != policy.Disabled || saved["mode"] != policy.Mode || saved["whitelist"] == nil || saved["blacklist"] == nil {
 			t.Fatalf("standalone file is not a complete policy: %s", b)
 		}
 	}
@@ -114,7 +114,7 @@ func TestAccessPolicyRejectsInvalidFiles(t *testing.T) {
 	}
 	path := store.Layout.AccessPolicyPath(domain.CoreXray)
 	for _, content := range []string{
-		`null`, `{`, `{"mode":"unknown"}`, `{"mode":"blacklist"}`, `{"mode":"default"} {}`,
+		`null`, `{`, `{"mode":"unknown"}`, `{"mode":"blacklist"}`, `{"mode":"default"} {}`, `{"disabled":"true"}`,
 		`{"whitelist":[{"type":"cidr","value":"192.168.1.0/99"}]}`,
 		`{"mode":"default","whitelst":[]}`,
 	} {

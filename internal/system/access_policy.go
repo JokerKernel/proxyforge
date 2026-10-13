@@ -42,12 +42,14 @@ func (s AccessPolicyStore) prepare(core string, policy domain.AccessPolicy) (pri
 	if err != nil {
 		return privateJSONFile{}, err
 	}
-	// Keep all three settings visible, including empty lists.
+	// Keep the switch, mode and both lists visible, including empty lists.
 	config := struct {
+		Disabled  bool                 `json:"disabled"`
 		Mode      string               `json:"mode"`
 		Whitelist []domain.AccessEntry `json:"whitelist"`
 		Blacklist []domain.AccessEntry `json:"blacklist"`
 	}{
+		Disabled:  normalized.Disabled,
 		Mode:      normalized.EffectiveMode(),
 		Whitelist: append([]domain.AccessEntry{}, normalized.Whitelist...),
 		Blacklist: append([]domain.AccessEntry{}, normalized.Blacklist...),

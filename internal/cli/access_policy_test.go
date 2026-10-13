@@ -121,6 +121,8 @@ func TestAccessPolicyCardShowsEffectiveRuleOrder(t *testing.T) {
 		{"whitelist-empty", domain.AccessPolicy{Mode: domain.AccessModeWhitelist}, "原有拦截 → 其余拒绝"},
 		{"whitelist-black-only", domain.AccessPolicy{Mode: domain.AccessModeWhitelist, Blacklist: entries}, "原有拦截 → 其余拒绝"},
 		{"whitelist-both", domain.AccessPolicy{Mode: domain.AccessModeWhitelist, Whitelist: entries, Blacklist: entries}, "白名单放行 → 原有拦截 → 其余拒绝"},
+		{"disabled-default", domain.AccessPolicy{Disabled: true, Whitelist: entries, Blacklist: entries}, "原有拦截 → 其余放行"},
+		{"disabled-whitelist", domain.AccessPolicy{Disabled: true, Mode: domain.AccessModeWhitelist, Whitelist: entries, Blacklist: entries}, "原有拦截 → 其余放行"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var out bytes.Buffer
@@ -195,6 +197,7 @@ func TestAccessMenuReturnsWithoutExtraPause(t *testing.T) {
 			}{
 				{"main", ""},
 				{"mode", "1\n"},
+				{"switch-confirm", "1\n3\n"},
 				{"add-white", "2\n"},
 				{"white-domain-match", "2\nexample.com\n"},
 				{"delete-white", "3\n"},

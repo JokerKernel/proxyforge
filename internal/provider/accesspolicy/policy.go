@@ -452,7 +452,7 @@ func HasComponents(root map[string]any, core string) bool {
 // Client exceptions let explicitly allowed private targets reach the server,
 // which remains responsible for the complete access policy.
 func AllowClient(root map[string]any, n domain.NodeSpec) {
-	if len(n.AccessPolicy.Whitelist) == 0 {
+	if !n.AccessPolicy.Active() || len(n.AccessPolicy.Whitelist) == 0 {
 		return
 	}
 	match := values(n.AccessPolicy.Whitelist, n.Core)

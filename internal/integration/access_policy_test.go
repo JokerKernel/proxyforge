@@ -146,6 +146,9 @@ func TestRealAccessPolicyDestinations(t *testing.T) {
 		{"default-white-over-black-and-private", domain.AccessPolicy{Mode: "default", Whitelist: []domain.AccessEntry{{Type: "ip", Value: "127.0.0.1"}}, Blacklist: []domain.AccessEntry{{Type: "cidr", Value: "127.0.0.0/8"}}}, false, []request{{"127.0.0.1", true, ""}, {"127.0.0.2", false, ""}, {"outside.test", true, ""}}},
 		{"domain-white-over-black", domain.AccessPolicy{Mode: "default", Whitelist: []domain.AccessEntry{{Type: "domain", Value: "allowed.test", IncludeSubdomains: true}}, Blacklist: []domain.AccessEntry{{Type: "domain", Value: "allowed.test", IncludeSubdomains: true}}}, false, []request{{"allowed.test", true, ""}, {"sub.allowed.test", true, ""}, {"outside.test", false, ""}}},
 		{"empty-whitelist-denies-all", domain.AccessPolicy{Mode: "whitelist"}, true, []request{{"127.0.0.1", false, ""}, {"outside.test", false, ""}}},
+		{"disabled-whitelist-ignores-lists", domain.AccessPolicy{Disabled: true, Mode: "whitelist", Whitelist: []domain.AccessEntry{{Type: "domain", Value: "allowed.test", IncludeSubdomains: true}}, Blacklist: []domain.AccessEntry{{Type: "domain", Value: "denied.test", IncludeSubdomains: true}}}, true, []request{{"allowed.test", true, ""}, {"outside.test", true, ""}, {"denied.test", true, ""}}},
+		{"disabled-empty-whitelist-allows", domain.AccessPolicy{Disabled: true, Mode: "whitelist"}, true, []request{{"127.0.0.1", true, ""}, {"outside.test", true, ""}}},
+		{"disabled-policy-still-blocks-private", domain.AccessPolicy{Disabled: true, Mode: "whitelist", Whitelist: []domain.AccessEntry{{Type: "ip", Value: "127.0.0.1"}}}, false, []request{{"127.0.0.1", false, ""}}},
 		{"default-still-blocks-private", domain.AccessPolicy{}, false, []request{{"127.0.0.1", false, ""}, {"outside.test", false, ""}}},
 	}
 	for _, p := range []provider.CoreProvider{xray.New(), singbox.New()} {

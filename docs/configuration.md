@@ -17,6 +17,8 @@ proxyforge config relay add <sing-box|xray> NAME --upstream-stdin
 proxyforge config relay client <sing-box|xray> NAME [--format native|clash] [--output FILE]
 proxyforge config access list <sing-box|xray>
 proxyforge config access mode <sing-box|xray> <default|whitelist>
+proxyforge config access enable <sing-box|xray>
+proxyforge config access disable <sing-box|xray>
 proxyforge config access add <sing-box|xray> <white|black> TARGET [--exact]
 proxyforge config access remove <sing-box|xray> <white|black> TARGET [--exact]
 proxyforge config access clear <sing-box|xray> <white|black>
@@ -133,14 +135,17 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 ## 访问控制
 
-“服务端配置 → 修改配置 → 访问控制”可以切换模式、添加和删除白名单/黑名单。「6 清空白名单」删除全部白名单条目，当前为仅允许白名单模式时同时切回默认模式；「7 清空黑名单」删除全部黑名单条目，保留访问模式。清空其中一份名单会保留另一份名单，执行前显示变更后的策略并确认。策略按内核独立管理，适用于该内核的普通用户、复用主入站的落地用户、独立 TLS 落地接入和中转线路；REALITY 未认证回落的 SNI/Host 防护继续使用原来的规则。
+“服务端配置 → 修改配置 → 访问控制”可以切换模式、添加和删除白名单/黑名单。「切换访问模式」中的第 3 项是独立开关，按当前状态显示「关闭访问控制」或「启用访问控制」。关闭时保留模式和两份名单，移除生成的访问控制规则，执行内核原有拦截；再次启用时按保存的设置恢复规则。关闭期间修改模式或名单仅保存设置，不会自动启用。信息卡显示开关状态及当前实际规则顺序。
 
-访问模式、白名单和黑名单保存在独立配置文件中：Xray 使用 `/var/lib/proxyforge/access/xray.json`，sing-box 使用 `/var/lib/proxyforge/access/sing-box.json`。文件权限为 `0600`，目录权限为 `0700`。节点状态文件不再保存 `access_policy`，也不读取或迁移旧字段。独立文件不存在时使用默认模式和空名单；文件损坏、规则无效或权限不安全时会报错。
+「6 清空白名单」删除全部白名单条目，当前为仅允许白名单模式时同时切回默认模式；「7 清空黑名单」删除全部黑名单条目，保留访问模式。清空其中一份名单会保留另一份名单和总开关状态，执行前显示变更后的策略并确认。策略按内核独立管理，适用于该内核的普通用户、复用主入站的落地用户、独立 TLS 落地接入和中转线路；REALITY 未认证回落的 SNI/Host 防护继续使用原来的规则。
+
+总开关、访问模式、白名单和黑名单保存在独立配置文件中：Xray 使用 `/var/lib/proxyforge/access/xray.json`，sing-box 使用 `/var/lib/proxyforge/access/sing-box.json`。`disabled: true` 表示关闭；默认是 `false`，即启用。文件权限为 `0600`，目录权限为 `0700`。节点状态文件不再保存 `access_policy`，也不读取或迁移旧字段。独立文件不存在时使用默认模式、启用开关和空名单；空名单下仍执行原有拦截。文件损坏、规则无效或权限不安全时会报错。
 
 文件格式如下，两份名单为空时也保留数组：
 
 ```json
 {
+  "disabled": false,
   "mode": "default",
   "whitelist": [
     { "type": "domain", "value": "example.com", "include_subdomains": true }
@@ -183,6 +188,10 @@ sudo proxyforge config access add xray black denied.example.com --yes
 sudo proxyforge config access mode xray whitelist --yes
 sudo proxyforge config access mode xray default --yes
 sudo proxyforge config access list xray
+
+# 保留模式和名单，临时关闭；随后恢复启用
+sudo proxyforge config access disable xray --yes
+sudo proxyforge config access enable xray --yes
 
 # 删除时使用相同的匹配类型；精确域名需带 --exact
 sudo proxyforge config access remove xray white api.example.com --exact --yes

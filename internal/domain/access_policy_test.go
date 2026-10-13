@@ -2,6 +2,21 @@ package domain
 
 import "testing"
 
+func TestDisabledAccessPolicyIgnoresModeAndLists(t *testing.T) {
+	for _, mode := range []string{AccessModeDefault, AccessModeWhitelist} {
+		for _, entries := range [][]AccessEntry{nil, {{Type: AccessEntryDomain, Value: "example.com"}}} {
+			policy := AccessPolicy{Disabled: true, Mode: mode, Whitelist: entries, Blacklist: entries}
+			if policy.Active() || policy.BlacklistEnabled() {
+				t.Fatal("disabled policy still activates rules or whitelist-only final deny")
+			}
+			cleared, err := policy.ClearList("white")
+			if err != nil || !cleared.Disabled {
+				t.Fatal("clearing a list reenabled access control")
+			}
+		}
+	}
+}
+
 func TestAccessPolicyActiveWithOnlyBlacklist(t *testing.T) {
 	for _, mode := range []string{"", AccessModeDefault, AccessModeWhitelist} {
 		t.Run(mode, func(t *testing.T) {

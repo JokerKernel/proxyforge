@@ -21,6 +21,13 @@ func accessModeLabel(mode string) string {
 	}
 }
 
+func accessSwitchLabel(policy domain.AccessPolicy) string {
+	if policy.Disabled {
+		return "已关闭（保留模式和名单）"
+	}
+	return "已启用"
+}
+
 func accessEntryLabel(entry domain.AccessEntry) string {
 	if entry.Type == domain.AccessEntryDomain {
 		if entry.IncludeSubdomains {
@@ -33,7 +40,7 @@ func accessEntryLabel(entry domain.AccessEntry) string {
 
 func (c *commandSet) printAccessPolicy(policy domain.AccessPolicy) {
 	var order []string
-	if len(policy.Whitelist) > 0 {
+	if !policy.Disabled && len(policy.Whitelist) > 0 {
 		order = append(order, "白名单放行")
 	}
 	if policy.BlacklistEnabled() && len(policy.Blacklist) > 0 {
@@ -42,12 +49,13 @@ func (c *commandSet) printAccessPolicy(policy domain.AccessPolicy) {
 	order = append(order, "原有拦截")
 	defaultAction := "放行"
 	finalAction := "其余放行"
-	if policy.EffectiveMode() == domain.AccessModeWhitelist {
+	if !policy.Disabled && policy.EffectiveMode() == domain.AccessModeWhitelist {
 		defaultAction = "拒绝；白名单为空时全部拒绝。"
 		finalAction = "其余拒绝"
 	}
 	order = append(order, finalAction)
 	c.printLabeledCard("访问策略", [][2]string{
+		{"访问控制", accessSwitchLabel(policy)},
 		{"访问模式", accessModeLabel(policy.EffectiveMode())},
 		{"规则顺序", strings.Join(order, " → ")},
 		{"默认动作", defaultAction},
@@ -71,7 +79,11 @@ func (c *commandSet) confirmAccessChange(policy domain.AccessPolicy) error {
 		return fmt.Errorf("非交互修改访问策略必须显式提供 --yes")
 	}
 	c.printAccessPolicy(policy)
-	ok, err := c.confirmCancelable("应用访问策略？白名单优先，可放行明确列出的私网目标。")
+	message := "应用访问策略？白名单优先，可放行明确列出的私网目标。"
+	if policy.Disabled {
+		message = "保存关闭状态下的访问策略？保留模式和名单，仅执行原有拦截规则。"
+	}
+	ok, err := c.confirmCancelable(message)
 	if err != nil {
 		return err
 	}
@@ -113,6 +125,27 @@ func (c *commandSet) accessCommand() *cobra.Command {
 		fmt.Fprintln(c.out, "访问模式已更新："+accessModeLabel(policy.EffectiveMode()))
 		return nil
 	}})
+	for _, operation := range []string{"enable", "disable"} {
+		operation := operation
+		cmd.AddCommand(&cobra.Command{Use: operation + " <sing-box|xray>", Short: map[string]string{"enable": "启用访问控制，应用保存的模式和名单", "disable": "关闭访问控制，保留模式和名单"}[operation], Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+			policy, err := c.app.AccessPolicy(args[0])
+			if err != nil {
+				return err
+			}
+			policy.Disabled = operation == "disable"
+			if err = c.confirmAccessChange(policy); err != nil {
+				if errors.Is(err, errReturnToMenu) {
+					return nil
+				}
+				return err
+			}
+			if err = c.app.SetAccessPolicy(cmd.Context(), args[0], policy); err != nil {
+				return err
+			}
+			fmt.Fprintln(c.out, "访问控制"+accessSwitchLabel(policy)+"。")
+			return nil
+		}})
+	}
 	for _, operation := range []string{"add", "remove"} {
 		operation := operation
 		var exact bool
@@ -220,12 +253,13 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 			return nil
 		}
 		next := policy
+		switchChanged := false
 		confirmation := "应用访问策略？白名单优先，明确允许的私网目标也会放行。"
-		success := "访问策略已生效。"
+		success := "访问策略已更新。"
 		if choice == 1 {
 			c.clearScreen()
 			c.printPageHeader(core, "访问控制", "切换访问模式")
-			c.printLabeledCard("当前模式", [][2]string{{"访问模式", accessModeLabel(policy.EffectiveMode())}})
+			c.printLabeledCard("当前模式", [][2]string{{"访问控制", accessSwitchLabel(policy)}, {"访问模式", accessModeLabel(policy.EffectiveMode())}})
 			modes := []string{domain.AccessModeDefault, domain.AccessModeWhitelist}
 			defaultChoice := 1
 			for i, mode := range modes {
@@ -236,15 +270,30 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 				}
 				c.printMenuChoice(strconv.Itoa(i+1), label)
 			}
+			switchAction := "关闭访问控制（保留模式和名单）"
+			if policy.Disabled {
+				switchAction = "启用访问控制（应用保存的模式和名单）"
+			}
+			c.printMenuChoice("3", switchAction)
 			c.printMenuChoice("0/q", "返回")
-			selected, e := c.chooseNumberCancelable("请选择访问模式", 1, len(modes), defaultChoice)
+			selected, e := c.chooseNumberCancelable("请选择访问模式或开关", 1, len(modes)+1, defaultChoice)
 			if errors.Is(e, errReturnToMenu) {
 				continue
 			}
 			if e != nil {
 				return e
 			}
-			next.Mode = modes[selected-1]
+			if selected == len(modes)+1 {
+				switchChanged = true
+				next.Disabled = !policy.Disabled
+				confirmation = "关闭访问控制？保留模式和两份名单，恢复原有拦截规则。"
+				if !next.Disabled {
+					confirmation = "启用访问控制？按保存的模式和两份名单应用规则。"
+				}
+				success = "访问控制" + accessSwitchLabel(next) + "。"
+			} else {
+				next.Mode = modes[selected-1]
+			}
 		} else {
 			entries := &next.Whitelist
 			listName := "白名单"
@@ -343,6 +392,9 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 		c.clearScreen()
 		c.printPageHeader(core, "访问控制", "确认修改")
 		c.printAccessPolicy(next)
+		if next.Disabled && !switchChanged {
+			confirmation += "访问控制保持关闭，本次仅保存设置修改。"
+		}
 		ok, err := c.confirmCancelable(confirmation)
 		if errors.Is(err, errReturnToMenu) {
 			continue

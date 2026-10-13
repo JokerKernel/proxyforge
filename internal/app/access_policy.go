@@ -75,7 +75,11 @@ func (a *App) SetAccessPolicy(ctx context.Context, core string, requested domain
 		return err
 	}
 	managed := old.ConfigSHA256 != "" && old.ConfigSHA256 == system.SHA256(config)
-	a.progressf("应用访问策略：白名单优先，现有拦截规则兜底")
+	if policy.Disabled {
+		a.progressf("关闭访问控制：保留模式和名单，恢复原有拦截规则")
+	} else {
+		a.progressf("应用访问策略：白名单优先，现有拦截规则兜底")
+	}
 	_, err = a.applyServerConfig(ctx, p, core, next, old, true, patched, managed)
 	return err
 }
@@ -86,6 +90,15 @@ func (a *App) SetAccessMode(ctx context.Context, core, mode string) error {
 		return err
 	}
 	policy.Mode = mode
+	return a.SetAccessPolicy(ctx, core, policy)
+}
+
+func (a *App) SetAccessEnabled(ctx context.Context, core string, enabled bool) error {
+	policy, err := a.AccessPolicy(core)
+	if err != nil {
+		return err
+	}
+	policy.Disabled = !enabled
 	return a.SetAccessPolicy(ctx, core, policy)
 }
 
