@@ -36,11 +36,11 @@ func TestAccessClearPreservesOtherListAndUpdatesModeAndRules(t *testing.T) {
 							t.Fatal(err)
 						}
 						if source == "menu" {
-							choice := "6"
+							choice := "2"
 							if list == "black" {
-								choice = "7"
+								choice = "3"
 							}
-							c.reader = bufio.NewReader(strings.NewReader(choice + "\n1\n0\n"))
+							c.reader = bufio.NewReader(strings.NewReader(choice + "\n3\n1\n0\n0\n"))
 							if err := c.accessPolicyMenu(context.Background(), core); err != nil {
 								t.Fatal(err)
 							}
@@ -103,7 +103,7 @@ func TestClearEmptyWhitelistExitsWhitelistMode(t *testing.T) {
 			if err := c.app.SetAccessMode(context.Background(), core, domain.AccessModeWhitelist); err != nil {
 				t.Fatal(err)
 			}
-			c.reader = bufio.NewReader(strings.NewReader("6\n1\n0\n"))
+			c.reader = bufio.NewReader(strings.NewReader("2\n3\n1\n0\n0\n"))
 			if err := c.accessPolicyMenu(context.Background(), core); err != nil {
 				t.Fatal(err)
 			}

@@ -100,7 +100,7 @@ func TestAccessMenuShowsModesAndLists(t *testing.T) {
 	if err := c.accessPolicyMenu(context.Background(), domain.CoreXray); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"默认模式", "添加白名单", "添加黑名单", "白名单（0 条）", "黑名单（0 条）"} {
+	for _, want := range []string{"默认模式", "模式与开关", "白名单管理", "黑名单管理", "0 条"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing %q in %s", want, out.String())
 		}
@@ -144,7 +144,7 @@ func TestAccessPolicyCardShowsEffectiveRuleOrder(t *testing.T) {
 
 func TestAccessMenuPreviewsEmptyWhitelistAndCancels(t *testing.T) {
 	c, out := accessCLI(t, domain.CoreXray)
-	c.reader = bufio.NewReader(strings.NewReader("1\n2\nq\n0\n"))
+	c.reader = bufio.NewReader(strings.NewReader("1\n2\nq\n0\n0\n"))
 	if err := c.accessPolicyMenu(context.Background(), domain.CoreXray); err != nil {
 		t.Fatal(err)
 	}
@@ -192,21 +192,24 @@ func TestAccessMenuReturnsWithoutExtraPause(t *testing.T) {
 	for _, core := range []string{domain.CoreXray, domain.CoreSingBox} {
 		for _, back := range []string{"0", "q", "Q"} {
 			for _, step := range []struct {
-				name  string
-				input string
+				name    string
+				input   string
+				returns int
 			}{
-				{"main", ""},
-				{"mode", "1\n"},
-				{"switch-confirm", "1\n3\n"},
-				{"add-white", "2\n"},
-				{"white-domain-match", "2\nexample.com\n"},
-				{"delete-white", "3\n"},
-				{"add-black", "4\n"},
-				{"black-domain-match", "4\nexample.com\n"},
-				{"delete-black", "5\n"},
-				{"clear-white", "6\n"},
-				{"clear-black", "7\n"},
-				{"confirm", "1\n2\n"},
+				{"main", "", 0},
+				{"mode", "1\n", 1},
+				{"switch-confirm", "1\n3\n", 2},
+				{"white-list", "2\n", 1},
+				{"add-white", "2\n1\n", 2},
+				{"white-domain-match", "2\n1\nexample.com\n", 2},
+				{"delete-white", "2\n2\n", 2},
+				{"black-list", "3\n", 1},
+				{"add-black", "3\n1\n", 2},
+				{"black-domain-match", "3\n1\nexample.com\n", 2},
+				{"delete-black", "3\n2\n", 2},
+				{"clear-white", "2\n3\n", 2},
+				{"clear-black", "3\n3\n", 2},
+				{"confirm", "1\n2\n", 2},
 			} {
 				t.Run(core+"/"+step.name+"/"+back, func(t *testing.T) {
 					c, _ := accessCLI(t, core)
@@ -219,10 +222,7 @@ func TestAccessMenuReturnsWithoutExtraPause(t *testing.T) {
 						t.Fatal(err)
 					}
 					sequence := "1\n" + step.input + back + "\n"
-					if step.input != "" {
-						sequence += "0\n"
-					}
-					sequence += "0\n"
+					sequence += strings.Repeat("0\n", step.returns+1)
 					var out menuTerminalBuffer
 					c.in, c.out, c.errOut, c.yes = input, &out, &out, false
 					c.reader = bufio.NewReader(menuByteReader{strings.NewReader(sequence)})

@@ -37,9 +37,9 @@ func TestAccessModeMenuSwitchPreservesSettingsAndAppliesSavedRules(t *testing.T)
 				disabled bool
 				mode     string
 			}{
-				{"1\n3\n1\n0\n", true, domain.AccessModeWhitelist},
-				{"1\n1\n1\n0\n", true, domain.AccessModeDefault},
-				{"1\n3\n1\n0\n", false, domain.AccessModeDefault},
+				{"1\n3\n1\n0\n0\n", true, domain.AccessModeWhitelist},
+				{"1\n1\n1\n0\n0\n", true, domain.AccessModeDefault},
+				{"1\n3\n1\n0\n0\n", false, domain.AccessModeDefault},
 			} {
 				out.Reset()
 				c.reader = bufio.NewReader(strings.NewReader(step.input))

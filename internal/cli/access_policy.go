@@ -1,11 +1,9 @@
 package cli
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -39,6 +37,12 @@ func accessEntryLabel(entry domain.AccessEntry) string {
 }
 
 func (c *commandSet) printAccessPolicy(policy domain.AccessPolicy) {
+	c.printAccessPolicyCard(policy)
+	c.printAccessEntries("白名单", policy.Whitelist)
+	c.printAccessEntries("黑名单", policy.Blacklist)
+}
+
+func (c *commandSet) printAccessPolicyCard(policy domain.AccessPolicy) {
 	var order []string
 	if !policy.Disabled && len(policy.Whitelist) > 0 {
 		order = append(order, "白名单放行")
@@ -60,14 +64,12 @@ func (c *commandSet) printAccessPolicy(policy domain.AccessPolicy) {
 		{"规则顺序", strings.Join(order, " → ")},
 		{"默认动作", defaultAction},
 	})
-	for _, item := range []struct {
-		name    string
-		entries []domain.AccessEntry
-	}{{"白名单", policy.Whitelist}, {"黑名单", policy.Blacklist}} {
-		fmt.Fprintf(c.out, "\n%s（%d 条）\n", item.name, len(item.entries))
-		for i, entry := range item.entries {
-			fmt.Fprintf(c.out, "%d. %s\n", i+1, accessEntryLabel(entry))
-		}
+}
+
+func (c *commandSet) printAccessEntries(name string, entries []domain.AccessEntry) {
+	fmt.Fprintf(c.out, "\n%s（%d 条）\n", name, len(entries))
+	for i, entry := range entries {
+		fmt.Fprintf(c.out, "%d. %s\n", i+1, accessEntryLabel(entry))
 	}
 }
 
@@ -225,190 +227,4 @@ func (c *commandSet) accessCommand() *cobra.Command {
 		return nil
 	}})
 	return cmd
-}
-
-func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
-	for {
-		policy, err := c.app.AccessPolicy(core)
-		if err != nil {
-			return err
-		}
-		c.clearScreen()
-		c.printPageHeader(core, "访问控制")
-		c.printAccessPolicy(policy)
-		fmt.Fprintln(c.out)
-		c.printMenuChoice("1", "切换访问模式")
-		c.printMenuChoice("2", "添加白名单")
-		c.printMenuChoice("3", "删除白名单")
-		c.printMenuChoice("4", "添加黑名单")
-		c.printMenuChoice("5", "删除黑名单")
-		c.printMenuChoice("6", "清空白名单（同时退出仅允许白名单模式）")
-		c.printMenuChoice("7", "清空黑名单")
-		c.printMenuChoice("0/q", "返回")
-		choice, err := c.chooseNumber("请选择", 0, 7, 0)
-		if err != nil {
-			return err
-		}
-		if choice == 0 {
-			return nil
-		}
-		next := policy
-		switchChanged := false
-		confirmation := "应用访问策略？白名单优先，明确允许的私网目标也会放行。"
-		success := "访问策略已更新。"
-		if choice == 1 {
-			c.clearScreen()
-			c.printPageHeader(core, "访问控制", "切换访问模式")
-			c.printLabeledCard("当前模式", [][2]string{{"访问控制", accessSwitchLabel(policy)}, {"访问模式", accessModeLabel(policy.EffectiveMode())}})
-			modes := []string{domain.AccessModeDefault, domain.AccessModeWhitelist}
-			defaultChoice := 1
-			for i, mode := range modes {
-				label := accessModeLabel(mode)
-				if mode == policy.EffectiveMode() {
-					label += "（当前）"
-					defaultChoice = i + 1
-				}
-				c.printMenuChoice(strconv.Itoa(i+1), label)
-			}
-			switchAction := "关闭访问控制（保留模式和名单）"
-			if policy.Disabled {
-				switchAction = "启用访问控制（应用保存的模式和名单）"
-			}
-			c.printMenuChoice("3", switchAction)
-			c.printMenuChoice("0/q", "返回")
-			selected, e := c.chooseNumberCancelable("请选择访问模式或开关", 1, len(modes)+1, defaultChoice)
-			if errors.Is(e, errReturnToMenu) {
-				continue
-			}
-			if e != nil {
-				return e
-			}
-			if selected == len(modes)+1 {
-				switchChanged = true
-				next.Disabled = !policy.Disabled
-				confirmation = "关闭访问控制？保留模式和两份名单，恢复原有拦截规则。"
-				if !next.Disabled {
-					confirmation = "启用访问控制？按保存的模式和两份名单应用规则。"
-				}
-				success = "访问控制" + accessSwitchLabel(next) + "。"
-			} else {
-				next.Mode = modes[selected-1]
-			}
-		} else {
-			entries := &next.Whitelist
-			listName := "白名单"
-			if choice == 4 || choice == 5 || choice == 7 {
-				entries = &next.Blacklist
-				listName = "黑名单"
-			}
-			c.clearScreen()
-			if choice == 6 || choice == 7 {
-				key := "white"
-				if choice == 7 {
-					key = "black"
-				}
-				count := len(*entries)
-				next, err = policy.ClearList(key)
-				if err != nil {
-					return err
-				}
-				if reflect.DeepEqual(policy, next) {
-					c.printPageHeader(core, "访问控制", "清空"+listName)
-					fmt.Fprintln(c.out, "当前名单已为空，无需修改。")
-					c.pauseForMenu()
-					continue
-				}
-				confirmation = "清空" + listName + "的全部 " + strconv.Itoa(count) + " 条规则并应用？"
-				if policy.EffectiveMode() == domain.AccessModeWhitelist && choice == 6 {
-					confirmation += "将退出仅允许白名单模式，切回默认模式。"
-				}
-				success = listName + "已清空。"
-			} else if choice == 2 || choice == 4 {
-				c.printPageHeader(core, "访问控制", "添加"+listName)
-				c.printLabeledCard("规则说明", [][2]string{
-					{"支持目标", "域名、单个 IP 或 CIDR 网段"},
-					{"域名匹配", "默认包括子域名，可选择精确匹配"},
-					{"返回", "输入 0/q 返回访问控制"},
-				})
-				value, e := c.askDefaultCancelable("域名、IP 或 CIDR 网段", "")
-				if errors.Is(e, errReturnToMenu) || value == "0" {
-					continue
-				}
-				if e != nil {
-					return e
-				}
-				entry, e := domain.ParseAccessEntry(value, false)
-				if e != nil {
-					c.printMenuError(e)
-					c.pauseForMenu()
-					continue
-				}
-				if entry.Type == domain.AccessEntryDomain {
-					c.clearScreen()
-					c.printPageHeader(core, "访问控制", "添加"+listName, "域名匹配")
-					c.printLabeledCard("目标规则", [][2]string{{"名单", listName}, {"域名", entry.Value}})
-					c.printMenuChoice("1", "域名及其全部子域名（默认）")
-					c.printMenuChoice("2", "仅完整域名")
-					c.printMenuChoice("0/q", "返回")
-					selected, e := c.chooseNumberCancelable("请选择域名匹配方式", 1, 2, 1)
-					if errors.Is(e, errReturnToMenu) {
-						continue
-					}
-					if e != nil {
-						return e
-					}
-					entry.IncludeSubdomains = selected == 1
-				}
-				*entries = append(*entries, entry)
-			} else {
-				c.printPageHeader(core, "访问控制", "删除"+listName)
-				c.printLabeledCard("当前名单", [][2]string{{"名单", listName}, {"规则数量", strconv.Itoa(len(*entries)) + " 条"}})
-				if len(*entries) == 0 {
-					fmt.Fprintln(c.out, "当前名单为空。")
-					c.pauseForMenu()
-					continue
-				}
-				for i, entry := range *entries {
-					c.printMenuChoice(strconv.Itoa(i+1), accessEntryLabel(entry))
-				}
-				c.printMenuChoice("0/q", "返回")
-				selected, e := c.chooseNumberCancelable("请选择要删除的规则", 1, len(*entries), 1)
-				if errors.Is(e, errReturnToMenu) {
-					continue
-				}
-				if e != nil {
-					return e
-				}
-				copied := append([]domain.AccessEntry(nil), (*entries)...)
-				*entries = append(copied[:selected-1], copied[selected:]...)
-			}
-		}
-		next, err = next.Normalize()
-		if err != nil {
-			c.printMenuError(err)
-			c.pauseForMenu()
-			continue
-		}
-		c.clearScreen()
-		c.printPageHeader(core, "访问控制", "确认修改")
-		c.printAccessPolicy(next)
-		if next.Disabled && !switchChanged {
-			confirmation += "访问控制保持关闭，本次仅保存设置修改。"
-		}
-		ok, err := c.confirmCancelable(confirmation)
-		if errors.Is(err, errReturnToMenu) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		if ok {
-			if err := c.app.SetAccessPolicy(ctx, core, next); err != nil {
-				c.printMenuError(err)
-			} else {
-				fmt.Fprintln(c.out, success)
-			}
-			c.pauseForMenu()
-		}
-	}
 }
