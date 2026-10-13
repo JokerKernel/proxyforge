@@ -29,6 +29,88 @@ func rootOf(t *testing.T, b []byte) map[string]any {
 	return root
 }
 
+func TestDefaultModeEnforcesBlacklistAndPreservesPriority(t *testing.T) {
+	for _, p := range []provider.CoreProvider{xray.New(), singbox.New()} {
+		for _, withWhite := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/white=%t", p.Name(), withWhite), func(t *testing.T) {
+				n := policyNode(p.Name())
+				original, err := p.RenderServer(n)
+				if err != nil {
+					t.Fatal(err)
+				}
+				next := n
+				next.AccessPolicy = domain.AccessPolicy{Mode: domain.AccessModeDefault, Blacklist: []domain.AccessEntry{
+					{Type: domain.AccessEntryDomain, Value: "denied.com", IncludeSubdomains: true},
+					{Type: domain.AccessEntryCIDR, Value: "192.168.1.0/24"},
+				}}
+				if withWhite {
+					next.AccessPolicy.Whitelist = append([]domain.AccessEntry(nil), next.AccessPolicy.Blacklist...)
+				}
+				next.AccessPolicySniffing, err = accesspolicy.SnapshotSniffing(original, n)
+				if err != nil {
+					t.Fatal(err)
+				}
+				handler := p.(provider.AccessPolicyProvider)
+				generated, err := handler.PatchAccessPolicy(original, n, next)
+				if err != nil {
+					t.Fatal(err)
+				}
+				root := rootOf(t, generated)
+				key := "route"
+				if p.Name() == domain.CoreXray {
+					key = "routing"
+				}
+				rules := root[key].(map[string]any)["rules"].([]any)
+				lastWhite, firstBlack, lastBlack := -1, -1, -1
+				blackCount := 0
+				for i, item := range rules {
+					rule := item.(map[string]any)
+					encoded, _ := json.Marshal(rule)
+					isWhite := rule["ruleTag"] == "white-domain" || rule["ruleTag"] == "white-ip" || strings.Contains(string(encoded), "access-white")
+					isBlack := rule["ruleTag"] == "black-domain" || rule["ruleTag"] == "black-ip" || strings.Contains(string(encoded), "access-black")
+					if isWhite {
+						lastWhite = i
+					}
+					if isBlack {
+						if firstBlack < 0 {
+							firstBlack = i
+						}
+						lastBlack = i
+						blackCount++
+						if p.Name() == domain.CoreXray && rule["outboundTag"] != "access-deny" || p.Name() == domain.CoreSingBox && rule["action"] != "reject" {
+							t.Fatal("blacklist rule does not reject")
+						}
+					}
+					if rule["ruleTag"] == "access-final" {
+						t.Fatal("default mode generated a final deny")
+					}
+				}
+				wantCount := 1
+				if p.Name() == domain.CoreXray {
+					wantCount = 2
+				}
+				if blackCount != wantCount || firstBlack <= lastWhite || (lastWhite >= 0) != withWhite {
+					t.Fatalf("white/black rule priority mismatch: white=%d black=%d count=%d", lastWhite, firstBlack, blackCount)
+				}
+				originalRules := rootOf(t, original)[key].(map[string]any)["rules"].([]any)
+				if !reflect.DeepEqual(rules[lastBlack+1:], originalRules) {
+					t.Fatal("original blocking and relay rules must follow blacklist unchanged")
+				}
+				blacklist := next
+				blacklist.AccessPolicy.Mode = domain.AccessModeBlacklist
+				equivalent, err := handler.PatchAccessPolicy(generated, next, blacklist)
+				if err != nil || !reflect.DeepEqual(rootOf(t, equivalent), root) {
+					t.Fatalf("default and blacklist modes differ: %v", err)
+				}
+				restored, err := handler.PatchAccessPolicy(generated, next, n)
+				if err != nil || !reflect.DeepEqual(rootOf(t, restored), rootOf(t, original)) {
+					t.Fatalf("removing default policy did not restore original rules/sniffing: %v", err)
+				}
+			})
+		}
+	}
+}
+
 func TestAccessRulesPreserveRelayAndFallbackAndRestoreOriginal(t *testing.T) {
 	for _, p := range []provider.CoreProvider{xray.New(), singbox.New()} {
 		t.Run(p.Name(), func(t *testing.T) {

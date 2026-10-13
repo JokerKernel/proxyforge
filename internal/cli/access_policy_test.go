@@ -107,6 +107,41 @@ func TestAccessMenuShowsModesAndLists(t *testing.T) {
 	}
 }
 
+func TestAccessPolicyCardShowsEffectiveRuleOrder(t *testing.T) {
+	entries := []domain.AccessEntry{{Type: domain.AccessEntryIP, Value: "192.168.1.1"}}
+	for _, test := range []struct {
+		name   string
+		policy domain.AccessPolicy
+		order  string
+	}{
+		{"default-empty", domain.AccessPolicy{}, "原有拦截 → 其余放行"},
+		{"default-white", domain.AccessPolicy{Whitelist: entries}, "白名单放行 → 原有拦截 → 其余放行"},
+		{"default-black", domain.AccessPolicy{Blacklist: entries}, "黑名单拒绝 → 原有拦截 → 其余放行"},
+		{"default-both", domain.AccessPolicy{Whitelist: entries, Blacklist: entries}, "白名单放行 → 黑名单拒绝 → 原有拦截 → 其余放行"},
+		{"blacklist-empty", domain.AccessPolicy{Mode: domain.AccessModeBlacklist}, "原有拦截 → 其余放行"},
+		{"blacklist-both", domain.AccessPolicy{Mode: domain.AccessModeBlacklist, Whitelist: entries, Blacklist: entries}, "白名单放行 → 黑名单拒绝 → 原有拦截 → 其余放行"},
+		{"whitelist-empty", domain.AccessPolicy{Mode: domain.AccessModeWhitelist}, "原有拦截 → 其余拒绝"},
+		{"whitelist-black-only", domain.AccessPolicy{Mode: domain.AccessModeWhitelist, Blacklist: entries}, "原有拦截 → 其余拒绝"},
+		{"whitelist-both", domain.AccessPolicy{Mode: domain.AccessModeWhitelist, Whitelist: entries, Blacklist: entries}, "白名单放行 → 原有拦截 → 其余拒绝"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var out bytes.Buffer
+			c := commandSet{out: &out}
+			c.printAccessPolicy(test.policy)
+			for _, line := range strings.Split(out.String(), "\n") {
+				if strings.Contains(line, "规则顺序") {
+					got := strings.TrimSpace(strings.TrimSuffix(strings.SplitN(line, "规则顺序", 2)[1], "│"))
+					if got != test.order {
+						t.Fatalf("rule order=%q, want %q", got, test.order)
+					}
+					return
+				}
+			}
+			t.Fatalf("rule order missing: %s", out.String())
+		})
+	}
+}
+
 func TestAccessMenuPreviewsEmptyWhitelistAndCancels(t *testing.T) {
 	c, out := accessCLI(t, domain.CoreXray)
 	c.reader = bufio.NewReader(strings.NewReader("1\n2\nq\n0\n"))

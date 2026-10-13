@@ -2,6 +2,24 @@ package domain
 
 import "testing"
 
+func TestAccessPolicyActiveWithOnlyBlacklist(t *testing.T) {
+	for _, mode := range []string{"", AccessModeDefault, AccessModeBlacklist, AccessModeWhitelist} {
+		t.Run(mode, func(t *testing.T) {
+			policy := AccessPolicy{Mode: mode}
+			if policy.Active() != (mode == AccessModeWhitelist) {
+				t.Fatal("empty policy must only activate in whitelist mode")
+			}
+			policy.Blacklist = []AccessEntry{{Type: AccessEntryDomain, Value: "denied.com"}}
+			if !policy.Active() {
+				t.Fatal("blacklist-only policy must activate")
+			}
+			if policy.BlacklistEnabled() != (mode != AccessModeWhitelist) {
+				t.Fatal("blacklist must apply in default and blacklist modes")
+			}
+		})
+	}
+}
+
 func TestAccessEntryNormalization(t *testing.T) {
 	for _, test := range []struct {
 		input string

@@ -272,7 +272,7 @@ func applyXray(root map[string]any, n domain.NodeSpec, p domain.AccessPolicy) er
 		}
 		add(p.Whitelist, directTag, "", "white")
 	}
-	if p.EffectiveMode() == domain.AccessModeBlacklist {
+	if p.BlacklistEnabled() {
 		add(p.Blacklist, denyTag, "", "black")
 	}
 	tail := list(route["rules"])
@@ -367,7 +367,7 @@ func applySingBox(root map[string]any, n domain.NodeSpec, p domain.AccessPolicy)
 		}
 		white("direct", "")
 	}
-	if p.EffectiveMode() == domain.AccessModeBlacklist && len(p.Blacklist) > 0 {
+	if p.BlacklistEnabled() && len(p.Blacklist) > 0 {
 		front = append(front, logical([]any{scope(), map[string]any{"rule_set": []string{blackSet}}}, "reject"))
 	}
 	tail := list(route["rules"])

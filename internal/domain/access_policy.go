@@ -35,7 +35,11 @@ func (p AccessPolicy) EffectiveMode() string {
 }
 
 func (p AccessPolicy) Active() bool {
-	return len(p.Whitelist) > 0 || p.EffectiveMode() == AccessModeWhitelist || (p.EffectiveMode() == AccessModeBlacklist && len(p.Blacklist) > 0)
+	return len(p.Whitelist) > 0 || p.EffectiveMode() == AccessModeWhitelist || (p.BlacklistEnabled() && len(p.Blacklist) > 0)
+}
+
+func (p AccessPolicy) BlacklistEnabled() bool {
+	return p.EffectiveMode() == AccessModeDefault || p.EffectiveMode() == AccessModeBlacklist
 }
 
 // ParseAccessEntry accepts a destination, without URL scheme, path or port.

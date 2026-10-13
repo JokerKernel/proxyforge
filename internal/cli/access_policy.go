@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"proxyforge/internal/domain"
@@ -32,13 +33,24 @@ func accessEntryLabel(entry domain.AccessEntry) string {
 }
 
 func (c *commandSet) printAccessPolicy(policy domain.AccessPolicy) {
-	defaultAction := "放行；黑名单仅在黑名单模式生效。"
+	var order []string
+	if len(policy.Whitelist) > 0 {
+		order = append(order, "白名单放行")
+	}
+	if policy.BlacklistEnabled() && len(policy.Blacklist) > 0 {
+		order = append(order, "黑名单拒绝")
+	}
+	order = append(order, "原有拦截")
+	defaultAction := "放行"
+	finalAction := "其余放行"
 	if policy.EffectiveMode() == domain.AccessModeWhitelist {
 		defaultAction = "拒绝；白名单为空时全部拒绝。"
+		finalAction = "其余拒绝"
 	}
+	order = append(order, finalAction)
 	c.printLabeledCard("访问策略", [][2]string{
 		{"访问模式", accessModeLabel(policy.EffectiveMode())},
-		{"规则顺序", "白名单放行 → 黑名单拒绝 → 原有拦截 → 默认动作"},
+		{"规则顺序", strings.Join(order, " → ")},
 		{"默认动作", defaultAction},
 	})
 	for _, item := range []struct {

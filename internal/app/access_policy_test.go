@@ -15,6 +15,63 @@ import (
 	"proxyforge/internal/system"
 )
 
+func TestDefaultBlacklistOnlyAppliesAndRestoresConfig(t *testing.T) {
+	for _, core := range []string{domain.CoreXray, domain.CoreSingBox} {
+		t.Run(core, func(t *testing.T) {
+			runner := &fakeRunner{port: freePort(t)}
+			a, _ := testApp(t, runner)
+			ctx := context.Background()
+			if _, err := a.Generate(ctx, core, domain.GenerateOptions{Server: "server.example.com", Port: runner.port, SNI: "example.com", StandardConfig: true}); err != nil {
+				t.Fatal(err)
+			}
+			p, _ := a.Registry.Get(core)
+			path := a.Layout.Resolve(p.ConfigPath())
+			original, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := a.AddAccessEntry(ctx, core, "black", "denied.com", false); err != nil {
+				t.Fatal(err)
+			}
+			current, err := a.Store.Load(core)
+			if err != nil || current.AccessPolicy.EffectiveMode() != domain.AccessModeDefault || len(current.AccessPolicy.Blacklist) != 1 {
+				t.Fatalf("default blacklist not persisted: %#v, err=%v", current.AccessPolicy, err)
+			}
+			config, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tag := "black-domain"
+			if core == domain.CoreSingBox {
+				tag = "access-black"
+			}
+			if !bytes.Contains(config, []byte(tag)) || current.ConfigSHA256 != system.SHA256(config) {
+				t.Fatal("adding a blacklist in default mode did not update managed config")
+			}
+			if core == domain.CoreXray && len(current.AccessPolicySniffing) == 0 {
+				t.Fatal("default blacklist activation did not capture original sniffing")
+			}
+			if err := a.RemoveAccessEntry(ctx, core, "black", "denied.com", false); err != nil {
+				t.Fatal(err)
+			}
+			config, err = os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var before, after any
+			if err := json.Unmarshal(original, &before); err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(config, &after); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(before, after) {
+				t.Fatal("removing last blacklist entry did not restore original config")
+			}
+		})
+	}
+}
+
 func TestAccessPolicyLifecyclePersistsAcrossNodeAndLinkChanges(t *testing.T) {
 	for _, core := range []string{domain.CoreXray, domain.CoreSingBox} {
 		t.Run(core, func(t *testing.T) {
