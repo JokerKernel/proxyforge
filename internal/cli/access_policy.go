@@ -32,12 +32,15 @@ func accessEntryLabel(entry domain.AccessEntry) string {
 }
 
 func (c *commandSet) printAccessPolicy(policy domain.AccessPolicy) {
-	fmt.Fprintf(c.out, "访问模式：%s\n规则顺序：白名单放行 → 黑名单拒绝 → 原有拦截 → 默认动作\n", accessModeLabel(policy.EffectiveMode()))
+	defaultAction := "放行；黑名单仅在黑名单模式生效。"
 	if policy.EffectiveMode() == domain.AccessModeWhitelist {
-		fmt.Fprintln(c.out, "默认动作：拒绝；白名单为空时全部拒绝。")
-	} else {
-		fmt.Fprintln(c.out, "默认动作：放行；黑名单仅在黑名单模式生效。")
+		defaultAction = "拒绝；白名单为空时全部拒绝。"
 	}
+	c.printLabeledCard("访问策略", [][2]string{
+		{"访问模式", accessModeLabel(policy.EffectiveMode())},
+		{"规则顺序", "白名单放行 → 黑名单拒绝 → 原有拦截 → 默认动作"},
+		{"默认动作", defaultAction},
+	})
 	for _, item := range []struct {
 		name    string
 		entries []domain.AccessEntry
@@ -180,6 +183,9 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 		}
 		next := policy
 		if choice == 1 {
+			c.clearScreen()
+			c.printPageHeader(core, "访问控制", "切换访问模式")
+			c.printLabeledCard("当前模式", [][2]string{{"访问模式", accessModeLabel(policy.EffectiveMode())}})
 			modes := []string{domain.AccessModeDefault, domain.AccessModeWhitelist, domain.AccessModeBlacklist}
 			defaultChoice := 1
 			for i, mode := range modes {
@@ -190,6 +196,7 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 				}
 				c.printMenuChoice(strconv.Itoa(i+1), label)
 			}
+			c.printMenuChoice("0/q", "返回")
 			selected, e := c.chooseNumberCancelable("请选择访问模式", 1, 3, defaultChoice)
 			if errors.Is(e, errReturnToMenu) {
 				continue
@@ -200,12 +207,21 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 			next.Mode = modes[selected-1]
 		} else {
 			entries := &next.Whitelist
+			listName := "白名单"
 			if choice >= 4 {
 				entries = &next.Blacklist
+				listName = "黑名单"
 			}
+			c.clearScreen()
 			if choice == 2 || choice == 4 {
+				c.printPageHeader(core, "访问控制", "添加"+listName)
+				c.printLabeledCard("规则说明", [][2]string{
+					{"支持目标", "域名、单个 IP 或 CIDR 网段"},
+					{"域名匹配", "默认包括子域名，可选择精确匹配"},
+					{"返回", "输入 0/q 返回访问控制"},
+				})
 				value, e := c.askDefaultCancelable("域名、IP 或 CIDR 网段", "")
-				if errors.Is(e, errReturnToMenu) {
+				if errors.Is(e, errReturnToMenu) || value == "0" {
 					continue
 				}
 				if e != nil {
@@ -218,8 +234,12 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 					continue
 				}
 				if entry.Type == domain.AccessEntryDomain {
+					c.clearScreen()
+					c.printPageHeader(core, "访问控制", "添加"+listName, "域名匹配")
+					c.printLabeledCard("目标规则", [][2]string{{"名单", listName}, {"域名", entry.Value}})
 					c.printMenuChoice("1", "域名及其全部子域名（默认）")
 					c.printMenuChoice("2", "仅完整域名")
+					c.printMenuChoice("0/q", "返回")
 					selected, e := c.chooseNumberCancelable("请选择域名匹配方式", 1, 2, 1)
 					if errors.Is(e, errReturnToMenu) {
 						continue
@@ -231,6 +251,8 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 				}
 				*entries = append(*entries, entry)
 			} else {
+				c.printPageHeader(core, "访问控制", "删除"+listName)
+				c.printLabeledCard("当前名单", [][2]string{{"名单", listName}, {"规则数量", strconv.Itoa(len(*entries)) + " 条"}})
 				if len(*entries) == 0 {
 					fmt.Fprintln(c.out, "当前名单为空。")
 					c.pauseForMenu()
@@ -239,6 +261,7 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 				for i, entry := range *entries {
 					c.printMenuChoice(strconv.Itoa(i+1), accessEntryLabel(entry))
 				}
+				c.printMenuChoice("0/q", "返回")
 				selected, e := c.chooseNumberCancelable("请选择要删除的规则", 1, len(*entries), 1)
 				if errors.Is(e, errReturnToMenu) {
 					continue
@@ -256,6 +279,8 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 			c.pauseForMenu()
 			continue
 		}
+		c.clearScreen()
+		c.printPageHeader(core, "访问控制", "确认修改")
 		c.printAccessPolicy(next)
 		ok, err := c.confirmCancelable("应用访问策略？白名单优先，明确允许的私网目标也会放行。")
 		if errors.Is(err, errReturnToMenu) {

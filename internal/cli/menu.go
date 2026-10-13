@@ -236,6 +236,7 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 		}
 
 		c.clearScreen()
+		shouldPause := true
 		switch {
 		case choice == 1:
 			err = c.dnsSettingsMenu(ctx, core)
@@ -248,6 +249,7 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 		case choice == next+1:
 			err = c.resetChoice(ctx, core, 2)
 		case choice == accessChoice:
+			shouldPause = false
 			err = c.accessPolicyMenu(ctx, core)
 		case choice == next+2:
 			err = c.retestSNICandidates(ctx, core)
@@ -258,7 +260,9 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 		if err != nil {
 			c.printMenuError(err)
 		}
-		c.pauseForMenu()
+		if shouldPause || err != nil {
+			c.pauseForMenu()
+		}
 	}
 }
 

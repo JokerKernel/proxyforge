@@ -6,6 +6,8 @@ import (
 	"context"
 	"io"
 	"os"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -112,11 +114,75 @@ func TestAccessMenuPreviewsEmptyWhitelistAndCancels(t *testing.T) {
 	if err := c.accessPolicyMenu(context.Background(), domain.CoreXray); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "默认动作：拒绝；白名单为空时全部拒绝") {
+	if !strings.Contains(out.String(), "拒绝；白名单为空时全部拒绝") {
 		t.Fatal("empty whitelist effect not shown before confirmation")
 	}
 	policy, err := c.app.AccessPolicy(domain.CoreXray)
 	if err != nil || policy.EffectiveMode() != domain.AccessModeDefault {
 		t.Fatal("cancelled mode change was applied")
+	}
+}
+
+func TestAccessMenuReturnsWithoutExtraPause(t *testing.T) {
+	t.Setenv("TERM", "xterm")
+	input, err := os.Open("/dev/null")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.Close()
+	for _, core := range []string{domain.CoreXray, domain.CoreSingBox} {
+		for _, back := range []string{"0", "q", "Q"} {
+			for _, step := range []struct {
+				name  string
+				input string
+			}{
+				{"main", ""},
+				{"mode", "1\n"},
+				{"add-white", "2\n"},
+				{"white-domain-match", "2\nexample.com\n"},
+				{"delete-white", "3\n"},
+				{"add-black", "4\n"},
+				{"black-domain-match", "4\nexample.com\n"},
+				{"delete-black", "5\n"},
+				{"confirm", "1\n2\n"},
+			} {
+				t.Run(core+"/"+step.name+"/"+back, func(t *testing.T) {
+					c, _ := accessCLI(t, core)
+					before := domain.AccessPolicy{
+						Mode:      domain.AccessModeDefault,
+						Whitelist: []domain.AccessEntry{{Type: domain.AccessEntryIP, Value: "192.168.1.1"}},
+						Blacklist: []domain.AccessEntry{{Type: domain.AccessEntryIP, Value: "192.168.1.2"}},
+					}
+					if err := c.app.SetAccessPolicy(context.Background(), core, before); err != nil {
+						t.Fatal(err)
+					}
+					accessChoice := 6
+					if c.coreHasFallback(core) {
+						accessChoice++
+					}
+					sequence := strconv.Itoa(accessChoice) + "\n" + step.input + back + "\n"
+					if step.input != "" {
+						sequence += "0\n"
+					}
+					sequence += "0\n"
+					var out menuTerminalBuffer
+					c.in, c.out, c.errOut, c.yes = input, &out, &out, false
+					c.reader = bufio.NewReader(menuByteReader{strings.NewReader(sequence)})
+					if !c.interactiveUI() {
+						t.Fatal("test must exercise terminal pause behavior")
+					}
+					if err := c.modifyConfigMenu(context.Background(), core); err != nil {
+						t.Fatalf("return consumed input intended for the parent menu: %v", err)
+					}
+					if strings.Contains(out.String(), "按 Enter 返回菜单") || strings.Contains(out.String(), "[错误]") {
+						t.Fatalf("return unexpectedly paused or failed: %s", out.String())
+					}
+					after, err := c.app.AccessPolicy(core)
+					if err != nil || !reflect.DeepEqual(before, after) {
+						t.Fatalf("cancelled change modified policy: %#v, err=%v", after, err)
+					}
+				})
+			}
+		}
 	}
 }
