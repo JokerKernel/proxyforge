@@ -134,6 +134,24 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 “服务端配置 → 修改配置 → 访问控制”可以切换模式、添加和删除白名单/黑名单。策略按内核独立管理，适用于该内核的普通用户、复用主入站的落地用户、独立 TLS 落地接入和中转线路；REALITY 未认证回落的 SNI/Host 防护继续使用原来的规则。
 
+访问模式、白名单和黑名单保存在独立配置文件中：Xray 使用 `/etc/proxyforge/access/xray.json`，sing-box 使用 `/etc/proxyforge/access/sing-box.json`。文件权限为 `0600`，目录权限为 `0700`。节点状态文件不再保存 `access_policy`，也不读取或迁移旧字段。独立文件不存在时使用默认模式和空名单；文件损坏、规则无效或权限不安全时会报错。
+
+文件格式如下，两份名单为空时也保留数组：
+
+```json
+{
+  "mode": "blacklist",
+  "whitelist": [
+    { "type": "domain", "value": "example.com", "include_subdomains": true }
+  ],
+  "blacklist": [
+    { "type": "cidr", "value": "192.168.1.0/24" }
+  ]
+}
+```
+
+菜单或命令行修改会同步更新内核运行配置。手动编辑独立文件后，需要重新生成服务端配置才能应用；也可以在首次生成节点前准备此文件。配置更新失败时保持原有访问控制文件，清理或卸载对应内核时会一并删除。
+
 规则优先级固定如下：
 
 1. 命中白名单立即放行；普通用户及落地用户走当前 `direct`，中转用户继续走该线路指定的落地。

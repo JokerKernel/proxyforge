@@ -17,6 +17,9 @@ func (l Layout) Resolve(path string) string {
 func (l Layout) StatePath(core string) string {
 	return l.Resolve("/var/lib/proxyforge/state/" + core + ".json")
 }
+func (l Layout) AccessPolicyPath(core string) string {
+	return l.Resolve("/etc/proxyforge/access/" + core + ".json")
+}
 func (l Layout) TrustPath(core string) string {
 	return l.Resolve("/var/lib/proxyforge/trust/" + core + ".sha256")
 }

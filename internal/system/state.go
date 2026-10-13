@@ -40,8 +40,9 @@ func (s StateStore) Load(core string) (domain.NodeSpec, error) {
 	if security != domain.LandingSecurityReality && security != domain.LandingSecurityTLS {
 		return n, fmt.Errorf("状态文件安全协议无效: %s", path)
 	}
-	if _, err := n.AccessPolicy.Normalize(); err != nil {
-		return n, fmt.Errorf("状态文件访问策略无效: %w", err)
+	n.AccessPolicy, err = (AccessPolicyStore{Layout: s.Layout}).Load(core)
+	if err != nil {
+		return n, err
 	}
 	return n, nil
 }
@@ -59,13 +60,32 @@ func (s StateStore) Save(n domain.NodeSpec) error {
 	if err := os.Chmod(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	return AtomicWrite(path, b, 0600)
+	policyPath := s.Layout.AccessPolicyPath(n.Core)
+	oldPolicy, hadPolicy, err := readAccessPolicyFile(policyPath)
+	if err != nil {
+		return err
+	}
+	if err := (AccessPolicyStore{Layout: s.Layout}).Save(n.Core, n.AccessPolicy); err != nil {
+		return err
+	}
+	if err := AtomicWrite(path, b, 0600); err != nil {
+		var restoreErr error
+		if hadPolicy {
+			restoreErr = AtomicWrite(policyPath, oldPolicy, 0600)
+		} else {
+			restoreErr = removeAccessPolicyFile(policyPath)
+		}
+		if restoreErr != nil {
+			return fmt.Errorf("%v；且恢复访问控制配置失败: %w", err, restoreErr)
+		}
+		return err
+	}
+	return nil
 }
 
 func (s StateStore) Delete(core string) error {
-	err := os.Remove(s.Layout.StatePath(core))
-	if os.IsNotExist(err) {
-		return nil
-	}
-	return err
+	return errors.Join(
+		removeAccessPolicyFile(s.Layout.StatePath(core)),
+		(AccessPolicyStore{Layout: s.Layout}).Delete(core),
+	)
 }

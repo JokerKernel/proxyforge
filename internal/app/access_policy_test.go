@@ -148,6 +148,10 @@ func TestAccessPolicyRollbackAndManualConfigPreservation(t *testing.T) {
 				t.Fatal(err)
 			}
 			before, _ := os.ReadFile(path)
+			beforePolicy, err := os.ReadFile(a.Layout.AccessPolicyPath(core))
+			if err != nil {
+				t.Fatal(err)
+			}
 			runner.failRestart = true
 			if err := a.SetAccessMode(ctx, core, domain.AccessModeWhitelist); err == nil {
 				t.Fatal("expected injected restart failure")
@@ -157,7 +161,8 @@ func TestAccessPolicyRollbackAndManualConfigPreservation(t *testing.T) {
 				t.Fatal(err)
 			}
 			after, _ := os.ReadFile(path)
-			if !bytes.Equal(before, after) || !reflect.DeepEqual(old, afterState) {
+			afterPolicy, err := os.ReadFile(a.Layout.AccessPolicyPath(core))
+			if err != nil || !bytes.Equal(beforePolicy, afterPolicy) || !bytes.Equal(before, after) || !reflect.DeepEqual(old, afterState) {
 				t.Fatal("policy failure changed prior config/state")
 			}
 			if err := a.RemoveAccessEntry(ctx, core, "white", "192.168.1.0/24", false); err != nil {
@@ -184,6 +189,45 @@ func TestAccessPolicyRollbackAndManualConfigPreservation(t *testing.T) {
 			}
 			if err := a.SetAccessMode(ctx, core, "other"); err == nil {
 				t.Fatal("accepted unknown mode")
+			}
+		})
+	}
+}
+
+func TestGenerateReadsStandaloneAccessPolicyBeforeFirstNode(t *testing.T) {
+	for _, core := range []string{domain.CoreXray, domain.CoreSingBox} {
+		t.Run(core, func(t *testing.T) {
+			runner := &fakeRunner{port: freePort(t)}
+			a, _ := testApp(t, runner)
+			policy := domain.AccessPolicy{Mode: domain.AccessModeWhitelist, Whitelist: []domain.AccessEntry{
+				{Type: domain.AccessEntryDomain, Value: "example.com", IncludeSubdomains: true},
+			}}
+			store := system.AccessPolicyStore{Layout: a.Layout}
+			if err := store.Save(core, policy); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(a.Layout.AccessPolicyPath(core))
+			if err != nil {
+				t.Fatal(err)
+			}
+			opts := domain.GenerateOptions{Server: "server.example.com", Port: runner.port, SNI: "example.com", StandardConfig: true}
+			runner.failRestart = true
+			if _, err := a.Generate(context.Background(), core, opts); err == nil {
+				t.Fatal("expected injected service restart failure")
+			}
+			after, err := os.ReadFile(a.Layout.AccessPolicyPath(core))
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatal("failed first generation changed the preconfigured access policy")
+			}
+			runner.failRestart = false
+			n, err := a.Generate(context.Background(), core, opts)
+			if err != nil || !reflect.DeepEqual(n.AccessPolicy, policy) {
+				t.Fatalf("first node did not use standalone policy: %#v err=%v", n.AccessPolicy, err)
+			}
+			p, _ := a.Registry.Get(core)
+			config, err := os.ReadFile(a.Layout.Resolve(p.ConfigPath()))
+			if err != nil || !bytes.Contains(config, []byte("example.com")) || !bytes.Contains(config, []byte("access-")) {
+				t.Fatalf("first generation omitted access policy: %s err=%v", config, err)
 			}
 		})
 	}

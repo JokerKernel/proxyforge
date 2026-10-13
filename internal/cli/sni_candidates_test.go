@@ -22,6 +22,7 @@ func TestRetestSNICandidatesCanRunAgainWithoutChangingState(t *testing.T) {
 	wantState := domain.NodeSpec{
 		ManagedBy: "proxyforge", Core: domain.CoreXray, Server: "server.example.com",
 		SNI: "current.example.com", Target: "current.example.com:443",
+		AccessPolicy: domain.AccessPolicy{Mode: domain.AccessModeDefault},
 	}
 	if err := store.Save(wantState); err != nil {
 		t.Fatal(err)
