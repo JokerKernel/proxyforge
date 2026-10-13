@@ -299,13 +299,21 @@ func (c *commandSet) confirmInstall(core string, opts install.Options) (bool, er
 }
 
 func (c *commandSet) confirmCleanup(target string) (bool, error) {
+	permanentDeletes := []string{
+		"配置目录、运行数据和文件日志",
+		"ProxyForge 节点状态、访问控制、落地与中转记录",
+		"安装偏好、信任记录、证书和历史备份",
+	}
+	prerequisite := "目标内核的二进制、服务及开机启动必须已清除"
+	if target == "all" {
+		permanentDeletes = append(permanentDeletes, "整个 /var/lib/proxyforge/，包括其中的自定义文件和目录")
+		prerequisite = "Xray 和 sing-box 两个内核均须已卸载；任一内核仍存在时拒绝清理"
+	}
 	c.printConfirmationPanel(
 		"危险操作确认：清理卸载残留",
 		[]string{"清理目标：" + target},
-		confirmationSection{title: "永久删除", items: []string{
-			"配置目录、运行数据和文件日志",
-			"ProxyForge 状态、信任记录和历史备份",
-		}},
+		confirmationSection{title: "执行条件", items: []string{prerequisite}},
+		confirmationSection{title: "永久删除", items: permanentDeletes},
 		confirmationSection{title: "数据保护", items: []string{
 			"此操作不会创建新备份",
 		}},

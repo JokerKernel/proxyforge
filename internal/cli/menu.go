@@ -270,22 +270,37 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 }
 
 func (c *commandSet) selectCore(ctx context.Context) (string, bool, error) {
-	c.clearScreen()
-	c.printProxyForgeHeader()
-	c.printMenuStatusChoice("1", "Xray-core", c.coreInstalled(ctx, domain.CoreXray))
-	c.printMenuStatusChoice("2", "sing-box", c.coreInstalled(ctx, domain.CoreSingBox))
-	c.printMenuChoice("0/q", "退出")
-	choice, err := c.chooseNumber("请选择", 0, 2, 1)
-	if err != nil {
-		return "", false, err
-	}
-	switch choice {
-	case 1:
-		return domain.CoreXray, true, nil
-	case 2:
-		return domain.CoreSingBox, true, nil
-	default:
-		return "", false, nil
+	for {
+		c.clearScreen()
+		c.printProxyForgeHeader()
+		c.printMenuStatusChoice("1", "Xray-core", c.coreInstalled(ctx, domain.CoreXray))
+		c.printMenuStatusChoice("2", "sing-box", c.coreInstalled(ctx, domain.CoreSingBox))
+		c.printMenuChoice("3", "清理全部卸载残留（两个内核均已卸载后使用）")
+		c.printMenuChoice("0/q", "退出")
+		choice, err := c.chooseNumber("请选择", 0, 3, 1)
+		if err != nil {
+			return "", false, err
+		}
+		switch choice {
+		case 1:
+			return domain.CoreXray, true, nil
+		case 2:
+			return domain.CoreSingBox, true, nil
+		case 3:
+			confirmed, err := c.confirmCleanup("all")
+			if errors.Is(err, errReturnToMenu) || (err == nil && !confirmed) {
+				continue
+			}
+			if err != nil {
+				return "", false, err
+			}
+			if err := c.app.Cleanup(ctx, "all"); err != nil {
+				c.printMenuError(err)
+			}
+			c.pauseForMenu()
+		default:
+			return "", false, nil
+		}
 	}
 }
 
