@@ -142,3 +142,12 @@ func TestConfirmCredentialOnlyResetPreservesTarget(t *testing.T) {
 		t.Fatalf("confirmed=%v output=%q", confirmed, out.String())
 	}
 }
+
+func TestTLSResetConfirmationExplainsCertificateChange(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{reader: bufio.NewReader(strings.NewReader("yes\n")), out: &out}
+	ok, err := c.confirmTLSReset(domain.CoreXray, domain.ResetOptions{RotateCertificate: true})
+	if err != nil || !ok || !strings.Contains(out.String(), "保留 UUID") || !strings.Contains(out.String(), "中转连接需要更新") {
+		t.Fatalf("ok=%v err=%v output=%s", ok, err, out.String())
+	}
+}

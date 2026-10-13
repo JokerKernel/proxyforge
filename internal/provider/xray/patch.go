@@ -38,6 +38,32 @@ func (*Provider) PatchServer(config []byte, old, next domain.NodeSpec, updateEnd
 	if err != nil {
 		return nil, err
 	}
+	if old.IsTLS() {
+		tls, err := xrayChildObject(stream, "tlsSettings", "Xray tlsSettings")
+		if err != nil {
+			return nil, err
+		}
+		if updateEndpoint {
+			if next.TLSCertificate == nil || old.TLSCertificate == nil {
+				return nil, fmt.Errorf("TLS 节点缺少证书")
+			}
+			certs, err := xrayObjectList(tls, "certificates", "Xray TLS certificates")
+			if err != nil {
+				return nil, err
+			}
+			matches := 0
+			for _, cert := range certs {
+				if cert["certificateFile"] == old.TLSCertificate.CertificateFile && cert["keyFile"] == old.TLSCertificate.KeyFile {
+					cert["certificateFile"], cert["keyFile"] = next.TLSCertificate.CertificateFile, next.TLSCertificate.KeyFile
+					matches++
+				}
+			}
+			if matches != 1 {
+				return nil, fmt.Errorf("受管 TLS 证书引用不唯一或不存在")
+			}
+		}
+		return marshalXray(root)
+	}
 	reality, err := xrayChildObject(stream, "realitySettings", "Xray realitySettings")
 	if err != nil {
 		return nil, err

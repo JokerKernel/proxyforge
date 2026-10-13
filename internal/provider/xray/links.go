@@ -26,7 +26,7 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 	}
 	oldNames, oldUUIDs, oldTags := xrayLinkIdentity(old)
 	for _, access := range old.LandingAccesses {
-		if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityReality && access.Enabled && countXrayClients(rawClients, access.UserName, access.UUID) != 1 {
+		if access.UsesPrimaryInbound() && access.Enabled && countXrayClients(rawClients, access.UserName, access.UUID) != 1 {
 			return nil, fmt.Errorf("现有 Xray 配置中落地接入 %q 的用户不唯一或不存在，拒绝修改", access.Name)
 		}
 	}
@@ -68,7 +68,7 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 		return nil
 	}
 	for _, access := range next.LandingAccesses {
-		if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityReality && access.Enabled {
+		if access.UsesPrimaryInbound() && access.Enabled {
 			if err := addClient(access.UserName, access.UUID); err != nil {
 				return nil, err
 			}
@@ -89,7 +89,7 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 	}
 	oldTLSInboundTags := map[string]bool{}
 	for _, access := range old.LandingAccesses {
-		if domain.NormalizeLandingSecurity(access.Security) != domain.LandingSecurityTLS {
+		if access.UsesPrimaryInbound() {
 			continue
 		}
 		tag := xrayLandingTLSInboundTag(access.Name)
@@ -111,7 +111,7 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 		inbounds = append(inbounds, object)
 	}
 	for _, access := range next.LandingAccesses {
-		if domain.NormalizeLandingSecurity(access.Security) != domain.LandingSecurityTLS || !access.Enabled {
+		if access.UsesPrimaryInbound() || !access.Enabled {
 			continue
 		}
 		tag := xrayLandingTLSInboundTag(access.Name)
@@ -240,7 +240,7 @@ func xrayLandingTLSInboundTag(name string) string { return domain.LandingTLSInbo
 func xrayLinkIdentity(n domain.NodeSpec) (map[string]bool, map[string]bool, map[string]bool) {
 	names, uuids, tags := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for _, access := range n.LandingAccesses {
-		if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityReality {
+		if access.UsesPrimaryInbound() {
 			names[access.UserName], uuids[access.UUID] = true, true
 		}
 	}

@@ -47,7 +47,7 @@ func (c *commandSet) landingAddCommand() *cobra.Command {
 	}}
 	cmd.Flags().StringVarP(&output, "output", "o", "", "兼容选项：将连接文本写入文件（默认输出到终端）")
 	cmd.Flags().BoolVar(&force, "force", false, "覆盖已有输出文件")
-	cmd.Flags().StringVar(&security, "security", domain.LandingSecurityReality, "落地安全协议：reality 或 tls")
+	cmd.Flags().StringVar(&security, "security", domain.LandingSecurityCurrent, "落地接入：current 复用当前主入站，reality 复用 REALITY 主入站，tls 创建独立 TLS 入站")
 	return cmd
 }
 
@@ -63,8 +63,8 @@ func (c *commandSet) landingListCommand() *cobra.Command {
 		}
 		for _, item := range items {
 			security := domain.NormalizeLandingSecurity(item.Security)
-			endpoint := "当前 REALITY 入站"
-			if security == domain.LandingSecurityTLS {
+			endpoint := "当前 " + strings.ToUpper(security) + " 入站"
+			if security == domain.LandingSecurityTLS && !item.UsesPrimaryInbound() {
 				endpoint = fmt.Sprintf("TLS :%d", item.Port)
 			}
 			fmt.Fprintf(c.out, "%s\t%s\t%s\t%s\t%s\n", item.Name, item.UserName, security, endpoint, enabledLabel(item.Enabled))
@@ -425,14 +425,14 @@ func (c *commandSet) printLandingAccessCard(access domain.LandingAccess) {
 }
 
 func landingAccessEndpoint(access domain.LandingAccess) string {
-	if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityTLS {
+	if !access.UsesPrimaryInbound() {
 		endpoint := fmt.Sprintf("独立 TLS 端口 %d", access.Port)
 		if sni := strings.TrimSpace(access.SNI); sni != "" {
 			return endpoint + " · " + sni
 		}
 		return endpoint
 	}
-	return "复用当前 REALITY 入站"
+	return "复用当前 " + strings.ToUpper(domain.NormalizeLandingSecurity(access.Security)) + " 入站"
 }
 
 func relayProtocolCardDisplay(links []domain.RelayLink) string {
@@ -501,7 +501,7 @@ func (c *commandSet) addLandingInteractive(ctx context.Context, core string) err
 	if err != nil {
 		return err
 	}
-	c.printMenuChoice("1", fmt.Sprintf("使用当前协议（VLESS + RAW + REALITY + Vision，复用端口 %d）", node.Port))
+	c.printMenuChoice("1", fmt.Sprintf("使用当前协议（%s，复用端口 %d）", landingProtocolLabel(node.Security), node.Port))
 	c.printMenuChoice("2", "创建 VLESS + RAW + TLS + Vision（随机高位独立端口）")
 	protocolChoice, err := c.chooseNumberCancelable("请选择落地接入协议", 1, 2, 1)
 	if err != nil {
@@ -514,11 +514,11 @@ func (c *commandSet) addLandingInteractive(ctx context.Context, core string) err
 	if err = c.app.ValidateLinkNameAvailable(core, name); err != nil {
 		return err
 	}
-	opts := app.LandingAddOptions{Security: domain.LandingSecurityReality}
-	confirmMessage := "将向当前 REALITY 入站添加独立接入用户；不新增端口，普通用户路由保持不变，应用时会重启当前服务。"
+	opts := app.LandingAddOptions{Security: domain.LandingSecurityCurrent}
+	confirmMessage := "将向当前主入站添加独立接入用户；不新增端口，普通用户路由保持不变，应用时会重启当前服务。"
 	if protocolChoice == 2 {
 		opts.Security = domain.LandingSecurityTLS
-		confirmMessage = "将自动选择 30000–65000 的可用端口并生成 10 年有效的 ECDSA 自签证书；中转机使用连接文本中的指纹固定验证，普通用户和当前 REALITY 入站保持不变，应用时会重启当前服务。"
+		confirmMessage = "将自动选择 30000–65000 的可用端口并生成 10 年有效的 ECDSA 自签证书；中转机使用连接文本中的指纹固定验证，普通用户和当前主入站保持不变，应用时会重启当前服务。"
 	}
 	ok, err := c.confirmCancelable(confirmMessage)
 	if err != nil || !ok {
@@ -836,10 +836,10 @@ func (c *commandSet) manageLandingInteractive(ctx context.Context, core string) 
 		if item.UserName != "" && item.UserName != item.Name {
 			title += " · " + item.UserName
 		}
-		if domain.NormalizeLandingSecurity(item.Security) == domain.LandingSecurityTLS {
+		if !item.UsesPrimaryInbound() {
 			title += fmt.Sprintf(" · TLS :%d", item.Port)
 		} else {
-			title += " · 当前 REALITY"
+			title += " · 当前 " + strings.ToUpper(domain.NormalizeLandingSecurity(node.Security))
 		}
 		c.printMenuBadgeChoice(strconv.Itoa(i+1), title, "["+enabledLabel(item.Enabled)+"]")
 	}
@@ -913,8 +913,8 @@ func (c *commandSet) printLinkGraph(core string) error {
 			strings.ToUpper(domain.NormalizeLandingSecurity(link.Upstream.Security)))
 	}
 	for _, access := range landings {
-		protocol := "REALITY（当前端口）"
-		if domain.NormalizeLandingSecurity(access.Security) == domain.LandingSecurityTLS {
+		protocol := strings.ToUpper(domain.NormalizeLandingSecurity(access.Security)) + "（当前端口）"
+		if !access.UsesPrimaryInbound() {
 			protocol = fmt.Sprintf("TLS :%d", access.Port)
 		}
 		fmt.Fprintf(c.out, "落地接入 %s [%s · %s]\n  └─ direct（本机出口）\n", access.UserName, enabledLabel(access.Enabled), protocol)

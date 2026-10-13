@@ -7,16 +7,18 @@
 | 服务端配置 | `/etc/sing-box/config.json` | `/usr/local/etc/xray/config.json` |
 | 状态 | `/var/lib/proxyforge/state/sing-box.json` | `/var/lib/proxyforge/state/xray.json` |
 | 安装渠道偏好 | `/var/lib/proxyforge/preferences/sing-box.json` | `/var/lib/proxyforge/preferences/xray.json` |
-| 自动 TLS 证书 | `/var/lib/proxyforge/tls/sing-box/<接入名>/` | `/var/lib/proxyforge/tls/xray/<接入名>/` |
+| 自动 TLS 证书 | `/var/lib/proxyforge/tls/sing-box/<接入名或主证书名>/` | `/var/lib/proxyforge/tls/xray/<接入名或主证书名>/` |
 | systemd unit | `sing-box.service` | `xray.service` |
 
 信任记录位于 `/var/lib/proxyforge/trust/`，备份位于 `/var/lib/proxyforge/backups/<core>/<timestamp>/`。每个内核只保留最近 3 份 ProxyForge 时间戳备份。
 
-状态、信任、安装渠道偏好和备份都是 root-only。服务配置与自动 TLS 证书会根据 systemd unit 的实际 `User=` 设置为 root 私有，或 root 所有且仅允许服务组读取，不会设为世界可读。自签证书的信任依赖首次安全传递连接文本；中转配置固定校验证书或公钥 SHA-256，并保持 `allowInsecure`/`insecure=false`。
+状态、信任、安装渠道偏好和备份都是 root-only。服务配置与自动 TLS 证书会根据 systemd unit 的实际 `User=` 设置为 root 私有，或 root 所有且仅允许服务组读取，不会设为世界可读。主节点证书目录名为 `main-<随机十六进制>`。自签证书的信任依赖首次安全传递客户端配置或连接文本；普通客户端与中转配置固定校验证书或公钥 SHA-256，并保持 `allowInsecure`/`insecure=false`。
 
 ## 配置事务
 
 配置更新先写入临时文件，运行 `sing-box check` 或 `xray run -test`，再原子替换目标文件。ProxyForge 只重启目标服务，并确认其 active 状态和监听端口。
+
+新生成的主节点证书在配置与状态成功应用后才成为受管证书，应用失败时清理本次生成的证书。证书轮换保留旧文件，保证配置备份引用仍可用。
 
 任一步失败都会恢复该内核的旧配置和状态，并重启旧服务，不触碰另一个内核。
 
@@ -40,4 +42,5 @@ ProxyForge 只提示 ufw/firewalld 所需的 TCP 端口，不会自行修改防�
 - [Xray TLS 与证书固定](https://xtls.github.io/en/config/transports/tls.html)
 - [Xray-install](https://github.com/XTLS/Xray-install)
 - [Xray VLESS](https://xtls.github.io/en/config/inbounds/vless.html)
+- [Mihomo TLS 与证书固定](https://wiki.metacubex.one/config/proxies/tls/)
 - [XTLS REALITY](https://github.com/XTLS/REALITY/blob/main/README.en.md)

@@ -128,7 +128,7 @@ func TestExistingServerConfigRequiresOverwriteConfirmation(t *testing.T) {
 func TestFillGenerateRequiresExplicitFastCandidateSelection(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("\n\n\n\n2\nyes\n")),
+		reader: bufio.NewReader(strings.NewReader("\n\n\n\n\n2\nyes\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
 			if len(candidates) < 10 || server != "server.example.com" || limit != len(defaultSNICandidates) {
@@ -167,7 +167,7 @@ func TestFillGenerateOffersExistingSNI(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
 		app:    &app.App{Store: store},
-		reader: bufio.NewReader(strings.NewReader("\n\n\n\nyes\n")),
+		reader: bufio.NewReader(strings.NewReader("\n\n\n\n\nyes\n")),
 		out:    &out,
 		probeSNI: func(context.Context, []string, string, int) ([]app.SNICandidate, error) {
 			probeCalls++
@@ -198,7 +198,7 @@ func TestFillGenerateCanSkipExistingSNIAndSpeedTest(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
 		app:    &app.App{Store: store},
-		reader: bufio.NewReader(strings.NewReader("\n\n\n2\n\n1\nyes\n")),
+		reader: bufio.NewReader(strings.NewReader("\n\n\n\n2\n\n1\nyes\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
 			return []app.SNICandidate{{Domain: "fast.example.com", Latency: time.Millisecond, TLSVersion: "1.3"}}, nil
@@ -216,7 +216,7 @@ func TestFillGenerateCanSkipExistingSNIAndSpeedTest(t *testing.T) {
 func TestFillGenerateSelectsSimplifiedSingBoxConfig(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("3\n\n\nyes\nyes\n")),
+		reader: bufio.NewReader(strings.NewReader("\n3\n\n\nyes\nyes\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
 			return []app.SNICandidate{{Domain: candidates[0], Latency: 5 * time.Millisecond, TLSVersion: "1.3", ALPN: "h2", CertificateSANs: []string{candidates[0]}, CDN: "未发现明显特征"}}, nil
@@ -240,7 +240,7 @@ func TestFillGenerateSelectsSimplifiedSingBoxConfig(t *testing.T) {
 func TestFillGenerateSelectsXrayFallbackGuardConfig(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("\n\n\n\n\n\nyes\nyes\n")),
+		reader: bufio.NewReader(strings.NewReader("\n\n\n\n\n\n\nyes\nyes\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
 			return []app.SNICandidate{{Domain: candidates[0], Latency: 5 * time.Millisecond, TLSVersion: "1.3", CertificateSANs: []string{candidates[0]}}}, nil
@@ -265,7 +265,7 @@ func TestFillGenerateSelectsXrayFallbackGuardConfig(t *testing.T) {
 func TestFillGenerateEnablesXrayFallbackHTTPDomain(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("\n2\n\n\n\n\nyes\nyes\n")),
+		reader: bufio.NewReader(strings.NewReader("\n\n2\n\n\n\n\nyes\nyes\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
 			return []app.SNICandidate{{Domain: candidates[0], Latency: 5 * time.Millisecond, TLSVersion: "1.3", CertificateSANs: []string{candidates[0]}}}, nil
@@ -288,7 +288,7 @@ func TestFillGenerateEnablesXrayFallbackHTTPDomain(t *testing.T) {
 func TestFillGenerateEnablesXrayFallbackExactDomainIndependently(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("\n1\n2\n\n\n\n\nyes\nyes\n")),
+		reader: bufio.NewReader(strings.NewReader("\n\n1\n2\n\n\n\n\nyes\nyes\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
 			return []app.SNICandidate{{Domain: candidates[0], Latency: 5 * time.Millisecond, TLSVersion: "1.3", CertificateSANs: []string{candidates[0]}}}, nil
@@ -311,7 +311,7 @@ func TestFillGenerateEnablesXrayFallbackExactDomainIndependently(t *testing.T) {
 func TestFillGenerateSelectsSingBoxFallbackGuardConfig(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("\n\n\n\n\n\nyes\nyes\n")),
+		reader: bufio.NewReader(strings.NewReader("\n\n\n\n\n\n\nyes\nyes\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
 			return []app.SNICandidate{{Domain: candidates[0], Latency: 5 * time.Millisecond, TLSVersion: "1.3", CertificateSANs: []string{candidates[0]}}}, nil
@@ -336,7 +336,7 @@ func TestFillGenerateSelectsSingBoxFallbackGuardConfig(t *testing.T) {
 func TestFillGenerateEnablesSingBoxFallbackHTTPDomain(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("\n2\n\n\n\n\nyes\nyes\n")),
+		reader: bufio.NewReader(strings.NewReader("\n\n2\n\n\n\n\nyes\nyes\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
 			return []app.SNICandidate{{Domain: candidates[0], Latency: 5 * time.Millisecond, TLSVersion: "1.3", CertificateSANs: []string{candidates[0]}}}, nil
@@ -359,7 +359,7 @@ func TestFillGenerateEnablesSingBoxFallbackHTTPDomain(t *testing.T) {
 func TestFillGenerateEnablesSingBoxFallbackExactDomainIndependently(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("\n1\n2\n\n\n\n\nyes\nyes\n")),
+		reader: bufio.NewReader(strings.NewReader("\n\n1\n2\n\n\n\n\nyes\nyes\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
 			return []app.SNICandidate{{Domain: candidates[0], Latency: 5 * time.Millisecond, TLSVersion: "1.3", CertificateSANs: []string{candidates[0]}}}, nil
@@ -383,7 +383,7 @@ func TestFillGenerateProbesManualSNIAndConfirmsTwice(t *testing.T) {
 	var out bytes.Buffer
 	probeCalls := 0
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("\n\n\nmanual.example.com\nyes\nyes\n")),
+		reader: bufio.NewReader(strings.NewReader("\n\n\n\nmanual.example.com\nyes\nyes\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, server string, limit int) ([]app.SNICandidate, error) {
 			probeCalls++
@@ -492,5 +492,32 @@ func TestSelectPublicAddressLetsUserChooseFromMultiplePhysicalAddresses(t *testi
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("address menu missing %q: %q", want, out.String())
 		}
+	}
+}
+
+func TestFillGenerateSelectsSelfSignedTLS(t *testing.T) {
+	for _, core := range []string{domain.CoreXray, domain.CoreSingBox} {
+		t.Run(core, func(t *testing.T) {
+			var out bytes.Buffer
+			c := &commandSet{reader: bufio.NewReader(strings.NewReader("2\nyes\n")), out: &out}
+			opts := domain.GenerateOptions{Server: "server.example.com", Port: 443, UserName: "phone", InboundTag: "phone-in"}
+			if err := c.fillGenerate(context.Background(), core, &opts); err != nil {
+				t.Fatal(err)
+			}
+			if opts.Security != "tls" || opts.SNI != "" || opts.Target != "" || opts.XrayFallbackGuard || opts.SingBoxFallbackGuard {
+				t.Fatalf("opts=%#v", opts)
+			}
+			if strings.Contains(out.String(), "请选择配置模式") || strings.Contains(out.String(), "REALITY SNI（") || !strings.Contains(out.String(), "固定指纹") {
+				t.Fatalf("output=%s", out.String())
+			}
+		})
+	}
+}
+
+func TestPrintGenerateSuccessDisplaysTLS(t *testing.T) {
+	var out bytes.Buffer
+	printGenerateSuccess(&out, domain.NodeSpec{Core: domain.CoreXray, Security: "tls", Server: "server.example.com", Port: 443, SNI: "pf-test.invalid"})
+	if !strings.Contains(out.String(), "VLESS + RAW + TLS + Vision") || !strings.Contains(out.String(), "TLS 名称：pf-test.invalid") || strings.Contains(out.String(), "REALITY target") {
+		t.Fatal(out.String())
 	}
 }

@@ -61,7 +61,7 @@ func (a *App) RelayLinks(core string) ([]domain.RelayLink, error) {
 }
 
 func (a *App) AddLandingAccess(ctx context.Context, core, name string) (domain.LandingAccess, error) {
-	return a.AddLandingAccessWithOptions(ctx, core, name, LandingAddOptions{Security: domain.LandingSecurityReality})
+	return a.AddLandingAccessWithOptions(ctx, core, name, LandingAddOptions{Security: domain.LandingSecurityCurrent})
 }
 
 func (a *App) AddLandingAccessWithOptions(ctx context.Context, core, name string, opts LandingAddOptions) (domain.LandingAccess, error) {
@@ -78,9 +78,16 @@ func (a *App) AddLandingAccessWithOptions(ctx context.Context, core, name string
 	if err := validateAvailableLinkName(n, name); err != nil {
 		return domain.LandingAccess{}, err
 	}
-	security := domain.NormalizeLandingSecurity(strings.ToLower(strings.TrimSpace(opts.Security)))
+	requestedSecurity := strings.ToLower(strings.TrimSpace(opts.Security))
+	if requestedSecurity == domain.LandingSecurityReality && n.IsTLS() {
+		return domain.LandingAccess{}, fmt.Errorf("当前主节点为 TLS，请使用 --security current 复用当前入站")
+	}
+	if requestedSecurity == "" || requestedSecurity == domain.LandingSecurityCurrent {
+		requestedSecurity = domain.LandingSecurityReality
+	}
+	security := domain.NormalizeLandingSecurity(requestedSecurity)
 	if security != domain.LandingSecurityReality && security != domain.LandingSecurityTLS {
-		return domain.LandingAccess{}, fmt.Errorf("落地安全协议无效: %q（可选 reality 或 tls）", opts.Security)
+		return domain.LandingAccess{}, fmt.Errorf("落地安全协议无效: %q（可选 current、reality 或 tls）", opts.Security)
 	}
 	port := 0
 	if security == domain.LandingSecurityTLS {
@@ -119,6 +126,7 @@ func (a *App) AddLandingAccessWithOptions(ctx context.Context, core, name string
 		generatedTLS = true
 	}
 	if security == domain.LandingSecurityReality {
+		access.Security = domain.NormalizeLandingSecurity(n.Security)
 		access.Port, access.SNI, access.CertificateFile, access.KeyFile = 0, "", "", ""
 	}
 	n.LandingAccesses = append(n.LandingAccesses, access)
@@ -237,8 +245,18 @@ func (a *App) LandingBundle(core, name string) (LandingBundle, error) {
 		return LandingBundle{}, fmt.Errorf("落地接入 %q 已停用，不能生成连接文本", name)
 	}
 	security := domain.NormalizeLandingSecurity(access.Security)
+	if access.UsesPrimaryInbound() {
+		security = domain.NormalizeLandingSecurity(n.Security)
+	}
 	peer := domain.LandingPeer{Name: access.Name, Core: core, Security: security, Server: n.Server, UUID: access.UUID, Flow: domain.VisionFlow}
 	if security == domain.LandingSecurityTLS {
+		if access.UsesPrimaryInbound() {
+			if err := a.validateNodeTLS(n); err != nil {
+				return LandingBundle{}, err
+			}
+			access = *n.TLSCertificate
+			access.Port = n.Port
+		}
 		if !domain.ValidCertificateSHA256(access.CertificateSHA256) || !domain.ValidCertificatePublicKeySHA256(access.CertificatePublicKeySHA256) {
 			return LandingBundle{}, fmt.Errorf("TLS 落地接入 %q 缺少合法证书指纹；请删除并重新创建该接入", name)
 		}
@@ -434,6 +452,11 @@ func (a *App) RelayClientConfig(ctx context.Context, core, name, format, output 
 	if !ok {
 		return nil, fmt.Errorf("找不到中转线路 %q", name)
 	}
+	if n.IsTLS() {
+		if err := a.validateNodeTLS(n); err != nil {
+			return nil, err
+		}
+	}
 	link := n.RelayLinks[index]
 	if !link.Enabled {
 		return nil, fmt.Errorf("中转线路 %q 已停用，不能导出客户端配置", name)
@@ -550,6 +573,9 @@ func (a *App) ValidateLinkNameAvailable(core, name string) error {
 }
 
 func validateAvailableLinkName(n domain.NodeSpec, name string) error {
+	if n.TLSCertificate != nil && strings.EqualFold(name, n.TLSCertificate.Name) {
+		return fmt.Errorf("名称已由主节点证书使用")
+	}
 	normalized := strings.ToLower(strings.TrimSpace(name))
 	if _, reserved := reservedLinkNames[normalized]; reserved {
 		return fmt.Errorf("名称 %q 是系统保留名称，请使用其他名称", name)

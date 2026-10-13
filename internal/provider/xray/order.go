@@ -118,8 +118,8 @@ func xrayFieldPriority(object map[string]any) map[string]int {
 		order = []string{"listen", "port", "protocol", "settings", "tag", "sniffing"}
 	case hasXrayKeys(object, "listen", "protocol", "settings"):
 		order = []string{"listen", "port", "protocol", "settings", "streamSettings", "tag", "sniffing"}
-	case hasXrayKeys(object, "network", "security", "realitySettings"):
-		order = []string{"network", "security", "realitySettings"}
+	case hasXrayKeys(object, "network", "security"):
+		order = []string{"network", "security", "realitySettings", "tlsSettings"}
 	case hasXrayKeys(object, "show", "target", "serverNames", "privateKey", "shortIds"):
 		order = []string{"show", "target", "xver", "serverNames", "privateKey", "shortIds"}
 	case hasXrayKeys(object, "serverName", "fingerprint", "password", "shortId"):

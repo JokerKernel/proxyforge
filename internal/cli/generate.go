@@ -46,6 +46,8 @@ func (c *commandSet) generateCommand() *cobra.Command {
 			return err
 		},
 	}
+	cmd.Flags().StringVar(&o.Security, "security", "", "主节点安全协议：reality 或 tls（自签证书；默认沿用当前协议，新节点为 reality）")
+	cmd.Flags().BoolVar(&o.RotateCertificate, "rotate-certificate", false, "TLS 主节点重新生成自签证书，旧客户端需更新")
 	cmd.Flags().StringVar(&o.Server, "server", "", "客户端连接的公网 IP 或域名")
 	cmd.Flags().IntVar(&o.Port, "port", 0, "监听 TCP 端口")
 	cmd.Flags().StringVar(&o.SNI, "sni", "", "REALITY SNI 域名")
@@ -62,7 +64,7 @@ func (c *commandSet) generateCommand() *cobra.Command {
 	cmd.Flags().IntVar(&o.XrayFallbackPort, "xray-fallback-port", 0, "Xray 防偷跑回落入站端口（默认 30000-65000 随机；已有配置则沿用）")
 	cmd.Flags().BoolVar(&o.XrayFallbackHTTPDomain, "xray-fallback-http-domain", false, "Xray HTTP 回落仅放行与 SNI 一致的域名（默认不限制）")
 	cmd.Flags().BoolVar(&o.XrayFallbackExactDomain, "xray-fallback-exact-domain", false, "Xray 回落域名使用 full: 精确匹配（默认使用普通匹配）")
-	cmd.Flags().BoolVar(&o.RotateCredentials, "rotate-credentials", false, "轮换 UUID、密钥和 short ID，使旧客户端失效")
+	cmd.Flags().BoolVar(&o.RotateCredentials, "rotate-credentials", false, "轮换 UUID（REALITY 同时轮换密钥和 short ID），使旧客户端失效")
 	cmd.Flags().BoolVar(&o.DropLinks, "drop-links", false, "清除所有受管的中转线路和落地接入")
 	cmd.Flags().Bool("take-over", false, "兼容旧版本；当前始终备份并完整覆盖现有配置")
 	_ = cmd.Flags().MarkDeprecated("take-over", "当前生成流程会自动备份并完整覆盖现有配置，无需此参数")
@@ -87,7 +89,33 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 			o.DropLinks = choice == 2
 		}
 	}
-	if core == domain.CoreSingBox {
+	if o.Security == "" {
+		defaultChoice := 1
+		if c.app != nil {
+			if node, err := c.app.Store.Load(core); err == nil && node.IsTLS() {
+				defaultChoice = 2
+			}
+		}
+		fmt.Fprintln(c.out, "\n主节点协议")
+		c.printMenuChoice("1", "VLESS + RAW + REALITY + Vision")
+		c.printMenuChoice("2", "VLESS + RAW + TLS + Vision（自动生成自签证书）")
+		choice, err := c.chooseNumberCancelable("请选择主节点协议", 1, 2, defaultChoice)
+		if err != nil {
+			return err
+		}
+		o.Security = domain.LandingSecurityReality
+		if choice == 2 {
+			o.Security = domain.LandingSecurityTLS
+		}
+	}
+	tlsMode := domain.NormalizeLandingSecurity(o.Security) == domain.LandingSecurityTLS
+	if tlsMode {
+		o.StandardConfig, o.SimplifiedConfig = false, false
+		o.SingBoxFallbackGuard, o.XrayFallbackGuard = false, false
+		o.SingBoxFallbackPort, o.XrayFallbackPort = 0, 0
+		o.SingBoxFallbackHTTPDomain, o.SingBoxFallbackExactDomain, o.XrayFallbackHTTPDomain, o.XrayFallbackExactDomain = false, false, false, false
+	}
+	if !tlsMode && core == domain.CoreSingBox {
 		fmt.Fprintln(c.out, "\n配置模式")
 		c.printMenuChoice("1", "回落防护（默认；direct 入站仅放行与 SNI 一致的 TLS 流量）")
 		c.printMenuChoice("2", "标准安全（内部 DNS 解析后拦截私网和保留地址）")
@@ -136,7 +164,7 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 			}
 			o.SingBoxFallbackExactDomain = choice == 2
 		}
-	} else if core == domain.CoreXray {
+	} else if !tlsMode && core == domain.CoreXray {
 		fmt.Fprintln(c.out, "\n配置模式")
 		c.printMenuChoice("1", "回落防护（默认；dokodemo-door 仅放行与 SNI 一致的 TLS 流量）")
 		c.printMenuChoice("2", "标准模式（REALITY 未认证流量直接转发到 target）")
@@ -243,6 +271,20 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 			return err
 		}
 	}
+	if tlsMode {
+		if o.SNI != "" || o.Target != "" {
+			return fmt.Errorf("自签 TLS 自动生成证书名称，无需 --sni 或 --target")
+		}
+		c.printConfirmationPanel("配置确认：自签 TLS", []string{"连接地址：" + netJoinHostPort(o.Server, strconv.Itoa(o.Port)), "自动生成证书和 TLS 名称；客户端使用固定指纹验证"})
+		ok, err := c.confirmCancelableDefaultYes("生成并启用 TLS 配置？")
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errReturnToMenu
+		}
+		return nil
+	}
 	o.SNI = strings.TrimSpace(o.SNI)
 	manualSNI := o.SNI != ""
 	if o.SNI == "" {
@@ -319,6 +361,9 @@ func currentSNIAndTarget(a *app.App, core string) (string, string) {
 	}
 	current, err := a.Store.Load(core)
 	if err != nil {
+		return "", ""
+	}
+	if current.IsTLS() {
 		return "", ""
 	}
 	return strings.TrimSpace(current.SNI), strings.TrimSpace(current.Target)
@@ -472,8 +517,13 @@ func printGenerateSuccess(w io.Writer, n domain.NodeSpec) {
 	fmt.Fprintf(w, "服务状态：active（运行中）\n")
 	fmt.Fprintf(w, "开机启动：enabled（已启用）\n")
 	fmt.Fprintf(w, "连接地址：%s\n", netJoinHostPort(n.Server, strconv.Itoa(n.Port)))
-	fmt.Fprintf(w, "REALITY SNI：%s\n", n.SNI)
-	fmt.Fprintf(w, "REALITY target：%s\n", n.Target)
+	fmt.Fprintf(w, "节点协议：%s\n", landingProtocolLabel(n.Security))
+	if n.IsTLS() {
+		fmt.Fprintf(w, "TLS 名称：%s\n证书验证：固定指纹\n", n.SNI)
+	} else {
+		fmt.Fprintf(w, "REALITY SNI：%s\n", n.SNI)
+		fmt.Fprintf(w, "REALITY target：%s\n", n.Target)
+	}
 	fmt.Fprintf(w, "用户名称：%s\n", n.UserName)
 	fmt.Fprintf(w, "入站标签：%s\n", n.InboundTag)
 	if n.Core == domain.CoreSingBox {

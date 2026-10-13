@@ -63,7 +63,7 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 		currentVersion: strings.SplitN(version, "\n", 2)[0], selfUpdate: updater.Run,
 	}
 	root := &cobra.Command{
-		Use: "proxyforge", Short: "Linux 双内核 VLESS + REALITY + Vision 管理器", Version: version,
+		Use: "proxyforge", Short: "Linux 双内核 VLESS + REALITY/TLS + Vision 管理器", Version: version,
 		SilenceUsage: true, SilenceErrors: true,
 		PersistentPreRunE: func(*cobra.Command, []string) error {
 			fmt.Fprintln(c.errOut, "[步骤] 验证 root 运行权限")

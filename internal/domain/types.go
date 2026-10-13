@@ -11,6 +11,7 @@ const (
 	CoreSingBox            = "sing-box"
 	CoreXray               = "xray"
 	VisionFlow             = "xtls-rprx-vision"
+	LandingSecurityCurrent = "current"
 	LandingSecurityReality = "reality"
 	LandingSecurityTLS     = "tls"
 	DefaultUserName        = "one"
@@ -18,7 +19,7 @@ const (
 	LandingTLSPortMax      = 65000
 	FallbackPortMin        = LandingTLSPortMin
 	FallbackPortMax        = LandingTLSPortMax
-	StateSchemaVersion     = 3
+	StateSchemaVersion     = 4
 )
 
 // LandingPeer is the portable, client-side description of a managed landing
@@ -88,6 +89,8 @@ type RelayLink struct {
 }
 
 type NodeSpec struct {
+	Security                   string          `json:"security,omitempty"`
+	TLSCertificate             *LandingAccess  `json:"tls_certificate,omitempty"`
 	SchemaVersion              int             `json:"schema_version,omitempty"`
 	ManagedBy                  string          `json:"managed_by"`
 	Core                       string          `json:"core"`
@@ -118,6 +121,8 @@ type NodeSpec struct {
 }
 
 type GenerateOptions struct {
+	Security                   string
+	RotateCertificate          bool
 	Server                     string
 	Port                       int
 	SNI                        string
@@ -151,9 +156,10 @@ func DefaultInboundTag(core string) string {
 }
 
 type ResetOptions struct {
-	SNI    string
-	Target string
-	// Credentials controls whether UUID/REALITY key material/short ID are rotated.
+	RotateCertificate bool
+	SNI               string
+	Target            string
+	// Credentials rotates UUID and, for REALITY, its key material and short ID.
 	// Zero value preserves the historical credential-reset behavior.
 	Credentials bool
 }
@@ -166,4 +172,21 @@ type KeyPair struct {
 type ServiceStatus struct {
 	Active bool
 	Detail string
+}
+
+// Empty security in historical states means REALITY.
+func (n NodeSpec) IsTLS() bool { return NormalizeLandingSecurity(n.Security) == LandingSecurityTLS }
+
+// A zero-port access shares the primary inbound, including historical REALITY accesses.
+func (a LandingAccess) UsesPrimaryInbound() bool {
+	return NormalizeLandingSecurity(a.Security) == LandingSecurityReality || a.Port == 0
+}
+
+// TLSAccesses includes the main certificate for shared file permission handling.
+func (n NodeSpec) TLSAccesses() []LandingAccess {
+	accesses := append([]LandingAccess(nil), n.LandingAccesses...)
+	if n.TLSCertificate != nil {
+		accesses = append(accesses, *n.TLSCertificate)
+	}
+	return accesses
 }

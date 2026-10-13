@@ -42,13 +42,13 @@ type dokodemoSettings struct {
 }
 
 type orderedInbound struct {
-	Listen         string                 `json:"listen"`
-	Port           int                    `json:"port"`
-	Protocol       string                 `json:"protocol"`
-	Settings       any                    `json:"settings"`
-	StreamSettings *realityStreamSettings `json:"streamSettings,omitempty"`
-	Tag            string                 `json:"tag,omitempty"`
-	Sniffing       *sniffingSettings      `json:"sniffing,omitempty"`
+	Listen         string            `json:"listen"`
+	Port           int               `json:"port"`
+	Protocol       string            `json:"protocol"`
+	Settings       any               `json:"settings"`
+	StreamSettings *streamSettings   `json:"streamSettings,omitempty"`
+	Tag            string            `json:"tag,omitempty"`
+	Sniffing       *sniffingSettings `json:"sniffing,omitempty"`
 }
 
 type vlessInboundSettings struct {
@@ -68,10 +68,11 @@ type sniffingSettings struct {
 	RouteOnly    bool     `json:"routeOnly"`
 }
 
-type realityStreamSettings struct {
+type streamSettings struct {
 	Network         string `json:"network"`
 	Security        string `json:"security"`
-	RealitySettings any    `json:"realitySettings"`
+	RealitySettings any    `json:"realitySettings,omitempty"`
+	TLSSettings     any    `json:"tlsSettings,omitempty"`
 }
 
 type serverRealitySettings struct {
@@ -214,6 +215,9 @@ func (*Provider) GenerateKeyPair(ctx context.Context, r provider.Runner) (domain
 }
 
 func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
+	if n.IsTLS() {
+		return renderTLSServer(n)
+	}
 	if n.XrayFallbackGuard {
 		b, err := renderFallbackGuardServer(n)
 		if err != nil || (len(n.RelayLinks) == 0 && len(n.LandingAccesses) == 0) {
@@ -221,7 +225,7 @@ func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 		}
 		return (&Provider{}).PatchLinks(b, domain.NodeSpec{}, n)
 	}
-	stream := realityStreamSettings{Network: "raw", Security: "reality", RealitySettings: serverRealitySettings{
+	stream := streamSettings{Network: "raw", Security: "reality", RealitySettings: serverRealitySettings{
 		Show: false, Target: n.Target, Xver: 0, ServerNames: []string{n.SNI}, PrivateKey: n.PrivateKey, ShortIDs: []string{n.ShortID},
 	}}
 	v := xrayConfig{
@@ -265,7 +269,7 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 		Settings: dokodemoSettings{Address: host, Port: targetPort, Network: "tcp"},
 		Sniffing: sniffingSettings{Enabled: true, DestOverride: destOverride, RouteOnly: true},
 	}
-	stream := realityStreamSettings{Network: "raw", Security: "reality", RealitySettings: serverRealitySettings{
+	stream := streamSettings{Network: "raw", Security: "reality", RealitySettings: serverRealitySettings{
 		Show: false, Target: net.JoinHostPort("127.0.0.1", strconv.Itoa(n.XrayFallbackPort)), Xver: 0,
 		ServerNames: []string{n.SNI}, PrivateKey: n.PrivateKey, ShortIDs: []string{n.ShortID},
 	}}
@@ -307,9 +311,16 @@ func xrayFullDomain(name string) string {
 }
 
 func (*Provider) RenderClient(n domain.NodeSpec) ([]byte, error) {
-	stream := realityStreamSettings{Network: "raw", Security: "reality", RealitySettings: clientRealitySettings{
+	stream := streamSettings{Network: "raw", Security: "reality", RealitySettings: clientRealitySettings{
 		ServerName: n.SNI, Fingerprint: "chrome", Password: n.PublicKey, ShortID: n.ShortID, SpiderX: "/",
 	}}
+	if n.IsTLS() {
+		if n.TLSCertificate == nil || !domain.ValidCertificateSHA256(n.TLSCertificate.CertificateSHA256) {
+			return nil, fmt.Errorf("TLS 节点缺少合法证书指纹")
+		}
+		stream.Security, stream.RealitySettings = "tls", nil
+		stream.TLSSettings = map[string]any{"serverName": n.SNI, "fingerprint": "chrome", "minVersion": "1.3", "allowInsecure": false, "pinnedPeerCertSha256": n.TLSCertificate.CertificateSHA256}
+	}
 	v := xrayConfig{
 		Log: map[string]any{"loglevel": "warning"},
 		DNS: systemDNS(),
@@ -373,4 +384,22 @@ func (*Provider) ValidateConfig(ctx context.Context, r provider.Runner, path str
 		return fmt.Errorf("Xray 配置校验失败: %w", err)
 	}
 	return nil
+}
+
+func renderTLSServer(n domain.NodeSpec) ([]byte, error) {
+	if n.TLSCertificate == nil {
+		return nil, fmt.Errorf("TLS 节点缺少证书")
+	}
+	stream := streamSettings{Network: "raw", Security: "tls", TLSSettings: map[string]any{
+		"minVersion": "1.3", "certificates": []any{map[string]any{"certificateFile": n.TLSCertificate.CertificateFile, "keyFile": n.TLSCertificate.KeyFile}},
+	}}
+	v := xrayConfig{Log: map[string]any{"loglevel": "warning"}, DNS: systemDNS(),
+		Inbounds: []any{orderedInbound{Listen: "0.0.0.0", Port: n.Port, Protocol: "vless", Tag: n.InboundTag,
+			Settings: vlessInboundSettings{Clients: []vlessInboundUser{{ID: n.UUID, Email: n.UserName, Flow: domain.VisionFlow}}, Decryption: "none"}, StreamSettings: &stream}},
+		Outbounds: []xrayOutbound{directOutbound(), blockedOutbound()}, Routing: privateNetworkRouting()}
+	b, err := marshalXray(v)
+	if err != nil || (len(n.RelayLinks) == 0 && len(n.LandingAccesses) == 0) {
+		return b, err
+	}
+	return (&Provider{}).PatchLinks(b, domain.NodeSpec{}, n)
 }

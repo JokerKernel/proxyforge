@@ -133,6 +133,11 @@ func (a *App) ClientConfig(ctx context.Context, core, format, output string, for
 	if err != nil {
 		return nil, err
 	}
+	if n.IsTLS() {
+		if err := a.validateNodeTLS(n); err != nil {
+			return nil, err
+		}
+	}
 	var b []byte
 	if format == ClientFormatClash {
 		b, err = mihomo.RenderClient(n)

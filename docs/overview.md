@@ -1,6 +1,6 @@
 # 项目概览与快速上手
 
-ProxyForge 是面向 Linux/systemd 的双内核代理管理器，通过中文交互菜单或命令行，在同一台服务器上独立管理 **Xray-core** 和 **sing-box** 的 `VLESS + REALITY + Vision` 节点。
+ProxyForge 是面向 Linux/systemd 的双内核代理管理器，通过中文交互菜单或命令行，在同一台服务器上独立管理 **Xray-core** 和 **sing-box** 的 `VLESS + RAW + REALITY/TLS + Vision` 节点。
 
 使用 Go 编写，单二进制部署，涵盖内核安装、节点配置、客户端导出、服务管理和卸载。
 
@@ -8,10 +8,11 @@ ProxyForge 是面向 Linux/systemd 的双内核代理管理器，通过中文交
 
 - **双内核独立管理**：配置、凭据、监听端口和 systemd 服务分别管理。
 - **安装渠道选择**：支持稳定版、开发版和指定版本，两个内核分别记忆成功安装的渠道。
+- **自签 TLS 主节点**：自动生成证书，客户端固定指纹验证，UUID 和证书独立重置。
 - **REALITY 回落防护**：默认生成防偷跑配置，支持 SNI/target 检测、HTTP Host 限制和严格域名匹配。
 - **配置与服务管理**：生成配置、调整 DNS 和出站 IP、重置凭据、查看日志；应用配置时校验、备份，失败时回滚。
 - **客户端导出**：支持原生 sing-box/Xray JSON 和 Mihomo/Clash Meta YAML。
-- **中转与落地**：按用户配置多条中转线路；落地可复用 REALITY 入站，或创建带自签证书和固定指纹校验的独立 TLS 入站。
+- **中转与落地**：按用户配置多条中转线路；落地可复用当前 REALITY/TLS 入站，或创建带自签证书和固定指纹校验的独立 TLS 入站。
 
 ## 运行环境
 

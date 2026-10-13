@@ -13,6 +13,7 @@ import (
 // ModifyConfigStatus is a quiet snapshot for the interactive modify-config card.
 // It does not require root, an installed core, or emit progress.
 type ModifyConfigStatus struct {
+	Security         string
 	SNI              string
 	Port             int
 	DNS              string
@@ -58,6 +59,7 @@ func (a *App) ModifyConfigStatus(ctx context.Context, core string) ModifyConfigS
 				status.LandingEnabled++
 			}
 		}
+		status.Security = domain.NormalizeLandingSecurity(current.Security)
 		status.SNI = strings.TrimSpace(current.SNI)
 		status.Port = current.Port
 		status.HasFallback = a.HasFallback(core)

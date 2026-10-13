@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -270,4 +271,29 @@ func validateManagedTLSCertificate(access domain.LandingAccess, now time.Time) e
 		return fmt.Errorf("受管 TLS 证书与状态中的固定指纹不一致；请删除并重新创建该接入")
 	}
 	return nil
+}
+
+func (a *App) generateNodeTLSCertificate(ctx context.Context, core string) (*domain.LandingAccess, error) {
+	p, err := a.Registry.Get(core)
+	if err != nil {
+		return nil, err
+	}
+	suffix, err := randomHex(10)
+	if err != nil {
+		return nil, err
+	}
+	name := "main-" + suffix
+	cert, err := a.generateManagedTLSCertificate(core, name, a.Services.User(ctx, p.ServiceName()))
+	if err != nil {
+		return nil, err
+	}
+	cert.Name, cert.Security = name, domain.LandingSecurityTLS
+	return &cert, nil
+}
+
+func (a *App) validateNodeTLS(n domain.NodeSpec) error {
+	if n.TLSCertificate == nil || !a.isManagedTLSAccess(n.Core, *n.TLSCertificate) || n.SNI != n.TLSCertificate.SNI {
+		return fmt.Errorf("主节点 TLS 证书状态无效，请重新生成证书")
+	}
+	return validateManagedTLSCertificate(*n.TLSCertificate, a.Now())
 }

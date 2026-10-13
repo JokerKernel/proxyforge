@@ -40,12 +40,22 @@ Golden、安全和事务回滚测试：
 go test ./...
 ```
 
-提供官方二进制后，可以复跑四份配置的原生验收：
+提供官方二进制后，可以运行 REALITY、TLS、客户端和中转配置的原生验收：
 
 ```bash
 SING_BOX_BIN=/path/to/sing-box XRAY_BIN=/path/to/xray \
   go test -v ./internal/integration
 ```
+
+自签 TLS 本机连接验收覆盖 Xray/sing-box 两个服务端与 Xray/sing-box/Mihomo 三个客户端，并检查错误指纹无法连接：
+
+```bash
+PROXYFORGE_TLS_CONNECT_TEST=1 \
+SING_BOX_BIN=/path/to/sing-box XRAY_BIN=/path/to/xray MIHOMO_BIN=/path/to/mihomo \
+  go test -v ./internal/integration -run TestRealTLSClientsConnectAndRejectWrongPins
+```
+
+测试启动临时内核进程，使用随机本机端口，结束后停止进程。测试配置仅为访问本机测试 HTTPS 服务放行 loopback，不改变生成配置中的私网拦截策略。
 
 一次性 Debian/Ubuntu 或 Rocky/AlmaLinux systemd VM 可以运行 `scripts/smoke-systemd.sh`。该脚本会真实安装两个内核、生成 443/8443 节点、验证客户端并确认服务 active，不应直接用于生产主机。
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"proxyforge/internal/domain"
+	"proxyforge/internal/provider"
 	"proxyforge/internal/system"
 )
 
@@ -23,6 +24,12 @@ func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.Res
 	current, err := a.Store.Load(core)
 	if err != nil {
 		return domain.NodeSpec{}, err
+	}
+	if current.IsTLS() {
+		return a.resetTLSNode(ctx, p, current, opts)
+	}
+	if opts.RotateCertificate {
+		return domain.NodeSpec{}, fmt.Errorf("重新生成证书仅适用于 TLS 节点")
 	}
 	requestedSNI := strings.TrimSpace(opts.SNI)
 	requestedTarget := strings.TrimSpace(opts.Target)
@@ -99,4 +106,55 @@ func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.Res
 		return n, err
 	}
 	return a.applyServerConfig(ctx, p, core, n, current, true, patched, managedConfig)
+}
+
+func (a *App) resetTLSNode(ctx context.Context, p provider.CoreProvider, current domain.NodeSpec, opts domain.ResetOptions) (domain.NodeSpec, error) {
+	if opts.SNI != "" || opts.Target != "" {
+		return current, fmt.Errorf("自签 TLS 的证书名称自动生成，请使用 --rotate-certificate 更换证书")
+	}
+	if err := a.validateNodeTLS(current); err != nil && !opts.RotateCertificate {
+		return current, err
+	}
+	n := current
+	version, err := p.Version(ctx, a.Runner)
+	if err != nil {
+		return n, err
+	}
+	n.CoreVersion, n.SchemaVersion, n.UpdatedAt = version, domain.StateSchemaVersion, a.Now().UTC()
+	if opts.Credentials || !opts.RotateCertificate {
+		n.UUID, err = system.UUID()
+		if err != nil {
+			return n, err
+		}
+		if n.UUID == current.UUID {
+			return n, fmt.Errorf("UUID 生成器返回了重复值")
+		}
+	}
+	committed := false
+	if opts.RotateCertificate {
+		n.TLSCertificate, err = a.generateNodeTLSCertificate(ctx, n.Core)
+		if err != nil {
+			return n, err
+		}
+		n.SNI = n.TLSCertificate.SNI
+		defer func() {
+			if !committed {
+				_ = a.removeManagedTLSAccess(n.Core, n.TLSCertificate.Name)
+			}
+		}()
+	}
+	config, err := os.ReadFile(a.Layout.Resolve(p.ConfigPath()))
+	if err != nil {
+		return n, err
+	}
+	managed := current.ConfigSHA256 != "" && system.SHA256(config) == current.ConfigSHA256
+	patched, err := p.PatchServer(config, current, n, opts.RotateCertificate)
+	if err != nil {
+		return n, err
+	}
+	applied, err := a.applyServerConfig(ctx, p, n.Core, n, current, true, patched, managed)
+	if err == nil {
+		committed = true
+	}
+	return applied, err
 }

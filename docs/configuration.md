@@ -9,10 +9,10 @@ proxyforge install <sing-box|xray> [--version VERSION] [--beta]
 proxyforge update [--yes]
 proxyforge uninstall <sing-box|xray> [--yes]
 proxyforge cleanup <sing-box|xray|all> [--yes]
-proxyforge config generate <sing-box|xray> --server HOST --port PORT --sni DOMAIN [OPTIONS]
+proxyforge config generate <sing-box|xray> --server HOST --port PORT [--security reality|tls] [OPTIONS]
 proxyforge config client <sing-box|xray> [--format native|clash] [--output FILE] [--force]
 proxyforge config reset <sing-box|xray> [--sni DOMAIN] [--target HOST:PORT] [--yes]
-proxyforge config landing add <sing-box|xray> NAME [--security reality|tls]
+proxyforge config landing add <sing-box|xray> NAME [--security current|reality|tls]
 proxyforge config relay add <sing-box|xray> NAME --upstream-stdin
 proxyforge config relay client <sing-box|xray> NAME [--format native|clash] [--output FILE]
 proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
@@ -38,9 +38,39 @@ sudo proxyforge config generate xray \
 
 通过“服务端配置 → 编辑配置”保存并退出编辑器后，ProxyForge 会使用对应内核的原生命令校验当前配置。校验通过时自动重启服务使配置生效；校验失败时显示具体错误，不会重启服务，按 Enter 后会重新打开同一配置文件继续修改。
 
+### 自签 TLS 主节点
+
+“生成服务端配置”提供 `VLESS + RAW + REALITY + Vision` 和 `VLESS + RAW + TLS + Vision` 两个选项。新节点默认 REALITY；重新生成时默认沿用当前协议。每个内核仍管理一个主节点，切换协议后需要重新导出客户端配置，以及复用主入站的落地连接文本。
+
+TLS 模式仅需连接地址和监听端口，无需准备域名、证书或 DNS：
+
+```bash
+sudo proxyforge config generate xray --yes \
+  --security tls --server 203.0.113.10 --port 443
+
+sudo proxyforge config generate sing-box --yes \
+  --security tls --server 203.0.113.10 --port 8443
+```
+
+程序自动生成 10 年有效的 ECDSA P-256 自签证书，证书名称为随机 `pf-<十六进制>.invalid`，服务端最低 TLS 版本为 1.3。客户端连接用户提供的 IP 或域名，TLS 名称和固定指纹由导出配置自动填写，不需要解析该随机名称。TLS 模式不接受 `--sni`、`--target` 或 REALITY 回落防护参数。
+
+重新生成配置默认保留 UUID 和证书。UUID 和证书可以分别重置：
+
+```bash
+# 重置普通用户 UUID，保留证书
+sudo proxyforge config reset xray --yes
+
+# 重新生成证书及 TLS 名称，保留 UUID
+sudo proxyforge config reset xray --yes --rotate-certificate
+```
+
+菜单“修改配置”也提供这两个独立操作。生成命令的 `--rotate-credentials` 在 TLS 模式仅轮换 UUID；`--rotate-certificate` 重新生成证书。更换证书后，普通客户端、中转线路客户端及复用主入站的落地连接文本都需要重新导出。
+
+旧主节点证书文件在更换证书或切换到 REALITY 后继续保留，供旧配置备份使用；内核卸载或清理时统一删除。首次生成失败或证书更换失败会清理本次新证书，并保留旧证书。
+
 ### 配置模式
 
-sing-box 和 Xray 默认生成回落防偷跑配置。可用 `--standard-config` 恢复标准模板；sing-box 还支持 `--simplified-config`。这些模式参数不能组合。
+在 REALITY 模式下，sing-box 和 Xray 默认生成回落防偷跑配置。可用 `--standard-config` 恢复标准模板；sing-box 还支持 `--simplified-config`。这些模式参数不能组合。
 
 - sing-box 防偷跑模式在 `127.0.0.1` 创建 `direct` 入站，将 REALITY handshake 指向该入站，通过 TLS sniff 和域名规则把合法回落转到独立的 `fallback-direct`（默认双栈）；内部端口默认在 30000-65000 间随机分配，已有配置则沿用。
 - sing-box 和 Xray 的明文 HTTP 回落默认不限制 Host。分别使用 `--sing-box-fallback-http-domain`、`--xray-fallback-http-domain`（或交互菜单中的对应开关）后，才会按当前 SNI 限制 HTTP Host。
@@ -88,7 +118,9 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 客户端文件以 `0600` 创建。默认的 `native` 格式会通过对应内核校验：sing-box 客户端提供 `127.0.0.1:2080` mixed 入站；Xray 客户端提供 `127.0.0.1:10808` SOCKS 和 `127.0.0.1:10809` HTTP 入站。
 
-`clash` 格式输出完整的 Mihomo/Clash Meta YAML，包含 `mixed-port: 7890`、`PROXY` 策略组和 `MATCH` 规则。传统 Clash 不支持 VLESS REALITY，不能使用该文件。
+`clash` 格式输出完整的 Mihomo/Clash Meta YAML，包含 `mixed-port: 7890`、`PROXY` 策略组和 `MATCH` 规则。请使用支持 VLESS 的 Mihomo/Clash Meta，传统 Clash 不能使用该文件。
+
+自签 TLS 导出保持证书验证开启：Xray 和 Mihomo 固定证书 SHA-256，sing-box 固定公钥 SHA-256（需要 sing-box 1.13 或更高版本）。导出前会检查受管证书、私钥、有效期、名称和指纹是否一致。客户端配置需通过可信方式传递，不能将指纹替换为跳过证书验证。
 
 交互菜单的“客户端配置”同时提供普通节点和中转节点入口。选择中转节点后会列出当前线路及启用状态，再选择原生 JSON 或 Clash YAML，配置内容直接显示在终端。
 
@@ -106,10 +138,10 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 先在落地服务器创建独立接入。交互菜单会提供两种模式：
 
-- 使用当前协议：把落地用户加入当前 `VLESS + RAW + REALITY + Vision` 入站，不新增端口。
+- 使用当前协议：把落地用户加入当前 REALITY 或 TLS 主入站，不新增端口。TLS 主入站使用主节点证书和指纹。
 - 创建独立 TLS：新增一个 `VLESS + RAW + TLS + Vision` 入站，从 `30000–65000` 随机选择可用端口，并自动生成 ECDSA P-256 自签证书。SNI 和 SAN 使用随机的 `pf-<十六进制>.invalid`，不依赖 DNS。
 
-命令会把一段可复制的 JSON 连接文本直接显示在终端，不会默认生成文件。默认模式是复用当前 REALITY：
+命令会把一段可复制的 JSON 连接文本直接显示在终端，不会默认生成文件。默认 `--security current` 复用当前主入站；`--security reality` 仅适用于 REALITY 主节点：
 
 ```bash
 sudo proxyforge config landing add xray from-relay

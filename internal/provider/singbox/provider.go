@@ -73,7 +73,7 @@ func (*Provider) GenerateKeyPair(ctx context.Context, r provider.Runner) (domain
 }
 
 func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
-	if n.SingBoxFallbackGuard {
+	if n.SingBoxFallbackGuard && !n.IsTLS() {
 		b, err := renderFallbackGuardServer(n)
 		if err != nil || (len(n.RelayLinks) == 0 && len(n.LandingAccesses) == 0) {
 			return b, err
@@ -91,6 +91,13 @@ func (*Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
 			}},
 		}},
 		"outbounds": []any{map[string]any{"type": "direct", "tag": "direct"}},
+	}
+	if n.IsTLS() {
+		if n.TLSCertificate == nil {
+			return nil, fmt.Errorf("TLS 节点缺少证书")
+		}
+		inbound := v["inbounds"].([]any)[0].(map[string]any)
+		inbound["tls"] = map[string]any{"enabled": true, "server_name": n.SNI, "min_version": "1.3", "certificate_path": n.TLSCertificate.CertificateFile, "key_path": n.TLSCertificate.KeyFile}
 	}
 	if n.SimplifiedConfig {
 		v["route"] = map[string]any{
@@ -187,6 +194,17 @@ func (*Provider) RenderClient(n domain.NodeSpec) ([]byte, error) {
 				"reality": map[string]any{"enabled": true, "public_key": n.PublicKey, "short_id": n.ShortID}},
 		}},
 		"route": privateNetworkRoute(false, "proxy"),
+	}
+	if n.IsTLS() {
+		if n.TLSCertificate == nil || !domain.ValidCertificatePublicKeySHA256(n.TLSCertificate.CertificatePublicKeySHA256) {
+			return nil, fmt.Errorf("TLS 节点缺少合法公钥指纹")
+		}
+		outbound := v["outbounds"].([]any)[0].(map[string]any)
+		tls := outbound["tls"].(map[string]any)
+		delete(tls, "reality")
+		tls["insecure"] = false
+		tls["min_version"] = "1.3"
+		tls["certificate_public_key_sha256"] = []string{n.TLSCertificate.CertificatePublicKeySHA256}
 	}
 	return marshalSingBox(v)
 }

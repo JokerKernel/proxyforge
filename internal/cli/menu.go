@@ -206,11 +206,23 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 			c.printMenuChoice("3", "回落 IP（回落访问目标站的 IPv4 / IPv6）")
 			next = 4
 		}
-		c.printMenuChoice(strconv.Itoa(next), "重置 SNI/target（保留节点凭证）")
-		c.printMenuChoice(strconv.Itoa(next+1), "重置节点凭证（UUID、REALITY 密钥和 short ID；保留 SNI/target）")
-		c.printMenuChoice(strconv.Itoa(next+2), "REALITY SNI 候选检测（重新测试，不修改配置）")
-		c.printMenuChoice("0/q", "返回")
+		tlsMode := false
+		if c.app != nil {
+			if node, err := c.app.Store.Load(core); err == nil {
+				tlsMode = node.IsTLS()
+			}
+		}
 		maxChoice := next + 2
+		if tlsMode {
+			c.printMenuChoice(strconv.Itoa(next), "重新生成 TLS 证书（保留 UUID）")
+			c.printMenuChoice(strconv.Itoa(next+1), "重置 UUID（保留 TLS 证书）")
+			maxChoice = next + 1
+		} else {
+			c.printMenuChoice(strconv.Itoa(next), "重置 SNI/target（保留节点凭证）")
+			c.printMenuChoice(strconv.Itoa(next+1), "重置节点凭证（UUID、REALITY 密钥和 short ID；保留 SNI/target）")
+			c.printMenuChoice(strconv.Itoa(next+2), "REALITY SNI 候选检测（重新测试，不修改配置）")
+		}
+		c.printMenuChoice("0/q", "返回")
 		choice, err := c.chooseNumber("请选择", 0, maxChoice, 0)
 		if err != nil {
 			return err
@@ -306,11 +318,15 @@ func (c *commandSet) printModifyConfigCard(ctx context.Context, core string) {
 		})
 	}
 	hasNode := status.HasConfig || status.SNI != ""
-	rows = append(rows,
-		[2]string{"SNI 防护", enabledCardDisplay(hasNode, status.HasFallback)},
-		[2]string{"严格模式", enabledCardDisplay(hasNode, status.HasFallback && status.StrictMatch)},
-		[2]string{"HTTP Host", httpHostCardDisplay(hasNode, status.HasFallback, status.HTTPHostRestrict)},
-	)
+	if status.Security != domain.LandingSecurityTLS {
+		rows = append(rows,
+			[2]string{"SNI 防护", enabledCardDisplay(hasNode, status.HasFallback)},
+			[2]string{"严格模式", enabledCardDisplay(hasNode, status.HasFallback && status.StrictMatch)},
+			[2]string{"HTTP Host", httpHostCardDisplay(hasNode, status.HasFallback, status.HTTPHostRestrict)},
+		)
+	} else {
+		rows = append(rows, [2]string{"节点协议", landingProtocolLabel(status.Security)}, [2]string{"证书验证", "固定指纹"})
+	}
 	sni := strings.TrimSpace(status.SNI)
 	if sni == "" {
 		sni = "未生成"

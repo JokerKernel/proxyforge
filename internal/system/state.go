@@ -36,6 +36,10 @@ func (s StateStore) Load(core string) (domain.NodeSpec, error) {
 	if n.SchemaVersion > domain.StateSchemaVersion {
 		return n, fmt.Errorf("状态文件版本 %d 高于当前支持版本 %d: %s", n.SchemaVersion, domain.StateSchemaVersion, path)
 	}
+	security := domain.NormalizeLandingSecurity(n.Security)
+	if security != domain.LandingSecurityReality && security != domain.LandingSecurityTLS {
+		return n, fmt.Errorf("状态文件安全协议无效: %s", path)
+	}
 	return n, nil
 }
 

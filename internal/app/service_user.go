@@ -96,7 +96,7 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 	}
 	if state, stateErr := a.Store.Load(domain.CoreXray); stateErr == nil {
 		permissionPaths = append(permissionPaths, a.Layout.TLSRoot(domain.CoreXray))
-		for _, access := range state.LandingAccesses {
+		for _, access := range state.TLSAccesses() {
 			if a.isManagedTLSAccess(domain.CoreXray, access) {
 				permissionPaths = append(permissionPaths, a.Layout.TLSAccessDir(domain.CoreXray, access.Name), access.CertificateFile, access.KeyFile)
 			}
@@ -524,7 +524,7 @@ func (a *App) secureXrayFilesForDedicatedUser(ctx context.Context, configPath st
 				}
 			}
 		}
-		for _, access := range state.LandingAccesses {
+		for _, access := range state.TLSAccesses() {
 			if !a.isManagedTLSAccess(domain.CoreXray, access) {
 				continue
 			}

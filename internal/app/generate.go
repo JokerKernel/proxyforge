@@ -29,6 +29,25 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if err := a.checkCoreInstalled(ctx, p); err != nil {
 		return domain.NodeSpec{}, err
 	}
+	old, loadErr := a.Store.Load(core)
+	hasOld := loadErr == nil
+	if loadErr != nil && !errors.Is(loadErr, system.ErrNoState) {
+		return domain.NodeSpec{}, loadErr
+	}
+	if opts.Security == "" && hasOld {
+		opts.Security = old.Security
+	}
+	opts.Security = domain.NormalizeLandingSecurity(opts.Security)
+	if opts.Security != domain.LandingSecurityTLS && opts.Security != domain.LandingSecurityReality {
+		return domain.NodeSpec{}, fmt.Errorf("安全协议无效：%q（可选 reality 或 tls）", opts.Security)
+	}
+	tlsMode := opts.Security == domain.LandingSecurityTLS
+	if opts.RotateCertificate && !tlsMode {
+		return domain.NodeSpec{}, fmt.Errorf("重新生成证书仅适用于 TLS 节点")
+	}
+	if tlsMode && (opts.SNI != "" || opts.Target != "" || opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != 0 || opts.SingBoxFallbackHTTPDomain || opts.SingBoxFallbackExactDomain || opts.XrayFallbackGuard || opts.XrayFallbackPort != 0 || opts.XrayFallbackHTTPDomain || opts.XrayFallbackExactDomain) {
+		return domain.NodeSpec{}, fmt.Errorf("自签 TLS 自动生成证书名称，不能使用 --sni、--target 或 REALITY 回落参数")
+	}
 	if opts.SimplifiedConfig && core != domain.CoreSingBox {
 		return domain.NodeSpec{}, fmt.Errorf("简化服务端配置目前仅支持 sing-box")
 	}
@@ -44,7 +63,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if (opts.XrayFallbackGuard || opts.XrayFallbackPort != 0 || opts.XrayFallbackHTTPDomain || opts.XrayFallbackExactDomain) && core != domain.CoreXray {
 		return domain.NodeSpec{}, fmt.Errorf("REALITY 回落防偷跑配置仅支持 xray")
 	}
-	if !opts.StandardConfig {
+	if !opts.StandardConfig && !tlsMode {
 		switch core {
 		case domain.CoreSingBox:
 			if !opts.SimplifiedConfig {
@@ -83,24 +102,21 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if err := validateGenerate(opts); err != nil {
 		return domain.NodeSpec{}, err
 	}
-	if opts.Target == "" {
+	if !tlsMode && opts.Target == "" {
 		opts.Target = net.JoinHostPort(opts.SNI, "443")
 	}
-	a.progressf("验证服务地址、端口、SNI 和 REALITY target")
+	a.progressf("验证服务地址和监听端口")
 	a.progressf("服务地址格式通过：%s", opts.Server)
 	a.progressf("监听端口范围通过：TCP/%d", opts.Port)
-	a.progressf("SNI 格式通过：%s", opts.SNI)
-	warnings, err := a.Targets.Validate(ctx, opts.Target, opts.SNI, opts.Server)
-	if err != nil {
-		return domain.NodeSpec{}, err
-	}
-	for _, warning := range warnings {
-		fmt.Fprintln(a.Out, "[警告] "+warning)
-	}
-	old, loadErr := a.Store.Load(core)
-	hasOld := loadErr == nil
-	if loadErr != nil && !errors.Is(loadErr, system.ErrNoState) {
-		return domain.NodeSpec{}, loadErr
+	if !tlsMode {
+		a.progressf("SNI 格式通过：%s", opts.SNI)
+		warnings, err := a.Targets.Validate(ctx, opts.Target, opts.SNI, opts.Server)
+		if err != nil {
+			return domain.NodeSpec{}, err
+		}
+		for _, warning := range warnings {
+			fmt.Fprintln(a.Out, "[警告] "+warning)
+		}
 	}
 	userName := strings.TrimSpace(opts.UserName)
 	if userName == "" && hasOld {
@@ -148,6 +164,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		return domain.NodeSpec{}, fmt.Errorf("内核不可用或不支持所需能力: %w", err)
 	}
 	n := domain.NodeSpec{
+		Security:      opts.Security,
 		SchemaVersion: domain.StateSchemaVersion, ManagedBy: "proxyforge", Core: core, InboundTag: inboundTag, Server: opts.Server, Port: opts.Port,
 		SNI: opts.SNI, Target: opts.Target, UserName: userName, SimplifiedConfig: opts.SimplifiedConfig,
 		SingBoxFallbackGuard: opts.SingBoxFallbackGuard, SingBoxFallbackPort: opts.SingBoxFallbackPort,
@@ -161,31 +178,68 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		n.LandingAccesses = append([]domain.LandingAccess(nil), old.LandingAccesses...)
 		n.RelayLinks = append([]domain.RelayLink(nil), old.RelayLinks...)
 	}
+	for i := range n.LandingAccesses {
+		if n.LandingAccesses[i].UsesPrimaryInbound() {
+			n.LandingAccesses[i].Security = opts.Security
+		}
+	}
+	if hasOld && domain.NormalizeLandingSecurity(old.Security) != opts.Security {
+		fmt.Fprintln(a.Out, "[提示] 主节点协议已切换，请重新导出客户端配置和复用主入站的落地连接文本。")
+	}
 	if hasOld && opts.RotateCredentials && (len(old.LandingAccesses) > 0 || len(old.RelayLinks) > 0) {
-		fmt.Fprintln(a.Out, "[警告] REALITY 凭据轮换后，需要重新导出中转客户端，并重新生成本机落地连接文本。")
+		fmt.Fprintln(a.Out, "[警告] 节点凭据轮换后，需要重新导出中转客户端，并重新生成本机落地连接文本。")
 	}
 	if n.SimplifiedConfig {
 		fmt.Fprintln(a.Out, "[警告] 已选择 sing-box 简化配置；域名将在出站连接阶段由系统 DNS 解析，域名解析到私网地址时可能绕过路由私网拦截。")
 	}
 	if hasOld && !opts.RotateCredentials {
-		a.progressf("保留现有 UUID、REALITY 密钥和 short ID")
-		n.UUID, n.PrivateKey, n.PublicKey, n.ShortID = old.UUID, old.PrivateKey, old.PublicKey, old.ShortID
+		n.UUID = old.UUID
 	} else {
-		a.progressf("生成新的 UUID、REALITY 密钥和 short ID")
-		if n.UUID, err = system.UUID(); err != nil {
+		n.UUID, err = system.UUID()
+		if err != nil {
 			return n, err
 		}
-		if n.ShortID, err = system.ShortID(); err != nil {
-			return n, err
+		if hasOld && n.UUID == old.UUID {
+			return n, fmt.Errorf("UUID 生成器返回重复值")
 		}
-		keys, keyErr := p.GenerateKeyPair(ctx, a.Runner)
-		if keyErr != nil {
-			return n, keyErr
-		}
-		n.PrivateKey, n.PublicKey = keys.Private, keys.Public
 	}
-	if hasOld && opts.RotateCredentials && (n.UUID == old.UUID || n.PrivateKey == old.PrivateKey || n.PublicKey == old.PublicKey || n.ShortID == old.ShortID) {
-		return n, fmt.Errorf("凭据生成器返回了重复值，已拒绝修改现有节点")
+	if !tlsMode {
+		if hasOld && !old.IsTLS() && !opts.RotateCredentials {
+			n.PrivateKey, n.PublicKey, n.ShortID = old.PrivateKey, old.PublicKey, old.ShortID
+		} else {
+			n.ShortID, err = system.ShortID()
+			if err != nil {
+				return n, err
+			}
+			keys, keyErr := p.GenerateKeyPair(ctx, a.Runner)
+			if keyErr != nil {
+				return n, keyErr
+			}
+			n.PrivateKey, n.PublicKey = keys.Private, keys.Public
+			if hasOld && !old.IsTLS() && opts.RotateCredentials && (n.PrivateKey == old.PrivateKey || n.PublicKey == old.PublicKey || n.ShortID == old.ShortID) {
+				return n, fmt.Errorf("凭据生成器返回了重复值，已拒绝修改现有节点")
+			}
+		}
+	}
+	certificateCommitted := false
+	if tlsMode {
+		if hasOld && old.IsTLS() && !opts.RotateCertificate {
+			if err := a.validateNodeTLS(old); err != nil {
+				return n, err
+			}
+			n.TLSCertificate = old.TLSCertificate
+		} else {
+			n.TLSCertificate, err = a.generateNodeTLSCertificate(ctx, core)
+			if err != nil {
+				return n, err
+			}
+			defer func() {
+				if !certificateCommitted {
+					_ = a.removeManagedTLSAccess(core, n.TLSCertificate.Name)
+				}
+			}()
+		}
+		n.SNI = n.TLSCertificate.SNI
 	}
 	config, err := p.RenderServer(n)
 	if err != nil {
@@ -195,6 +249,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if err != nil {
 		return applied, err
 	}
+	certificateCommitted = true
 	if hasOld && opts.DropLinks {
 		var cleanupErrors []error
 		for _, access := range old.LandingAccesses {
@@ -400,7 +455,10 @@ func nodeFallbackPort(n domain.NodeSpec) int {
 }
 
 func validateGenerate(o domain.GenerateOptions) error {
-	if o.NonInteractive && (o.Server == "" || o.Port == 0 || o.SNI == "") {
+	if o.NonInteractive && (o.Server == "" || o.Port == 0 || (domain.NormalizeLandingSecurity(o.Security) != domain.LandingSecurityTLS && o.SNI == "")) {
+		if domain.NormalizeLandingSecurity(o.Security) == domain.LandingSecurityTLS {
+			return fmt.Errorf("非交互 TLS 部署必须显式提供 --server 和 --port")
+		}
 		return fmt.Errorf("非交互模式必须显式提供 --server、--port 和 --sni")
 	}
 	if err := system.ValidateServer(o.Server); err != nil {
@@ -425,8 +483,10 @@ func validateGenerate(o domain.GenerateOptions) error {
 			return fmt.Errorf("sing-box 回落端口不能与公网监听端口相同")
 		}
 	}
-	if err := system.ValidateSNI(o.SNI); err != nil {
-		return err
+	if domain.NormalizeLandingSecurity(o.Security) != domain.LandingSecurityTLS {
+		if err := system.ValidateSNI(o.SNI); err != nil {
+			return err
+		}
 	}
 	if o.UserName != "" {
 		if err := system.ValidateUserName(o.UserName); err != nil {

@@ -34,6 +34,15 @@ func (*Provider) PatchServer(config []byte, old, next domain.NodeSpec, updateEnd
 	if err != nil {
 		return nil, err
 	}
+	if old.IsTLS() {
+		if updateEndpoint {
+			if old.TLSCertificate == nil || next.TLSCertificate == nil || tls["certificate_path"] != old.TLSCertificate.CertificateFile || tls["key_path"] != old.TLSCertificate.KeyFile {
+				return nil, fmt.Errorf("受管 TLS 证书引用不存在或已修改")
+			}
+			tls["server_name"], tls["certificate_path"], tls["key_path"] = next.SNI, next.TLSCertificate.CertificateFile, next.TLSCertificate.KeyFile
+		}
+		return marshalSingBox(root)
+	}
 	reality, err := childObject(tls, "reality", "sing-box tls.reality")
 	if err != nil {
 		return nil, err
