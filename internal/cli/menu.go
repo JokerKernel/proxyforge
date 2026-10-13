@@ -349,8 +349,8 @@ func (c *commandSet) printModifyConfigCard(ctx context.Context, core string) {
 	hasNode := status.HasConfig || status.SNI != ""
 	if status.Security != domain.LandingSecurityTLS {
 		rows = append(rows,
-			[2]string{"SNI 防护", enabledCardDisplay(hasNode, status.HasFallback)},
-			[2]string{"严格模式", enabledCardDisplay(hasNode, status.HasFallback && status.StrictMatch)},
+			[2]string{"SNI 防护", sniGuardCardDisplay(hasNode, status.HasFallback)},
+			[2]string{"严格模式", strictModeCardDisplay(hasNode, status.HasFallback, status.StrictMatch)},
 			[2]string{"HTTP Host", httpHostCardDisplay(hasNode, status.HasFallback, status.HTTPHostRestrict)},
 		)
 	} else {
@@ -410,6 +410,31 @@ func enabledCardDisplay(hasNode bool, enabled bool) string {
 	return "未开启"
 }
 
+func sniGuardCardDisplay(hasNode, enabled bool) string {
+	status := enabledCardDisplay(hasNode, enabled)
+	if !hasNode {
+		return status
+	}
+	if enabled {
+		return status + "  -- 按 SNI 域名规则限制回落"
+	}
+	return status + "  -- 不检查回落 SNI 域名"
+}
+
+func strictModeCardDisplay(hasNode, hasFallback, strict bool) string {
+	status := enabledCardDisplay(hasNode, hasFallback && strict)
+	if !hasNode {
+		return status
+	}
+	if !hasFallback {
+		return status + "  -- 未启用 SNI 防护"
+	}
+	if strict {
+		return status + "  -- 仅允许完整 SNI 域名"
+	}
+	return status + "  -- 允许 SNI 域名及其子域名"
+}
+
 func relayCardDisplay(hasNode, known bool, total, enabled int) string {
 	if !hasNode {
 		return "未生成"
@@ -453,12 +478,12 @@ func httpHostCardDisplay(hasNode, hasFallback, restrict bool) string {
 		return "未生成"
 	}
 	if !hasFallback {
-		return "未开启"
+		return "未开启  -- 未启用 SNI 防护"
 	}
 	if restrict {
-		return "已开启"
+		return "已开启  -- 按 SNI 域名规则检查明文 Host"
 	}
-	return "不限制"
+	return "不限制  -- 不检查明文 HTTP Host"
 }
 
 func serviceStatusCardDisplay(status app.ModifyConfigStatus) string {
