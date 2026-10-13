@@ -55,6 +55,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if opts.Security != domain.LandingSecurityTLS && opts.Security != domain.LandingSecurityReality {
 		return domain.NodeSpec{}, fmt.Errorf("安全协议无效：%q（可选 reality 或 tls）", opts.Security)
 	}
+	protocolChanged := hasOld && domain.NormalizeLandingSecurity(old.Security) != opts.Security
 	tlsMode := opts.Security == domain.LandingSecurityTLS
 	if opts.RotateCertificate && !tlsMode {
 		return domain.NodeSpec{}, fmt.Errorf("重新生成证书仅适用于 TLS 节点")
@@ -198,8 +199,8 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 			n.LandingAccesses[i].Security = opts.Security
 		}
 	}
-	if hasOld && domain.NormalizeLandingSecurity(old.Security) != opts.Security {
-		fmt.Fprintln(a.Out, "[提示] 主节点协议已切换，请重新导出客户端配置和复用主入站的落地连接文本。")
+	if protocolChanged {
+		fmt.Fprintln(a.Out, "[提示] 主节点协议已切换，将自动更换主节点 UUID；请重新导出客户端配置和复用主入站的落地连接文本。")
 	}
 	if hasOld && opts.RotateCredentials && (len(old.LandingAccesses) > 0 || len(old.RelayLinks) > 0) {
 		fmt.Fprintln(a.Out, "[警告] 节点凭据轮换后，需要重新导出中转客户端，并重新生成本机落地连接文本。")
@@ -207,7 +208,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if n.SimplifiedConfig {
 		fmt.Fprintln(a.Out, "[警告] 已选择 sing-box 简化配置；域名将在出站连接阶段由系统 DNS 解析，域名解析到私网地址时可能绕过路由私网拦截。")
 	}
-	if hasOld && !opts.RotateCredentials {
+	if hasOld && !opts.RotateCredentials && !protocolChanged {
 		n.UUID = old.UUID
 	} else {
 		n.UUID, err = system.UUID()

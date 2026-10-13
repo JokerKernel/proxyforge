@@ -46,7 +46,7 @@ func (c *commandSet) generateCommand() *cobra.Command {
 			return err
 		},
 	}
-	cmd.Flags().StringVar(&o.Security, "security", "", "主节点安全协议：reality 或 tls（自签证书；默认沿用当前协议，新节点为 reality）")
+	cmd.Flags().StringVar(&o.Security, "security", "", "主节点安全协议：reality 或 tls（默认沿用当前协议；切换协议自动更换主节点 UUID）")
 	cmd.Flags().BoolVar(&o.RotateCertificate, "rotate-certificate", false, "TLS 主节点重新生成自签证书，旧客户端需更新")
 	cmd.Flags().StringVar(&o.Server, "server", "", "客户端连接的公网 IP 或域名")
 	cmd.Flags().IntVar(&o.Port, "port", 0, "监听 TCP 端口")
@@ -106,6 +106,11 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		o.Security = domain.LandingSecurityReality
 		if choice == 2 {
 			o.Security = domain.LandingSecurityTLS
+		}
+	}
+	if c.app != nil {
+		if current, err := c.app.Store.Load(core); err == nil && domain.NormalizeLandingSecurity(current.Security) != domain.NormalizeLandingSecurity(o.Security) {
+			fmt.Fprintln(c.out, "[提示] 切换协议将自动更换主节点 UUID，需要重新导出客户端配置。")
 		}
 	}
 	tlsMode := domain.NormalizeLandingSecurity(o.Security) == domain.LandingSecurityTLS

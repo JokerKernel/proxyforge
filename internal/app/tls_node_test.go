@@ -219,7 +219,8 @@ func TestTLSNodeProtocolSwitchAndLegacyState(t *testing.T) {
 			if err := a.Store.Save(first); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := a.AddLandingAccess(ctx, core, "shared"); err != nil {
+			access, err := a.AddLandingAccess(ctx, core, "shared")
+			if err != nil {
 				t.Fatal(err)
 			}
 			opts.Security, opts.SNI = "tls", ""
@@ -227,18 +228,83 @@ func TestTLSNodeProtocolSwitchAndLegacyState(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if tlsNode.UUID != first.UUID || tlsNode.LandingAccesses[0].Security != "tls" {
-				t.Fatal("switch lost shared identity")
+			if tlsNode.UUID == first.UUID || tlsNode.LandingAccesses[0].Security != "tls" || tlsNode.LandingAccesses[0].UUID != access.UUID {
+				t.Fatal("protocol switch did not rotate main UUID or changed shared landing UUID")
 			}
 			opts.Security, opts.SNI = "reality", "example.com"
 			restored, err := a.Generate(ctx, core, opts)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if restored.IsTLS() || restored.PrivateKey == "" || restored.TLSCertificate != nil || restored.LandingAccesses[0].Security != "reality" {
+			if restored.IsTLS() || restored.PrivateKey == "" || restored.TLSCertificate != nil || restored.LandingAccesses[0].Security != "reality" || restored.LandingAccesses[0].UUID != access.UUID || restored.UUID == tlsNode.UUID || restored.UUID == first.UUID {
 				t.Fatalf("restored=%#v", restored)
 			}
+			p, _ := a.Registry.Get(core)
+			config, err := os.ReadFile(a.Layout.Resolve(p.ConfigPath()))
+			if err != nil || !bytes.Contains(config, []byte(restored.UUID)) || bytes.Contains(config, []byte(first.UUID)) || bytes.Contains(config, []byte(tlsNode.UUID)) {
+				t.Fatalf("server retained previous protocol UUID: %s, err=%v", config, err)
+			}
+			client, err := a.ClientConfig(ctx, core, ClientFormatNative, "", false)
+			if err != nil || !bytes.Contains(client, []byte(restored.UUID)) {
+				t.Fatalf("client missing switched UUID: %s, err=%v", client, err)
+			}
+			sameProtocol, err := a.Generate(ctx, core, opts)
+			if err != nil || sameProtocol.UUID != restored.UUID || sameProtocol.PrivateKey != restored.PrivateKey || sameProtocol.ShortID != restored.ShortID {
+				t.Fatalf("same protocol regeneration rotated credentials: %#v, err=%v", sameProtocol, err)
+			}
 		})
+	}
+}
+
+func TestProtocolSwitchFailurePreservesUUIDAndConfig(t *testing.T) {
+	for _, core := range []string{domain.CoreXray, domain.CoreSingBox} {
+		for _, security := range []string{domain.LandingSecurityReality, domain.LandingSecurityTLS} {
+			t.Run(core+"/"+security, func(t *testing.T) {
+				runner := &fakeRunner{port: freePort(t)}
+				a, _ := testApp(t, runner)
+				ctx := context.Background()
+				opts := domain.GenerateOptions{Security: security, Server: "server.example.com", Port: runner.port, StandardConfig: true}
+				if security == domain.LandingSecurityReality {
+					opts.SNI = "example.com"
+				}
+				first, err := a.Generate(ctx, core, opts)
+				if err != nil {
+					t.Fatal(err)
+				}
+				p, _ := a.Registry.Get(core)
+				path := a.Layout.Resolve(p.ConfigPath())
+				beforeConfig, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				beforeState, err := os.ReadFile(a.Layout.StatePath(core))
+				if err != nil {
+					t.Fatal(err)
+				}
+				beforeCertificates, _ := os.ReadDir(a.Layout.TLSRoot(core))
+				opts.Security, opts.SNI = domain.LandingSecurityTLS, ""
+				if security == domain.LandingSecurityTLS {
+					opts.Security, opts.SNI = domain.LandingSecurityReality, "example.com"
+				}
+				runner.failRestart = true
+				failed, err := a.Generate(ctx, core, opts)
+				if err == nil || failed.UUID == first.UUID {
+					t.Fatalf("expected failure after generating a new UUID: %#v, err=%v", failed, err)
+				}
+				afterConfig, err := os.ReadFile(path)
+				if err != nil || !bytes.Equal(beforeConfig, afterConfig) {
+					t.Fatalf("failed switch changed core config: %v", err)
+				}
+				afterState, err := os.ReadFile(a.Layout.StatePath(core))
+				if err != nil || !bytes.Equal(beforeState, afterState) {
+					t.Fatalf("failed switch changed saved UUID/state: %v", err)
+				}
+				afterCertificates, _ := os.ReadDir(a.Layout.TLSRoot(core))
+				if len(beforeCertificates) != len(afterCertificates) {
+					t.Fatal("failed switch left a new certificate")
+				}
+			})
+		}
 	}
 }
 

@@ -47,7 +47,7 @@ sudo proxyforge config generate xray \
 
 ### 自签 TLS 主节点
 
-“生成服务端配置”提供 `VLESS + RAW + REALITY + Vision` 和 `VLESS + RAW + TLS + Vision` 两个选项。新节点默认 REALITY；重新生成时默认沿用当前协议。每个内核仍管理一个主节点，切换协议后需要重新导出客户端配置，以及复用主入站的落地连接文本。
+“生成服务端配置”提供 `VLESS + RAW + REALITY + Vision` 和 `VLESS + RAW + TLS + Vision` 两个选项。新节点默认 REALITY；重新生成时默认沿用当前协议。每个内核仍管理一个主节点，切换协议时自动更换主节点 UUID，切换回来也会再次生成新的 UUID，无需额外指定 `--rotate-credentials`。成功应用后需要重新导出客户端配置，以及复用主入站的落地连接文本。落地和中转用户各自的 UUID 保留；切换失败会恢复原协议、UUID 和配置。
 
 TLS 模式仅需连接地址和监听端口，无需准备域名、证书或 DNS：
 
@@ -61,7 +61,7 @@ sudo proxyforge config generate sing-box --yes \
 
 程序自动生成 10 年有效的 ECDSA P-256 自签证书，证书名称为随机 `pf-<十六进制>.invalid`，服务端最低 TLS 版本为 1.3。客户端连接用户提供的 IP 或域名，TLS 名称和固定指纹由导出配置自动填写，不需要解析该随机名称。TLS 模式不接受 `--sni`、`--target` 或 REALITY 回落防护参数。
 
-重新生成配置默认保留 UUID 和证书。UUID 和证书可以分别重置：
+保持 TLS 协议重新生成配置时，默认保留 UUID 和证书。UUID 和证书可以分别重置：
 
 ```bash
 # 重置普通用户 UUID，保留证书
@@ -111,7 +111,7 @@ XTLS 官方安装脚本首次安装时默认在 systemd unit 中写入 `User=nob
 
 在交互菜单进入“Xray → 服务端配置 → 专用运行用户”，ProxyForge 会写入 `/usr/lib/sysusers.d/proxyforge-xray.conf`，通过 `systemd-sysusers` 创建禁止登录且不创建 home 目录的独立 `xray` 系统用户和组，再更新 `xray.service` 与 `xray@.service`、写入持久化 drop-in，并同步配置及日志权限。切换前会以 `xray` 身份校验配置及引用文件的读取权限；若服务正在运行，修改完成后会自动重启。任一步骤失败会恢复原 systemd unit 和文件权限；已经创建的专用账号会保留并记录 UID/GID，之后卸载 Xray 时仅在身份未变化的情况下安全删除。预先存在或没有所有权标记的账号不会被删除。
 
-普通重新生成会保留 UUID、REALITY 密钥和 short ID。只有使用 `--rotate-credentials` 或执行凭据重置时才会轮换它们，并让旧客户端失效。
+保持 REALITY 协议重新生成时，默认保留 UUID、REALITY 密钥和 short ID。使用 `--rotate-credentials` 或执行凭据重置时会轮换它们；从 TLS 切换到 REALITY 时也会生成新的 UUID、REALITY 密钥和 short ID，旧客户端需要更新。
 
 完整重新生成默认同时保留 ProxyForge 管理的中转线路和落地接入；只有显式使用 `--drop-links` 才会清除这些附加用户、出站和路由。
 
