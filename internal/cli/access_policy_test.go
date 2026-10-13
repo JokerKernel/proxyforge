@@ -100,7 +100,7 @@ func TestAccessMenuShowsModesAndLists(t *testing.T) {
 	if err := c.accessPolicyMenu(context.Background(), domain.CoreXray); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"默认模式", "模式与开关", "白名单管理", "黑名单管理", "0 条"} {
+	for _, want := range []string{"默认模式", "切换访问模式", "白名单管理", "黑名单管理", "关闭访问控制", "0 条"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing %q in %s", want, out.String())
 		}
@@ -198,7 +198,7 @@ func TestAccessMenuReturnsWithoutExtraPause(t *testing.T) {
 			}{
 				{"main", "", 0},
 				{"mode", "1\n", 1},
-				{"switch-confirm", "1\n3\n", 2},
+				{"switch-confirm", "4\n", 1},
 				{"white-list", "2\n", 1},
 				{"add-white", "2\n1\n", 2},
 				{"white-domain-match", "2\n1\nexample.com\n", 2},

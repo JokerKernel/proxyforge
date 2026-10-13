@@ -19,11 +19,16 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 		c.clearScreen()
 		c.printPageHeader(core, "访问控制")
 		c.printAccessPolicyCard(policy)
-		c.printMenuChoice("1", "模式与开关")
+		c.printMenuChoice("1", "切换访问模式")
 		c.printMenuChoice("2", fmt.Sprintf("白名单管理（%d 条）", len(policy.Whitelist)))
 		c.printMenuChoice("3", fmt.Sprintf("黑名单管理（%d 条）", len(policy.Blacklist)))
+		switchAction := "关闭访问控制（保留模式和名单）"
+		if policy.Disabled {
+			switchAction = "启用访问控制（应用保存的模式和名单）"
+		}
+		c.printMenuChoice("4", switchAction)
 		c.printMenuChoice("0/q", "返回")
-		choice, err := c.chooseNumber("请选择", 0, 3, 0)
+		choice, err := c.chooseNumber("请选择", 0, 4, 0)
 		if err != nil {
 			return err
 		}
@@ -36,6 +41,15 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 			err = c.accessListMenu(ctx, core, "white")
 		case 3:
 			err = c.accessListMenu(ctx, core, "black")
+		case 4:
+			next := policy
+			next.Disabled = !policy.Disabled
+			confirmation := "关闭访问控制？保留模式和两份名单，恢复原有拦截规则。"
+			if !next.Disabled {
+				confirmation = "启用访问控制？按保存的模式和两份名单应用规则。"
+			}
+			success := "访问控制" + accessSwitchLabel(next) + "。"
+			err = c.applyAccessPolicyFromMenu(ctx, core, "访问开关", next, confirmation, success)
 		}
 		if err != nil {
 			return err
@@ -50,7 +64,7 @@ func (c *commandSet) accessModeMenu(ctx context.Context, core string) error {
 			return err
 		}
 		c.clearScreen()
-		c.printPageHeader(core, "访问控制", "模式与开关")
+		c.printPageHeader(core, "访问控制", "切换访问模式")
 		c.printAccessPolicyCard(policy)
 		modes := []string{domain.AccessModeDefault, domain.AccessModeWhitelist}
 		defaultChoice := 1
@@ -62,13 +76,8 @@ func (c *commandSet) accessModeMenu(ctx context.Context, core string) error {
 			}
 			c.printMenuChoice(strconv.Itoa(i+1), label)
 		}
-		switchAction := "关闭访问控制（保留模式和名单）"
-		if policy.Disabled {
-			switchAction = "启用访问控制（应用保存的模式和名单）"
-		}
-		c.printMenuChoice("3", switchAction)
 		c.printMenuChoice("0/q", "返回")
-		choice, err := c.chooseNumber("请选择访问模式或开关", 0, len(modes)+1, defaultChoice)
+		choice, err := c.chooseNumber("请选择访问模式", 0, len(modes), defaultChoice)
 		if err != nil {
 			return err
 		}
@@ -76,22 +85,13 @@ func (c *commandSet) accessModeMenu(ctx context.Context, core string) error {
 			return nil
 		}
 		next := policy
+		next.Mode = modes[choice-1]
 		confirmation := "应用访问模式？白名单优先，原有拦截规则兜底。"
 		success := "访问模式已更新。"
-		if choice == len(modes)+1 {
-			next.Disabled = !policy.Disabled
-			confirmation = "关闭访问控制？保留模式和两份名单，恢复原有拦截规则。"
-			if !next.Disabled {
-				confirmation = "启用访问控制？按保存的模式和两份名单应用规则。"
-			}
-			success = "访问控制" + accessSwitchLabel(next) + "。"
-		} else {
-			next.Mode = modes[choice-1]
-			if next.Disabled {
-				confirmation += "访问控制保持关闭，本次仅保存模式修改。"
-			}
+		if next.Disabled {
+			confirmation += "访问控制保持关闭，本次仅保存模式修改。"
 		}
-		if err := c.applyAccessPolicyFromMenu(ctx, core, "模式与开关", next, confirmation, success); err != nil {
+		if err := c.applyAccessPolicyFromMenu(ctx, core, "切换访问模式", next, confirmation, success); err != nil {
 			return err
 		}
 	}

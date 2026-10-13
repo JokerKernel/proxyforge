@@ -21,7 +21,7 @@ func switchPolicy() domain.AccessPolicy {
 	}
 }
 
-func TestAccessModeMenuSwitchPreservesSettingsAndAppliesSavedRules(t *testing.T) {
+func TestAccessMenuSwitchPreservesSettingsAndAppliesSavedRules(t *testing.T) {
 	for _, core := range []string{domain.CoreXray, domain.CoreSingBox} {
 		t.Run(core, func(t *testing.T) {
 			c, out := accessCLI(t, core)
@@ -37,9 +37,9 @@ func TestAccessModeMenuSwitchPreservesSettingsAndAppliesSavedRules(t *testing.T)
 				disabled bool
 				mode     string
 			}{
-				{"1\n3\n1\n0\n0\n", true, domain.AccessModeWhitelist},
+				{"4\n1\n0\n", true, domain.AccessModeWhitelist},
 				{"1\n1\n1\n0\n0\n", true, domain.AccessModeDefault},
-				{"1\n3\n1\n0\n0\n", false, domain.AccessModeDefault},
+				{"4\n1\n0\n", false, domain.AccessModeDefault},
 			} {
 				out.Reset()
 				c.reader = bufio.NewReader(strings.NewReader(step.input))
