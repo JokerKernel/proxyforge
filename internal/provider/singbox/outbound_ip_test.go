@@ -193,10 +193,10 @@ func TestPatchOutboundIPStrategyLeavesFallbackOnDualStack(t *testing.T) {
 	}
 	fallback := singBoxOutboundByTag(t, root, fallbackDirectOutboundTag)
 	if _, exists := fallback["domain_resolver"]; exists {
-		t.Fatalf("fallback-direct should not gain domain_resolver: %#v", fallback)
+		t.Fatalf("fallback-out should not gain domain_resolver: %#v", fallback)
 	}
 	if strategy, _ := fallback["domain_strategy"].(string); strategy != "" {
-		t.Fatalf("fallback-direct should stay dual-stack: %#v", fallback)
+		t.Fatalf("fallback-out should stay dual-stack: %#v", fallback)
 	}
 	rules := root["route"].(map[string]any)["rules"].([]any)
 	allow := rules[1].(map[string]any)
@@ -246,7 +246,7 @@ func TestPatchFallbackIPStrategyUpdatesFallbackDirectOnly(t *testing.T) {
 	}
 	fallback := singBoxOutboundByTag(t, root, fallbackDirectOutboundTag)
 	if singBoxStrategyValue(fallback["domain_resolver"]) != "prefer_ipv4" {
-		t.Fatalf("fallback-direct=%#v", fallback)
+		t.Fatalf("fallback-out=%#v", fallback)
 	}
 	if _, exists := fallback["domain_strategy"]; exists {
 		t.Fatalf("deprecated domain_strategy was written: %#v", fallback)
@@ -263,12 +263,12 @@ func TestPatchFallbackIPStrategyUpdatesFallbackDirectOnly(t *testing.T) {
 func TestPatchOutboundIPStrategyMigratesLegacyFallbackRoute(t *testing.T) {
 	p := New()
 	config := []byte(`{
-  "inbounds": [{"type":"direct","tag":"singbox-fallback-in","listen":"127.0.0.1","listen_port":61432}],
+  "inbounds": [{"type":"direct","tag":"fallback-in","listen":"127.0.0.1","listen_port":61432}],
   "outbounds": [{"type":"direct","tag":"direct"}],
   "route": {"rules":[
-    {"inbound":["singbox-fallback-in"],"action":"sniff"},
-    {"inbound":["singbox-fallback-in"],"protocol":["tls"],"domain":["example.com"],"action":"route","outbound":"direct"},
-    {"inbound":["singbox-fallback-in"],"action":"reject"}
+    {"inbound":["fallback-in"],"action":"sniff"},
+    {"inbound":["fallback-in"],"protocol":["tls"],"domain":["example.com"],"action":"route","outbound":"direct"},
+    {"inbound":["fallback-in"],"action":"reject"}
   ]}
 }`)
 	patched, err := p.PatchOutboundIPStrategy(config, provider.OutboundIPIPv4Only)

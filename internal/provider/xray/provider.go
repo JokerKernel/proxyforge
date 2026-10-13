@@ -249,8 +249,8 @@ func renderServer(n domain.NodeSpec) ([]byte, error) {
 }
 
 const (
-	fallbackGuardInboundTag   = "dokodemo-in"
-	fallbackDirectOutboundTag = "fallback-direct"
+	fallbackGuardInboundTag   = "fallback-in"
+	fallbackDirectOutboundTag = "fallback-out"
 )
 
 func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
@@ -297,7 +297,7 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 			{InboundTag: []string{fallbackGuardInboundTag}, Protocol: []string{"http"}, Domain: []string{fallbackDomain}, OutboundTag: fallbackDirectOutboundTag},
 		}
 	}
-	fallbackRules = append(fallbackRules, routingRule{InboundTag: []string{fallbackGuardInboundTag}, OutboundTag: "blocked-private"})
+	fallbackRules = append(fallbackRules, routingRule{InboundTag: []string{fallbackGuardInboundTag}, OutboundTag: "private-block"})
 	routing.Rules = append(fallbackRules, routing.Rules...)
 	v := xrayConfig{
 		Log:       map[string]any{"loglevel": "warning"},
@@ -363,7 +363,7 @@ func privateNetworkRouting() routingSettings {
 	return routingSettings{
 		DomainStrategy: "IPOnDemand",
 		Rules: []routingRule{{
-			IP: xrayBlockedDestinations(), OutboundTag: "blocked-private",
+			IP: xrayBlockedDestinations(), OutboundTag: "private-block",
 		}},
 	}
 }
@@ -373,7 +373,7 @@ func xrayBlockedDestinations() []string {
 }
 
 func blockedOutbound() xrayOutbound {
-	return xrayOutbound{Protocol: "blackhole", Settings: map[string]any{}, Tag: "blocked-private"}
+	return xrayOutbound{Protocol: "blackhole", Settings: map[string]any{}, Tag: "private-block"}
 }
 
 func directOutbound() xrayOutbound {

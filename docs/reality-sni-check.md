@@ -104,7 +104,7 @@ HTTP 附加探测收到响应不会单独改变退出码。Cloudflare / CDN 提�
 
 ## 排障与限制
 
-黑盒检测只能证明观察到的网络行为。目标站自身也可能拒绝错误 SNI，从而造成过滤生效的假象；建议同时查看内核日志，确认错误请求命中了 `blackhole`、`blocked-private` 或 `reject`，而不是连接到真实 target：
+黑盒检测只能证明观察到的网络行为。目标站自身也可能拒绝错误 SNI，从而造成过滤生效的假象；建议同时查看内核日志，确认错误请求命中了 `blackhole`、`private-block` 或 `reject`，而不是连接到真实 target：
 
 ```bash
 sudo journalctl -u xray -f -o cat

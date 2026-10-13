@@ -139,10 +139,10 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if err := system.ValidateTag(inboundTag); err != nil {
 		return domain.NodeSpec{}, err
 	}
-	if opts.XrayFallbackGuard && inboundTag == "dokodemo-in" {
+	if opts.XrayFallbackGuard && inboundTag == "fallback-in" {
 		return domain.NodeSpec{}, fmt.Errorf("入站标签 %q 已由 Xray 回落防偷跑入站使用，请选择其他标签", inboundTag)
 	}
-	if opts.SingBoxFallbackGuard && inboundTag == "singbox-fallback-in" {
+	if opts.SingBoxFallbackGuard && inboundTag == "fallback-in" {
 		return domain.NodeSpec{}, fmt.Errorf("入站标签 %q 已由 sing-box 回落防偷跑入站使用，请选择其他标签", inboundTag)
 	}
 	other := domain.CoreSingBox

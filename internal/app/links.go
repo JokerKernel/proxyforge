@@ -38,10 +38,9 @@ var uuidPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]
 var shortIDPattern = regexp.MustCompile(`(?i)^[0-9a-f]{2,16}$`)
 var relayTestLAN = mustCIDR("192.168.0.0/16")
 var reservedLinkNames = map[string]struct{}{
-	"api": {}, "blocked-private": {}, "bootstrap": {}, "cloudflare": {}, "cloudflare-doh": {},
-	"direct": {}, "dns-in": {}, "dns-out": {}, "dokodemo-in": {}, "fallback-direct": {},
-	"google": {}, "google-doh": {}, "local": {}, "mixed-in": {}, "proxy": {},
-	"singbox-fallback-in": {},
+	"api": {}, "bootstrap": {}, "cloudflare": {}, "cloudflare-doh": {},
+	"direct": {}, "dns-in": {}, "dns-out": {}, "fallback-in": {}, "fallback-out": {},
+	"google": {}, "google-doh": {}, "local": {}, "mixed-in": {}, "private-block": {}, "proxy": {},
 }
 
 func (a *App) LandingAccesses(core string) ([]domain.LandingAccess, error) {

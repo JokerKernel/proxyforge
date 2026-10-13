@@ -76,7 +76,9 @@ sudo proxyforge config reset xray --yes --rotate-certificate
 
 在 REALITY 模式下，sing-box 和 Xray 默认生成回落防偷跑配置。可用 `--standard-config` 恢复标准模板；sing-box 还支持 `--simplified-config`。这些模式参数不能组合。
 
-- sing-box 防偷跑模式在 `127.0.0.1` 创建 `direct` 入站，将 REALITY handshake 指向该入站，通过 TLS sniff 和域名规则把合法回落转到独立的 `fallback-direct`（默认双栈）；内部端口默认在 30000-65000 间随机分配，已有配置则沿用。
+两个内核的内部回落入站统一使用 `fallback-in`，回落出站使用 `fallback-out`；Xray 的原有拦截出站使用 `private-block`。这些标签不兼容旧名称，已有配置需要重新生成。
+
+- sing-box 防偷跑模式在 `127.0.0.1` 创建 `direct` 入站，将 REALITY handshake 指向该入站，通过 TLS sniff 和域名规则把合法回落转到独立的 `fallback-out`（默认双栈）；内部端口默认在 30000-65000 间随机分配，已有配置则沿用。
 - sing-box 和 Xray 的明文 HTTP 回落默认不限制 Host。分别使用 `--sing-box-fallback-http-domain`、`--xray-fallback-http-domain`（或交互菜单中的对应开关）后，才会按当前 SNI 限制 HTTP Host。
 - Xray 防偷跑模式在 `127.0.0.1` 创建 `dokodemo-door` 入站，将 REALITY target 指向该入站。HTTP Host 不受限时沿用 TLS sniff 和单条域名放行规则；要求 Host 匹配 SNI 时改用 TLS/HTTP sniff，并为两种协议分别写入域名规则。其余流量进入 blackhole，内部端口默认在 30000-65000 间随机分配，已有配置则沿用。
 - sing-box 的域名匹配方式是独立选项。交互菜单为「1 允许子域名（默认）」或「2 严格匹配」；默认写入 `domain_suffix`，选择严格匹配或使用 `--sing-box-fallback-exact-domain` 后改写为 `domain` 完整匹配，不受 HTTP Host 策略影响。
@@ -143,7 +145,7 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 两份名单独立保存，切换模式不会清空：白名单在三个模式中都优先生效，黑名单仅在 `blacklist` 模式中生效。配置重新生成、凭据重置和中转/落地增删也会保留并重新应用策略。
 
-Xray 的域名和 IP/网段规则分别使用 `white-domain`、`white-ip`、`black-domain`、`black-ip` 作为 `ruleTag`，不兼容这四类规则原来的 `pf-access-` 标签；使用旧标签的配置需要重新生成。
+Xray 的域名和 IP/网段规则分别使用 `white-domain`、`white-ip`、`black-domain`、`black-ip` 作为 `ruleTag`。其他访问控制辅助标签使用 `access-` 前缀，例如 `access-final`、`access-scope` 和 `access-dns`。不兼容旧的 `pf-access-` 标签，使用旧标签的配置需要重新生成。
 
 ```bash
 # 域名及全部子域名：example.com、www.example.com、a.b.example.com
@@ -260,17 +262,17 @@ sudo proxyforge config relay remove sing-box us --yes
 
 - 优先 IPv4 / 优先 IPv6：Xray 写入 Freedom `UseIPv4v6` / `UseIPv6v4`（先解析优先族，解析不到再试另一族；已解析出优先族后连接失败不会回退）。sing-box 给 `resolve` 规则加上 `prefer_ipv4` / `prefer_ipv6`（可连接回退）；简化配置没有该规则时会补一条同样的 `resolve`。
 - 仅 IPv4 / 仅 IPv6：Xray 写入 `ForceIPv4` / `ForceIPv6`；sing-box 同上写入 `ipv4_only` / `ipv6_only`。对端只有另一地址族时会失败。
-- 回落：防偷跑配置把合法 SNI 回落指到独立的 `fallback-direct`。给已有配置设置出站 IP 时，若回落还挂在 `direct` 上，会自动拆开。
+- 回落：防偷跑配置把合法 SNI 回落指到独立的 `fallback-out`。给已有配置设置出站 IP 时，若回落还挂在 `direct` 上，会自动拆开。
 - 恢复默认：Xray 写回 Freedom `AsIs`，并在 sockopt 打开 `UseIP` + `happyEyeballs`（先 IPv4，300ms 后竞速 IPv6，与 sing-box 默认一致）；`direct` 若还没有 `finalRules`，会补一条空的 `allow`，避免 VLESS 内置拦私网先把域名解析成单个 IP。优先/仅 IPv4·IPv6 会删掉这条空 `allow`（手写的带 `ip`/`port` 的规则保留）。sing-box 去掉这些 `strategy`。标准配置会保留原来的 `resolve` 规则和本地 DNS；简化配置会撤掉补上的 `resolve` 规则，以及仅为它添加的本地 DNS。
-- 生成配置的默认状态是未设置（双栈）。Xray 默认先 IPv4 再竞速 IPv6（`direct` 带空 `allow`；`fallback-direct` 不需要）；sing-box 同样先 IPv4。重置 SNI/凭证会保留此项；完整生成会覆盖。
+- 生成配置的默认状态是未设置（双栈）。Xray 默认先 IPv4 再竞速 IPv6（`direct` 带空 `allow`；`fallback-out` 不需要）；sing-box 同样先 IPv4。重置 SNI/凭证会保留此项；完整生成会覆盖。
 
 ## 回落 IP
 
-仅当当前节点启用了回落防偷跑时，“服务端配置 → 修改配置 → 回落 IP”才出现。它只改 `fallback-direct`，不影响用户代理出站。
+仅当当前节点启用了回落防偷跑时，“服务端配置 → 修改配置 → 回落 IP”才出现。它只改 `fallback-out`，不影响用户代理出站。
 
-- 优先 IPv4 / 优先 IPv6：Xray 写入回落 Freedom `UseIPv4v6` / `UseIPv6v4`。sing-box 给 `fallback-direct` 的 `domain_resolver` 加上 `prefer_ipv4` / `prefer_ipv6`。
+- 优先 IPv4 / 优先 IPv6：Xray 写入回落 Freedom `UseIPv4v6` / `UseIPv6v4`。sing-box 给 `fallback-out` 的 `domain_resolver` 加上 `prefer_ipv4` / `prefer_ipv6`。
 - 仅 IPv4 / 仅 IPv6：Xray 写入 `ForceIPv4` / `ForceIPv6`；sing-box 写入 `ipv4_only` / `ipv6_only`。
-- 恢复默认：回落回到生成时的双栈。Xray 与用户出站相同，先 IPv4、300ms 后竞速 IPv6；sing-box 去掉 `fallback-direct` 的 `strategy`。
+- 恢复默认：回落回到生成时的双栈。Xray 与用户出站相同，先 IPv4、300ms 后竞速 IPv6；sing-box 去掉 `fallback-out` 的 `strategy`。
 
 ## 菜单、日志与输出
 

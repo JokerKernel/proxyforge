@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	Prefix    = "pf-access-"
+	Prefix    = "access-"
 	scopeSet  = Prefix + "scope"
 	whiteSet  = Prefix + "white"
 	blackSet  = Prefix + "black"

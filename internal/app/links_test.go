@@ -331,7 +331,7 @@ func TestLinkNameAvailabilityRejectsDuplicatesAndReservedNames(t *testing.T) {
 		LandingAccesses: []domain.LandingAccess{{Name: "landing-a", UserName: "landing-a"}},
 		RelayLinks:      []domain.RelayLink{{Name: "relay-a", UserName: "relay-a"}},
 	}
-	for _, name := range []string{"one", "XRAY-ONE", "LANDING-A", "relay-a", "direct", "blocked-private", "singbox-fallback-in"} {
+	for _, name := range []string{"one", "XRAY-ONE", "LANDING-A", "relay-a", "direct", "private-block", "fallback-in", "fallback-out"} {
 		if err := validateAvailableLinkName(n, name); err == nil {
 			t.Fatalf("name %q should be rejected", name)
 		}

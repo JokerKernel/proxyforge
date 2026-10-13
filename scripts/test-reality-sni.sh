@@ -746,7 +746,7 @@ print_log_hint() {
   printf '%s这是外部黑盒检测结果。目标站自身也可能拒绝错误 SNI；如需强确认，请同步查看服务日志：%s\n' "${color_dim}" "${color_reset}"
   printf '  Xray:    sudo journalctl -u xray -f -o cat\n'
   printf '  sing-box: sudo journalctl -u sing-box -f -o cat\n'
-  printf '确认错误请求命中 blackhole/blocked-private 或 reject，而不是连接真实 target。\n'
+  printf '确认错误请求命中 blackhole/private-block 或 reject，而不是连接真实 target。\n'
 }
 
 append_http_host_probe() {

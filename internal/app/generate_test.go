@@ -252,7 +252,7 @@ func TestGenerateDefaultsToFallbackGuardAndStandardConfigOptsOut(t *testing.T) {
 		marker     string
 		configPath string
 	}{
-		{domain.CoreSingBox, `"tag": "singbox-fallback-in"`, singbox.New().ConfigPath()},
+		{domain.CoreSingBox, `"tag": "fallback-in"`, singbox.New().ConfigPath()},
 		{domain.CoreXray, `"protocol": "dokodemo-door"`, xray.New().ConfigPath()},
 	}
 	for _, tt := range tests {

@@ -141,7 +141,7 @@ func TestFallbackGuardServerFollowsOfficialExampleFieldOrder(t *testing.T) {
 	}
 	dokodemo := config[dokodemoStart:vlessStart]
 	assertFieldsInOrder(t, dokodemo,
-		`"listen"`, `"port": 61431`, `"protocol": "dokodemo-door"`, `"settings"`, `"tag": "dokodemo-in"`, `"sniffing"`,
+		`"listen"`, `"port": 61431`, `"protocol": "dokodemo-door"`, `"settings"`, `"tag": "fallback-in"`, `"sniffing"`,
 	)
 	assertFieldsInOrder(t, dokodemo,
 		`"address": "speed.cloudflare.com"`, `"port": 443`, `"network": "tcp"`,
@@ -271,7 +271,7 @@ func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 		t.Fatalf("cannot locate patched ordered inbounds: %s", patched)
 	}
 	assertFieldsInOrder(t, patched[dokodemoStart:vlessStart],
-		`"listen"`, `"port": 61431`, `"protocol": "dokodemo-door"`, `"settings"`, `"tag": "dokodemo-in"`, `"sniffing"`,
+		`"listen"`, `"port": 61431`, `"protocol": "dokodemo-door"`, `"settings"`, `"tag": "fallback-in"`, `"sniffing"`,
 	)
 	var root map[string]any
 	if err := json.Unmarshal(patched, &root); err != nil {
@@ -322,7 +322,7 @@ func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, t
 	}
 	if !restrictHTTP {
 		if len(rules) != 3 || rules[0].(map[string]any)["outboundTag"] != fallbackDirectOutboundTag ||
-			rules[1].(map[string]any)["outboundTag"] != "blocked-private" {
+			rules[1].(map[string]any)["outboundTag"] != "private-block" {
 			t.Fatalf("routing rules=%#v", rules)
 		}
 		allowRule := rules[0].(map[string]any)
@@ -332,7 +332,7 @@ func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, t
 		return
 	}
 	if len(rules) != 4 || rules[0].(map[string]any)["outboundTag"] != fallbackDirectOutboundTag ||
-		rules[1].(map[string]any)["outboundTag"] != fallbackDirectOutboundTag || rules[2].(map[string]any)["outboundTag"] != "blocked-private" {
+		rules[1].(map[string]any)["outboundTag"] != fallbackDirectOutboundTag || rules[2].(map[string]any)["outboundTag"] != "private-block" {
 		t.Fatalf("routing rules=%#v", rules)
 	}
 	tlsRule := rules[0].(map[string]any)

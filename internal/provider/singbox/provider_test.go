@@ -112,14 +112,14 @@ func TestRenderedConfigsFollowOfficialFieldOrder(t *testing.T) {
 		assertSingBoxFieldsInOrder(t, config, `"log"`, `"dns"`, `"inbounds"`, `"outbounds"`, `"route"`)
 		fallback := singBoxConfigSection(t, config, `"type": "direct"`, `"type": "vless"`)
 		assertSingBoxFieldsInOrder(t, fallback,
-			`"type"`, `"tag": "singbox-fallback-in"`, `"listen": "127.0.0.1"`, `"listen_port": 61432`,
+			`"type"`, `"tag": "fallback-in"`, `"listen": "127.0.0.1"`, `"listen_port": 61432`,
 			`"network": "tcp"`, `"override_address": "example.com"`, `"override_port": 443`,
 		)
 		assertSingBoxVLESSInboundOrder(t, singBoxConfigSection(t, config, `"type": "vless"`, `"outbounds"`))
 		route := singBoxConfigSection(t, config, `"route"`, "")
 		assertSingBoxFieldsInOrder(t, route,
 			`"inbound"`, `"action": "sniff"`,
-			`"inbound"`, `"protocol"`, `"domain_suffix"`, `"action": "route"`, `"outbound": "fallback-direct"`,
+			`"inbound"`, `"protocol"`, `"domain_suffix"`, `"action": "route"`, `"outbound": "fallback-out"`,
 			`"inbound"`, `"action": "reject"`,
 		)
 	})
@@ -205,7 +205,7 @@ func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 	assertSingBoxFieldsInOrder(t, patched, `"log"`, `"dns"`, `"inbounds"`, `"outbounds"`, `"route"`)
 	fallback := singBoxConfigSection(t, patched, `"type": "direct"`, `"type": "vless"`)
 	assertSingBoxFieldsInOrder(t, fallback,
-		`"type"`, `"tag": "singbox-fallback-in"`, `"listen"`, `"listen_port"`, `"network"`, `"override_address"`, `"override_port"`,
+		`"type"`, `"tag": "fallback-in"`, `"listen"`, `"listen_port"`, `"network"`, `"override_address"`, `"override_port"`,
 	)
 }
 

@@ -62,8 +62,8 @@ func TestAccessRulesPreserveRelayAndFallbackAndRestoreOriginal(t *testing.T) {
 			for i, item := range rules {
 				rule := item.(map[string]any)
 				encoded, _ := json.Marshal(rule)
-				if strings.Contains(string(encoded), "pf-access-") {
-					if strings.Contains(string(encoded), "dokodemo-in") || strings.Contains(string(encoded), "singbox-fallback-in") {
+				if strings.Contains(string(encoded), "access-") {
+					if strings.Contains(string(encoded), "fallback-in") {
 						t.Fatal("policy includes REALITY control/fallback inbound")
 					}
 					out := rule["outbound"]
@@ -76,10 +76,10 @@ func TestAccessRulesPreserveRelayAndFallbackAndRestoreOriginal(t *testing.T) {
 					if out == "relay-out" {
 						whiteRelay = i
 					}
-					if out == "direct" || out == "pf-access-direct" {
+					if out == "direct" || out == "access-direct" {
 						whiteDirect = i
 					}
-					if rule["ruleTag"] == "pf-access-final" || (p.Name() == "sing-box" && rule["action"] == "reject") {
+					if rule["ruleTag"] == "access-final" || (p.Name() == "sing-box" && rule["action"] == "reject") {
 						deny = i
 					}
 				} else if rule["outboundTag"] == "relay-out" || rule["outbound"] == "relay-out" {
@@ -125,7 +125,7 @@ func TestPolicyDomainAndIPMatchesAndClientExceptions(t *testing.T) {
 					if out["tag"] == "direct" {
 						direct = out
 					}
-					if out["tag"] == "pf-access-direct" {
+					if out["tag"] == "access-direct" {
 						white = out
 					}
 				}

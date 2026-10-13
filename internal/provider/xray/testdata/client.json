@@ -19,7 +19,7 @@
       },
       "tag": "proxy"
     },
-    {"protocol": "blackhole", "settings": {}, "tag": "blocked-private"}
+    {"protocol": "blackhole", "settings": {}, "tag": "private-block"}
   ],
   "routing": {
     "domainStrategy": "IPOnDemand",
@@ -31,7 +31,7 @@
         "224.0.0.0/4", "240.0.0.0/4", "::/128", "::1/128", "64:ff9b:1::/48",
         "100::/64", "2001:db8::/32", "fc00::/7", "fe80::/10", "ff00::/8"
       ],
-      "outboundTag": "blocked-private"
+      "outboundTag": "private-block"
     }]
   }
 }

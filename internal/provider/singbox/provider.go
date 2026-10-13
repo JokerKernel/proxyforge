@@ -118,8 +118,8 @@ func renderServer(n domain.NodeSpec) ([]byte, error) {
 }
 
 const (
-	fallbackGuardInboundTag   = "singbox-fallback-in"
-	fallbackDirectOutboundTag = "fallback-direct"
+	fallbackGuardInboundTag   = "fallback-in"
+	fallbackDirectOutboundTag = "fallback-out"
 )
 
 func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {

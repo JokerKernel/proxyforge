@@ -149,11 +149,11 @@ func TestPatchOutboundIPStrategyLeavesFallbackOnDualStack(t *testing.T) {
 func TestPatchOutboundIPStrategyMigratesLegacyFallbackRoute(t *testing.T) {
 	p := New()
 	config := []byte(`{
-  "inbounds": [{"tag":"dokodemo-in","protocol":"dokodemo-door","listen":"127.0.0.1","port":61431}],
+  "inbounds": [{"tag":"fallback-in","protocol":"dokodemo-door","listen":"127.0.0.1","port":61431}],
   "outbounds": [{"protocol":"freedom","settings":{"domainStrategy":"UseIP"},"tag":"direct"}],
   "routing": {"rules":[
-    {"inboundTag":["dokodemo-in"],"domain":["example.com"],"outboundTag":"direct"},
-    {"inboundTag":["dokodemo-in"],"outboundTag":"blocked-private"}
+    {"inboundTag":["fallback-in"],"domain":["example.com"],"outboundTag":"direct"},
+    {"inboundTag":["fallback-in"],"outboundTag":"private-block"}
   ]}
 }`)
 	patched, err := p.PatchOutboundIPStrategy(config, provider.OutboundIPIPv4Only)
@@ -204,7 +204,7 @@ func TestPatchFallbackIPStrategyUpdatesFallbackDirectOnly(t *testing.T) {
 	}
 	fallback := xrayOutboundByTag(t, root, fallbackDirectOutboundTag)
 	if fallback["settings"].(map[string]any)["domainStrategy"] != "UseIPv4v6" {
-		t.Fatalf("fallback-direct=%#v", fallback)
+		t.Fatalf("fallback-out=%#v", fallback)
 	}
 	if _, exists := fallback["streamSettings"]; exists {
 		t.Fatalf("prefer fallback IPv4 left unused sockopt: %#v", fallback["streamSettings"])
