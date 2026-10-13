@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -167,6 +168,31 @@ func (c *commandSet) accessCommand() *cobra.Command {
 		child.Flags().BoolVar(&exact, "exact", false, "仅匹配完整域名（默认包含域名及其子域名）")
 		cmd.AddCommand(child)
 	}
+	cmd.AddCommand(&cobra.Command{Use: "clear <sing-box|xray> <white|black>", Short: "清空指定名单；清空白名单时退出仅允许白名单模式", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		policy, err := c.app.AccessPolicy(args[0])
+		if err != nil {
+			return err
+		}
+		next, err := policy.ClearList(args[1])
+		if err != nil {
+			return err
+		}
+		if reflect.DeepEqual(policy, next) {
+			fmt.Fprintln(c.out, "当前名单已为空，无需修改。")
+			return nil
+		}
+		if err = c.confirmAccessChange(next); err != nil {
+			if errors.Is(err, errReturnToMenu) {
+				return nil
+			}
+			return err
+		}
+		if err = c.app.SetAccessPolicy(cmd.Context(), args[0], next); err != nil {
+			return err
+		}
+		fmt.Fprintln(c.out, "访问名单已清空。")
+		return nil
+	}})
 	return cmd
 }
 
@@ -185,8 +211,10 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 		c.printMenuChoice("3", "删除白名单")
 		c.printMenuChoice("4", "添加黑名单")
 		c.printMenuChoice("5", "删除黑名单")
+		c.printMenuChoice("6", "清空白名单（同时退出仅允许白名单模式）")
+		c.printMenuChoice("7", "清空黑名单")
 		c.printMenuChoice("0/q", "返回")
-		choice, err := c.chooseNumber("请选择", 0, 5, 0)
+		choice, err := c.chooseNumber("请选择", 0, 7, 0)
 		if err != nil {
 			return err
 		}
@@ -194,6 +222,8 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 			return nil
 		}
 		next := policy
+		confirmation := "应用访问策略？白名单优先，明确允许的私网目标也会放行。"
+		success := "访问策略已生效。"
 		if choice == 1 {
 			c.clearScreen()
 			c.printPageHeader(core, "访问控制", "切换访问模式")
@@ -220,12 +250,33 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 		} else {
 			entries := &next.Whitelist
 			listName := "白名单"
-			if choice >= 4 {
+			if choice == 4 || choice == 5 || choice == 7 {
 				entries = &next.Blacklist
 				listName = "黑名单"
 			}
 			c.clearScreen()
-			if choice == 2 || choice == 4 {
+			if choice == 6 || choice == 7 {
+				key := "white"
+				if choice == 7 {
+					key = "black"
+				}
+				count := len(*entries)
+				next, err = policy.ClearList(key)
+				if err != nil {
+					return err
+				}
+				if reflect.DeepEqual(policy, next) {
+					c.printPageHeader(core, "访问控制", "清空"+listName)
+					fmt.Fprintln(c.out, "当前名单已为空，无需修改。")
+					c.pauseForMenu()
+					continue
+				}
+				confirmation = "清空" + listName + "的全部 " + strconv.Itoa(count) + " 条规则并应用？"
+				if policy.EffectiveMode() == domain.AccessModeWhitelist && choice == 6 {
+					confirmation += "将退出仅允许白名单模式，切回默认模式。"
+				}
+				success = listName + "已清空。"
+			} else if choice == 2 || choice == 4 {
 				c.printPageHeader(core, "访问控制", "添加"+listName)
 				c.printLabeledCard("规则说明", [][2]string{
 					{"支持目标", "域名、单个 IP 或 CIDR 网段"},
@@ -294,7 +345,7 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 		c.clearScreen()
 		c.printPageHeader(core, "访问控制", "确认修改")
 		c.printAccessPolicy(next)
-		ok, err := c.confirmCancelable("应用访问策略？白名单优先，明确允许的私网目标也会放行。")
+		ok, err := c.confirmCancelable(confirmation)
 		if errors.Is(err, errReturnToMenu) {
 			continue
 		}
@@ -305,7 +356,7 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 			if err := c.app.SetAccessPolicy(ctx, core, next); err != nil {
 				c.printMenuError(err)
 			} else {
-				fmt.Fprintln(c.out, "访问策略已生效。")
+				fmt.Fprintln(c.out, success)
 			}
 			c.pauseForMenu()
 		}

@@ -178,6 +178,8 @@ func TestAccessMenuReturnsWithoutExtraPause(t *testing.T) {
 				{"add-black", "4\n"},
 				{"black-domain-match", "4\nexample.com\n"},
 				{"delete-black", "5\n"},
+				{"clear-white", "6\n"},
+				{"clear-black", "7\n"},
 				{"confirm", "1\n2\n"},
 			} {
 				t.Run(core+"/"+step.name+"/"+back, func(t *testing.T) {

@@ -42,6 +42,21 @@ func (p AccessPolicy) BlacklistEnabled() bool {
 	return p.EffectiveMode() == AccessModeDefault || p.EffectiveMode() == AccessModeBlacklist
 }
 
+func (p AccessPolicy) ClearList(listName string) (AccessPolicy, error) {
+	switch listName {
+	case "white":
+		p.Whitelist = nil
+		if p.EffectiveMode() == AccessModeWhitelist {
+			p.Mode = AccessModeDefault
+		}
+	case "black":
+		p.Blacklist = nil
+	default:
+		return p, fmt.Errorf("名单类型无效（可选 white 或 black）")
+	}
+	return p, nil
+}
+
 // ParseAccessEntry accepts a destination, without URL scheme, path or port.
 func ParseAccessEntry(value string, exact bool) (AccessEntry, error) {
 	value = strings.TrimSpace(value)
