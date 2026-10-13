@@ -37,8 +37,8 @@ func (c *commandSet) clientCommand() *cobra.Command {
 func (c *commandSet) clientMenu(ctx context.Context, core string) (bool, error) {
 	c.clearScreen()
 	c.printPageHeader(core, "客户端配置")
-	c.printMenuChoice("1", "普通节点 · 原生 JSON（sing-box / Xray 客户端）")
-	c.printMenuChoice("2", "普通节点 · Clash YAML（Mihomo/Clash Meta）")
+	c.printMenuChoice("1", "普通节点 · Clash YAML（Mihomo/Clash Meta）")
+	c.printMenuChoice("2", "普通节点 · 原生 JSON（sing-box / Xray 客户端）")
 	c.printMenuChoice("3", "中转节点客户端配置（选择线路与格式）")
 	c.printMenuChoice("0/q", "返回")
 	choice, err := c.chooseNumber("请选择", 0, 3, 1)
@@ -51,9 +51,9 @@ func (c *commandSet) clientMenu(ctx context.Context, core string) (bool, error) 
 	if choice == 3 {
 		return c.relayClientMenu(ctx, core)
 	}
-	format := app.ClientFormatNative
+	format := app.ClientFormatClash
 	if choice == 2 {
-		format = app.ClientFormatClash
+		format = app.ClientFormatNative
 	}
 	b, err := c.app.ClientConfig(ctx, core, format, "", false)
 	if err == nil {

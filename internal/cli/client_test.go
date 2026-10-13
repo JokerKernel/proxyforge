@@ -38,7 +38,7 @@ func TestClientMenuOutputsClashYAML(t *testing.T) {
 		RootCheck: func() error { return nil },
 	}
 	var out bytes.Buffer
-	c := &commandSet{app: a, reader: bufio.NewReader(strings.NewReader("2\n")), out: &out}
+	c := &commandSet{app: a, reader: bufio.NewReader(strings.NewReader("1\n")), out: &out}
 	pause, err := c.clientMenu(context.Background(), domain.CoreSingBox)
 	if err != nil {
 		t.Fatal(err)
