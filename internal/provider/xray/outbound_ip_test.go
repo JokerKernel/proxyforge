@@ -149,7 +149,7 @@ func TestPatchOutboundIPStrategyLeavesFallbackOnDualStack(t *testing.T) {
 func TestPatchOutboundIPStrategyMigratesLegacyFallbackRoute(t *testing.T) {
 	p := New()
 	config := []byte(`{
-  "inbounds": [{"tag":"fallback-in","protocol":"dokodemo-door","listen":"127.0.0.1","port":61431}],
+  "inbounds": [{"tag":"fallback-in","protocol":"tunnel","listen":"127.0.0.1","port":61431}],
   "outbounds": [{"protocol":"freedom","settings":{"domainStrategy":"UseIP"},"tag":"direct"}],
   "routing": {"rules":[
     {"inboundTag":["fallback-in"],"domain":["example.com"],"outboundTag":"direct"},

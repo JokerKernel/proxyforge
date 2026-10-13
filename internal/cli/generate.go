@@ -60,7 +60,7 @@ func (c *commandSet) generateCommand() *cobra.Command {
 	cmd.Flags().IntVar(&o.SingBoxFallbackPort, "sing-box-fallback-port", 0, "sing-box 防偷跑回落入站端口（默认 30000-65000 随机；已有配置则沿用）")
 	cmd.Flags().BoolVar(&o.SingBoxFallbackHTTPDomain, "sing-box-fallback-http-domain", false, "sing-box HTTP 回落仅放行与 SNI 一致的域名（默认不限制）")
 	cmd.Flags().BoolVar(&o.SingBoxFallbackExactDomain, "sing-box-fallback-exact-domain", false, "sing-box 回落域名使用 domain 完整匹配（默认使用 domain_suffix）")
-	cmd.Flags().BoolVar(&o.XrayFallbackGuard, "xray-fallback-guard", false, "Xray 使用 dokodemo-door 限制 REALITY 未认证回落流量")
+	cmd.Flags().BoolVar(&o.XrayFallbackGuard, "xray-fallback-guard", false, "Xray 使用 tunnel 限制 REALITY 未认证回落流量")
 	cmd.Flags().IntVar(&o.XrayFallbackPort, "xray-fallback-port", 0, "Xray 防偷跑回落入站端口（默认 30000-65000 随机；已有配置则沿用）")
 	cmd.Flags().BoolVar(&o.XrayFallbackHTTPDomain, "xray-fallback-http-domain", false, "Xray HTTP 回落仅放行与 SNI 一致的域名（默认不限制）")
 	cmd.Flags().BoolVar(&o.XrayFallbackExactDomain, "xray-fallback-exact-domain", false, "Xray 回落域名使用 full: 精确匹配（默认使用普通匹配）")
@@ -166,7 +166,7 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		}
 	} else if !tlsMode && core == domain.CoreXray {
 		fmt.Fprintln(c.out, "\n配置模式")
-		c.printMenuChoice("1", "回落防护（默认；dokodemo-door 仅放行与 SNI 一致的 TLS 流量）")
+		c.printMenuChoice("1", "回落防护（默认；tunnel 仅放行与 SNI 一致的 TLS 流量）")
 		c.printMenuChoice("2", "标准模式（REALITY 未认证流量直接转发到 target）")
 		defaultChoice := 1
 		if o.StandardConfig {
@@ -232,7 +232,7 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 		o.Port = port
 	}
 	if o.XrayFallbackGuard && o.XrayFallbackPort == 0 {
-		port, err := c.askFallbackPort("本机 dokodemo-door 回落端口", core, o.Port)
+		port, err := c.askFallbackPort("本机 tunnel 回落端口", core, o.Port)
 		if err != nil {
 			return err
 		}
@@ -553,7 +553,7 @@ func printGenerateSuccess(w io.Writer, n domain.NodeSpec) {
 			if n.XrayFallbackExactDomain {
 				domainPolicy = "严格匹配"
 			}
-			mode = fmt.Sprintf("回落防偷跑配置（dokodemo-door 127.0.0.1:%d；%s；%s）", n.XrayFallbackPort, httpPolicy, domainPolicy)
+			mode = fmt.Sprintf("回落防偷跑配置（tunnel 127.0.0.1:%d；%s；%s）", n.XrayFallbackPort, httpPolicy, domainPolicy)
 		}
 		fmt.Fprintf(w, "配置模式：%s\n", mode)
 	}

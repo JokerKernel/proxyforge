@@ -114,7 +114,7 @@ func xrayFieldPriority(object map[string]any) map[string]int {
 		order = []string{"log", "dns", "inbounds", "outbounds", "routing"}
 	case hasAnyXrayKey(object, "tryDelayMs", "prioritizeIPv6") && !hasAnyXrayKey(object, "domainStrategy", "rules", "protocol"):
 		order = []string{"tryDelayMs", "prioritizeIPv6", "interleave", "maxConcurrentTry"}
-	case object["protocol"] == "dokodemo-door":
+	case object["protocol"] == "tunnel":
 		order = []string{"listen", "port", "protocol", "settings", "tag", "sniffing"}
 	case hasXrayKeys(object, "listen", "protocol", "settings"):
 		order = []string{"listen", "port", "protocol", "settings", "streamSettings", "tag", "sniffing"}

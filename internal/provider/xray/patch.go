@@ -95,7 +95,7 @@ func xrayPatchFallbackTarget(root map[string]any, target string) error {
 	if err != nil {
 		return err
 	}
-	settings, err := xrayChildObject(inbound, "settings", "Xray dokodemo-door settings")
+	settings, err := xrayChildObject(inbound, "settings", "Xray tunnel settings")
 	if err != nil {
 		return err
 	}

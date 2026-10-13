@@ -255,7 +255,7 @@ func TestFillGenerateSelectsXrayFallbackGuardConfig(t *testing.T) {
 	if !opts.XrayFallbackGuard || opts.XrayFallbackPort < domain.FallbackPortMin || opts.XrayFallbackPort > domain.FallbackPortMax || opts.XrayFallbackPort == opts.Port || opts.XrayFallbackHTTPDomain || opts.XrayFallbackExactDomain {
 		t.Fatalf("generate options=%#v", opts)
 	}
-	for _, want := range []string{"回落防护", "dokodemo-door", "本机 dokodemo-door 回落端口", "不限制 Host       -- 默认", "严格匹配回落域名", "允许子域名        -- 默认", "  2   严格匹配"} {
+	for _, want := range []string{"回落防护", "tunnel", "本机 tunnel 回落端口", "不限制 Host       -- 默认", "严格匹配回落域名", "允许子域名        -- 默认", "  2   严格匹配"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("output missing %q: %q", want, out.String())
 		}

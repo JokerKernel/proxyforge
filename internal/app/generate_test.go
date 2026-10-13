@@ -253,7 +253,7 @@ func TestGenerateDefaultsToFallbackGuardAndStandardConfigOptsOut(t *testing.T) {
 		configPath string
 	}{
 		{domain.CoreSingBox, `"tag": "fallback-in"`, singbox.New().ConfigPath()},
-		{domain.CoreXray, `"protocol": "dokodemo-door"`, xray.New().ConfigPath()},
+		{domain.CoreXray, `"protocol": "tunnel"`, xray.New().ConfigPath()},
 	}
 	for _, tt := range tests {
 		t.Run(tt.core+" default", func(t *testing.T) {
@@ -328,7 +328,7 @@ func TestGenerateXrayFallbackGuardAndResetPreservesMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(config), `"protocol": "dokodemo-door"`) || !strings.Contains(string(config), `"target": "127.0.0.1:15444"`) {
+	if !strings.Contains(string(config), `"protocol": "tunnel"`) || !strings.Contains(string(config), `"target": "127.0.0.1:15444"`) {
 		t.Fatalf("fallback guard config=%s", config)
 	}
 

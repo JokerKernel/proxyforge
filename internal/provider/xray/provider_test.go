@@ -134,19 +134,19 @@ func TestFallbackGuardServerFollowsOfficialExampleFieldOrder(t *testing.T) {
 		`"log"`, `"dns"`, `"inbounds"`, `"outbounds"`, `"routing"`,
 	)
 
-	dokodemoStart := bytes.Index(config, []byte(`"listen": "127.0.0.1"`))
+	tunnelStart := bytes.Index(config, []byte(`"listen": "127.0.0.1"`))
 	vlessStart := bytes.Index(config, []byte(`"listen": "0.0.0.0"`))
-	if dokodemoStart < 0 || vlessStart <= dokodemoStart {
+	if tunnelStart < 0 || vlessStart <= tunnelStart {
 		t.Fatalf("cannot locate ordered inbounds: %s", config)
 	}
-	dokodemo := config[dokodemoStart:vlessStart]
-	assertFieldsInOrder(t, dokodemo,
-		`"listen"`, `"port": 61431`, `"protocol": "dokodemo-door"`, `"settings"`, `"tag": "fallback-in"`, `"sniffing"`,
+	tunnel := config[tunnelStart:vlessStart]
+	assertFieldsInOrder(t, tunnel,
+		`"listen"`, `"port": 61431`, `"protocol": "tunnel"`, `"settings"`, `"tag": "fallback-in"`, `"sniffing"`,
 	)
-	assertFieldsInOrder(t, dokodemo,
+	assertFieldsInOrder(t, tunnel,
 		`"address": "speed.cloudflare.com"`, `"port": 443`, `"network": "tcp"`,
 	)
-	assertFieldsInOrder(t, dokodemo,
+	assertFieldsInOrder(t, tunnel,
 		`"enabled": true`, `"destOverride"`, `"routeOnly": true`,
 	)
 
@@ -265,13 +265,13 @@ func TestRenderFallbackGuardServerAndPatchEndpoint(t *testing.T) {
 	}
 	assertFallbackGuardConfig(t, patched, "origin.example.com", 8443, "127.0.0.1:61431", "new-uuid", "new-private", "new-short", true, true)
 	assertFieldsInOrder(t, patched, `"log"`, `"dns"`, `"inbounds"`, `"outbounds"`, `"routing"`)
-	dokodemoStart := bytes.Index(patched, []byte(`"listen": "127.0.0.1"`))
+	tunnelStart := bytes.Index(patched, []byte(`"listen": "127.0.0.1"`))
 	vlessStart := bytes.Index(patched, []byte(`"listen": "0.0.0.0"`))
-	if dokodemoStart < 0 || vlessStart <= dokodemoStart {
+	if tunnelStart < 0 || vlessStart <= tunnelStart {
 		t.Fatalf("cannot locate patched ordered inbounds: %s", patched)
 	}
-	assertFieldsInOrder(t, patched[dokodemoStart:vlessStart],
-		`"listen"`, `"port": 61431`, `"protocol": "dokodemo-door"`, `"settings"`, `"tag": "fallback-in"`, `"sniffing"`,
+	assertFieldsInOrder(t, patched[tunnelStart:vlessStart],
+		`"listen"`, `"port": 61431`, `"protocol": "tunnel"`, `"settings"`, `"tag": "fallback-in"`, `"sniffing"`,
 	)
 	var root map[string]any
 	if err := json.Unmarshal(patched, &root); err != nil {
@@ -294,17 +294,17 @@ func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, t
 	if len(inbounds) != 2 {
 		t.Fatalf("inbounds=%#v", inbounds)
 	}
-	dokodemo := inbounds[0].(map[string]any)
-	settings := dokodemo["settings"].(map[string]any)
-	sniffing := dokodemo["sniffing"].(map[string]any)
+	tunnel := inbounds[0].(map[string]any)
+	settings := tunnel["settings"].(map[string]any)
+	sniffing := tunnel["sniffing"].(map[string]any)
 	wantDestOverride := []any{"tls"}
 	if restrictHTTP {
 		wantDestOverride = []any{"http", "tls"}
 	}
-	if dokodemo["tag"] != fallbackGuardInboundTag || dokodemo["listen"] != "127.0.0.1" || dokodemo["protocol"] != "dokodemo-door" ||
+	if tunnel["tag"] != fallbackGuardInboundTag || tunnel["listen"] != "127.0.0.1" || tunnel["protocol"] != "tunnel" ||
 		settings["address"] != targetHost || settings["port"] != float64(targetPort) || settings["network"] != "tcp" ||
 		sniffing["routeOnly"] != true || !reflect.DeepEqual(sniffing["destOverride"], wantDestOverride) {
-		t.Fatalf("dokodemo inbound=%#v", dokodemo)
+		t.Fatalf("tunnel inbound=%#v", tunnel)
 	}
 	vless := inbounds[1].(map[string]any)
 	client := vless["settings"].(map[string]any)["clients"].([]any)[0].(map[string]any)

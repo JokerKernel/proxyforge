@@ -28,16 +28,16 @@ type dnsSettings struct {
 	QueryStrategy string `json:"queryStrategy"`
 }
 
-type dokodemoInbound struct {
+type tunnelInbound struct {
 	Listen   string           `json:"listen"`
 	Port     int              `json:"port"`
 	Protocol string           `json:"protocol"`
-	Settings dokodemoSettings `json:"settings"`
+	Settings tunnelSettings   `json:"settings"`
 	Tag      string           `json:"tag"`
 	Sniffing sniffingSettings `json:"sniffing"`
 }
 
-type dokodemoSettings struct {
+type tunnelSettings struct {
 	Address string `json:"address"`
 	Port    int    `json:"port"`
 	Network string `json:"network"`
@@ -266,9 +266,9 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 	if n.XrayFallbackHTTPDomain {
 		destOverride = []string{"http", "tls"}
 	}
-	dokodemo := dokodemoInbound{
-		Listen: "127.0.0.1", Tag: fallbackGuardInboundTag, Port: n.XrayFallbackPort, Protocol: "dokodemo-door",
-		Settings: dokodemoSettings{Address: host, Port: targetPort, Network: "tcp"},
+	tunnel := tunnelInbound{
+		Listen: "127.0.0.1", Tag: fallbackGuardInboundTag, Port: n.XrayFallbackPort, Protocol: "tunnel",
+		Settings: tunnelSettings{Address: host, Port: targetPort, Network: "tcp"},
 		Sniffing: sniffingSettings{Enabled: true, DestOverride: destOverride, RouteOnly: true},
 	}
 	stream := streamSettings{Network: "raw", Security: "reality", RealitySettings: serverRealitySettings{
@@ -287,7 +287,7 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 		fallbackDomain = xrayFullDomain(n.SNI)
 	}
 	fallbackRules := []routingRule{
-		// Without HTTP sniffing, routing uses the configured dokodemo
+		// Without HTTP sniffing, routing uses the configured tunnel
 		// destination and does not restrict the plaintext HTTP Host header.
 		{InboundTag: []string{fallbackGuardInboundTag}, Domain: []string{fallbackDomain}, OutboundTag: fallbackDirectOutboundTag},
 	}
@@ -302,7 +302,7 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 	v := xrayConfig{
 		Log:       map[string]any{"loglevel": "warning"},
 		DNS:       systemDNS(),
-		Inbounds:  []any{dokodemo, vless},
+		Inbounds:  []any{tunnel, vless},
 		Outbounds: []xrayOutbound{directOutbound(), fallbackDirectOutbound(), blockedOutbound()},
 		Routing:   routing,
 	}
