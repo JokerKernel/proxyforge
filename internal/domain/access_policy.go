@@ -9,7 +9,6 @@ import (
 const (
 	AccessModeDefault   = "default"
 	AccessModeWhitelist = "whitelist"
-	AccessModeBlacklist = "blacklist"
 	AccessEntryDomain   = "domain"
 	AccessEntryIP       = "ip"
 	AccessEntryCIDR     = "cidr"
@@ -39,7 +38,7 @@ func (p AccessPolicy) Active() bool {
 }
 
 func (p AccessPolicy) BlacklistEnabled() bool {
-	return p.EffectiveMode() == AccessModeDefault || p.EffectiveMode() == AccessModeBlacklist
+	return p.EffectiveMode() == AccessModeDefault
 }
 
 func (p AccessPolicy) ClearList(listName string) (AccessPolicy, error) {
@@ -108,8 +107,8 @@ func ParseAccessEntry(value string, exact bool) (AccessEntry, error) {
 
 func (p AccessPolicy) Normalize() (AccessPolicy, error) {
 	p.Mode = strings.ToLower(strings.TrimSpace(p.Mode))
-	if p.Mode != "" && p.Mode != AccessModeDefault && p.Mode != AccessModeWhitelist && p.Mode != AccessModeBlacklist {
-		return p, fmt.Errorf("访问模式无效（可选 default、whitelist 或 blacklist）")
+	if p.Mode != "" && p.Mode != AccessModeDefault && p.Mode != AccessModeWhitelist {
+		return p, fmt.Errorf("访问模式无效（可选 default 或 whitelist）")
 	}
 	normalize := func(entries []AccessEntry) ([]AccessEntry, error) {
 		var result []AccessEntry

@@ -82,7 +82,7 @@ func TestAccessCommandsAndList(t *testing.T) {
 			before, _ := os.ReadFile(c.app.Layout.Resolve(p.ConfigPath()))
 			c.yes = false
 			cmd := c.accessCommand()
-			cmd.SetArgs([]string{"mode", core, "blacklist"})
+			cmd.SetArgs([]string{"mode", core, "default"})
 			if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "--yes") {
 				t.Fatalf("expected noninteractive confirmation requirement: %v", err)
 			}
@@ -118,8 +118,6 @@ func TestAccessPolicyCardShowsEffectiveRuleOrder(t *testing.T) {
 		{"default-white", domain.AccessPolicy{Whitelist: entries}, "白名单放行 → 原有拦截 → 其余放行"},
 		{"default-black", domain.AccessPolicy{Blacklist: entries}, "黑名单拒绝 → 原有拦截 → 其余放行"},
 		{"default-both", domain.AccessPolicy{Whitelist: entries, Blacklist: entries}, "白名单放行 → 黑名单拒绝 → 原有拦截 → 其余放行"},
-		{"blacklist-empty", domain.AccessPolicy{Mode: domain.AccessModeBlacklist}, "原有拦截 → 其余放行"},
-		{"blacklist-both", domain.AccessPolicy{Mode: domain.AccessModeBlacklist, Whitelist: entries, Blacklist: entries}, "白名单放行 → 黑名单拒绝 → 原有拦截 → 其余放行"},
 		{"whitelist-empty", domain.AccessPolicy{Mode: domain.AccessModeWhitelist}, "原有拦截 → 其余拒绝"},
 		{"whitelist-black-only", domain.AccessPolicy{Mode: domain.AccessModeWhitelist, Blacklist: entries}, "原有拦截 → 其余拒绝"},
 		{"whitelist-both", domain.AccessPolicy{Mode: domain.AccessModeWhitelist, Whitelist: entries, Blacklist: entries}, "白名单放行 → 原有拦截 → 其余拒绝"},
@@ -151,9 +149,34 @@ func TestAccessMenuPreviewsEmptyWhitelistAndCancels(t *testing.T) {
 	if !strings.Contains(out.String(), "拒绝；白名单为空时全部拒绝") {
 		t.Fatal("empty whitelist effect not shown before confirmation")
 	}
+	if strings.Contains(out.String(), "黑名单模式") {
+		t.Fatal("removed blacklist mode is still offered in the menu")
+	}
 	policy, err := c.app.AccessPolicy(domain.CoreXray)
 	if err != nil || policy.EffectiveMode() != domain.AccessModeDefault {
 		t.Fatal("cancelled mode change was applied")
+	}
+}
+
+func TestAccessModeCommandRejectsRemovedBlacklistMode(t *testing.T) {
+	for _, core := range []string{domain.CoreXray, domain.CoreSingBox} {
+		t.Run(core, func(t *testing.T) {
+			c, _ := accessCLI(t, core)
+			policyPath := c.app.Layout.AccessPolicyPath(core)
+			before, err := os.ReadFile(policyPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cmd := c.accessCommand()
+			cmd.SetArgs([]string{"mode", core, "blacklist"})
+			if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "default 或 whitelist") {
+				t.Fatalf("removed mode accepted or wrong error: %v", err)
+			}
+			after, err := os.ReadFile(policyPath)
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatal("rejecting removed mode changed stored policy")
+			}
+		})
 	}
 }
 

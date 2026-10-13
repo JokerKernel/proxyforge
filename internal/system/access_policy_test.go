@@ -18,7 +18,7 @@ func TestAccessPolicyStoredSeparatelyAndIsolatedByCore(t *testing.T) {
 			{Type: domain.AccessEntryDomain, Value: "Example.COM", IncludeSubdomains: true},
 			{Type: domain.AccessEntryCIDR, Value: "192.168.1.10/24"},
 		}},
-		domain.CoreSingBox: {Mode: domain.AccessModeBlacklist, Blacklist: []domain.AccessEntry{
+		domain.CoreSingBox: {Mode: domain.AccessModeDefault, Blacklist: []domain.AccessEntry{
 			{Type: domain.AccessEntryIP, Value: "192.168.1.1"},
 		}},
 	}
@@ -97,7 +97,7 @@ func TestStateDoesNotReadOrMigrateInlineAccessPolicy(t *testing.T) {
 	if _, err := os.Stat(store.Layout.AccessPolicyPath(domain.CoreXray)); !os.IsNotExist(err) {
 		t.Fatalf("inline policy was unexpectedly migrated: %v", err)
 	}
-	policy := domain.AccessPolicy{Mode: domain.AccessModeBlacklist}
+	policy := domain.AccessPolicy{Mode: domain.AccessModeDefault}
 	if err := (AccessPolicyStore{Layout: store.Layout}).Save(domain.CoreXray, policy); err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestAccessPolicyRejectsInvalidFiles(t *testing.T) {
 	}
 	path := store.Layout.AccessPolicyPath(domain.CoreXray)
 	for _, content := range []string{
-		`null`, `{`, `{"mode":"unknown"}`, `{"mode":"default"} {}`,
+		`null`, `{`, `{"mode":"unknown"}`, `{"mode":"blacklist"}`, `{"mode":"default"} {}`,
 		`{"whitelist":[{"type":"cidr","value":"192.168.1.0/99"}]}`,
 		`{"mode":"default","whitelst":[]}`,
 	} {
@@ -142,7 +142,7 @@ func TestStateSaveFailureRestoresAccessPolicyFile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			store := StateStore{Layout: Layout{Root: t.TempDir()}}
 			policyPath := store.Layout.AccessPolicyPath(domain.CoreXray)
-			before := []byte(`{"mode":"blacklist", "whitelist":[], "blacklist":[]}`)
+			before := []byte(`{"mode":"default", "whitelist":[], "blacklist":[]}`)
 			if hadPolicy {
 				if err := AtomicWrite(policyPath, before, 0600); err != nil {
 					t.Fatal(err)

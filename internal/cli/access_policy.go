@@ -16,8 +16,6 @@ func accessModeLabel(mode string) string {
 	switch mode {
 	case domain.AccessModeWhitelist:
 		return "仅允许白名单访问"
-	case domain.AccessModeBlacklist:
-		return "黑名单模式"
 	default:
 		return "默认模式"
 	}
@@ -93,7 +91,7 @@ func (c *commandSet) accessCommand() *cobra.Command {
 		c.printAccessPolicy(policy)
 		return nil
 	}})
-	cmd.AddCommand(&cobra.Command{Use: "mode <sing-box|xray> <default|whitelist|blacklist>", Short: "切换访问模式，保留名单", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd.AddCommand(&cobra.Command{Use: "mode <sing-box|xray> <default|whitelist>", Short: "切换访问模式，保留名单", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
 		policy, err := c.app.AccessPolicy(args[0])
 		if err != nil {
 			return err
@@ -228,7 +226,7 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 			c.clearScreen()
 			c.printPageHeader(core, "访问控制", "切换访问模式")
 			c.printLabeledCard("当前模式", [][2]string{{"访问模式", accessModeLabel(policy.EffectiveMode())}})
-			modes := []string{domain.AccessModeDefault, domain.AccessModeWhitelist, domain.AccessModeBlacklist}
+			modes := []string{domain.AccessModeDefault, domain.AccessModeWhitelist}
 			defaultChoice := 1
 			for i, mode := range modes {
 				label := accessModeLabel(mode)
@@ -239,7 +237,7 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 				c.printMenuChoice(strconv.Itoa(i+1), label)
 			}
 			c.printMenuChoice("0/q", "返回")
-			selected, e := c.chooseNumberCancelable("请选择访问模式", 1, 3, defaultChoice)
+			selected, e := c.chooseNumberCancelable("请选择访问模式", 1, len(modes), defaultChoice)
 			if errors.Is(e, errReturnToMenu) {
 				continue
 			}

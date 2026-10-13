@@ -29,7 +29,7 @@ func TestRealAccessPolicyConfigs(t *testing.T) {
 			n := tlsTestNode(t)
 			n.Core = p.Name()
 			n.LandingAccesses = []domain.LandingAccess{{Name: "shared", UserName: "shared", UUID: "5d5c5537-56a4-4b1a-a3bf-9e5a1b378769", Security: "tls", Enabled: true}}
-			for _, mode := range []string{domain.AccessModeDefault, domain.AccessModeBlacklist, domain.AccessModeWhitelist} {
+			for _, mode := range []string{domain.AccessModeDefault, domain.AccessModeWhitelist} {
 				for _, empty := range []bool{true, false} {
 					t.Run(fmt.Sprintf("%s-empty=%v", mode, empty), func(t *testing.T) {
 						n.AccessPolicy = domain.AccessPolicy{Mode: mode}
@@ -140,12 +140,11 @@ func TestRealAccessPolicyDestinations(t *testing.T) {
 	}{
 		{"domain-and-subdomains", domain.AccessPolicy{Mode: "whitelist", Whitelist: []domain.AccessEntry{{Type: "domain", Value: "allowed.test", IncludeSubdomains: true}}}, false, []request{{"allowed.test", true, ""}, {"sub.allowed.test", true, ""}, {"deep.sub.allowed.test", true, ""}, {"evilallowed.test", false, ""}, {"allowed.test.evil.test", false, ""}, {"outside.test", false, ""}, {"127.0.0.1", false, "allowed.test"}}},
 		{"exact-domain", domain.AccessPolicy{Mode: "whitelist", Whitelist: []domain.AccessEntry{{Type: "domain", Value: "exact.test"}}}, false, []request{{"exact.test", true, ""}, {"sub.exact.test", false, ""}}},
-		{"ip-white-over-black-and-private", domain.AccessPolicy{Mode: "blacklist", Whitelist: []domain.AccessEntry{{Type: "ip", Value: "127.0.0.1"}}, Blacklist: []domain.AccessEntry{{Type: "cidr", Value: "127.0.0.0/8"}}}, false, []request{{"127.0.0.1", true, ""}, {"outside.test", true, ""}, {"127.0.0.2", false, ""}}},
+		{"ip-white-over-black-and-private", domain.AccessPolicy{Mode: "default", Whitelist: []domain.AccessEntry{{Type: "ip", Value: "127.0.0.1"}}, Blacklist: []domain.AccessEntry{{Type: "cidr", Value: "127.0.0.0/8"}}}, false, []request{{"127.0.0.1", true, ""}, {"outside.test", true, ""}, {"127.0.0.2", false, ""}}},
 		{"cidr-white-over-private", domain.AccessPolicy{Mode: "whitelist", Whitelist: []domain.AccessEntry{{Type: "cidr", Value: "127.0.0.0/8"}}}, false, []request{{"127.0.0.1", true, ""}, {"127.0.0.2", true, ""}}},
-		{"blacklist-default-allow", domain.AccessPolicy{Mode: "blacklist", Blacklist: []domain.AccessEntry{{Type: "domain", Value: "denied.test", IncludeSubdomains: true}}}, true, []request{{"outside.test", true, ""}, {"denied.test", false, ""}, {"sub.denied.test", false, ""}}},
 		{"default-blacklist", domain.AccessPolicy{Mode: "default", Blacklist: []domain.AccessEntry{{Type: "domain", Value: "denied.test", IncludeSubdomains: true}}}, true, []request{{"outside.test", true, ""}, {"denied.test", false, ""}, {"sub.denied.test", false, ""}}},
 		{"default-white-over-black-and-private", domain.AccessPolicy{Mode: "default", Whitelist: []domain.AccessEntry{{Type: "ip", Value: "127.0.0.1"}}, Blacklist: []domain.AccessEntry{{Type: "cidr", Value: "127.0.0.0/8"}}}, false, []request{{"127.0.0.1", true, ""}, {"127.0.0.2", false, ""}, {"outside.test", true, ""}}},
-		{"domain-white-over-black", domain.AccessPolicy{Mode: "blacklist", Whitelist: []domain.AccessEntry{{Type: "domain", Value: "allowed.test", IncludeSubdomains: true}}, Blacklist: []domain.AccessEntry{{Type: "domain", Value: "allowed.test", IncludeSubdomains: true}}}, false, []request{{"allowed.test", true, ""}, {"sub.allowed.test", true, ""}, {"outside.test", false, ""}}},
+		{"domain-white-over-black", domain.AccessPolicy{Mode: "default", Whitelist: []domain.AccessEntry{{Type: "domain", Value: "allowed.test", IncludeSubdomains: true}}, Blacklist: []domain.AccessEntry{{Type: "domain", Value: "allowed.test", IncludeSubdomains: true}}}, false, []request{{"allowed.test", true, ""}, {"sub.allowed.test", true, ""}, {"outside.test", false, ""}}},
 		{"empty-whitelist-denies-all", domain.AccessPolicy{Mode: "whitelist"}, true, []request{{"127.0.0.1", false, ""}, {"outside.test", false, ""}}},
 		{"default-still-blocks-private", domain.AccessPolicy{}, false, []request{{"127.0.0.1", false, ""}, {"outside.test", false, ""}}},
 	}

@@ -16,7 +16,7 @@ proxyforge config landing add <sing-box|xray> NAME [--security current|reality|t
 proxyforge config relay add <sing-box|xray> NAME --upstream-stdin
 proxyforge config relay client <sing-box|xray> NAME [--format native|clash] [--output FILE]
 proxyforge config access list <sing-box|xray>
-proxyforge config access mode <sing-box|xray> <default|whitelist|blacklist>
+proxyforge config access mode <sing-box|xray> <default|whitelist>
 proxyforge config access add <sing-box|xray> <white|black> TARGET [--exact]
 proxyforge config access remove <sing-box|xray> <white|black> TARGET [--exact]
 proxyforge config access clear <sing-box|xray> <white|black>
@@ -141,7 +141,7 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 ```json
 {
-  "mode": "blacklist",
+  "mode": "default",
   "whitelist": [
     { "type": "domain", "value": "example.com", "include_subdomains": true }
   ],
@@ -156,13 +156,15 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 规则优先级固定如下：
 
 1. 命中白名单立即放行；普通用户及落地用户走当前 `direct`，中转用户继续走该线路指定的落地。
-2. 默认模式和黑名单模式下，命中黑名单拒绝。
+2. 默认模式下，命中黑名单拒绝。
 3. 现有私网、保留地址等拦截规则兜底。
-4. 默认模式和黑名单模式最终放行；仅允许白名单模式最终拒绝。
+4. 默认模式最终放行；仅允许白名单模式最终拒绝。
 
-白名单优先于黑名单和现有私网拦截。明确将 `192.168.1.0/24` 加入白名单后，该网段可以访问；其他未允许的私网仍拦截。内网地址必须能从最终出口访问到。白名单为空时，`whitelist` 模式拒绝全部代理目标；黑名单为空时，`blacklist` 模式保留原有拦截行为。
+白名单优先于黑名单和现有私网拦截。明确将 `192.168.1.0/24` 加入白名单后，该网段可以访问；其他未允许的私网仍拦截。内网地址必须能从最终出口访问到。白名单为空时，`whitelist` 模式拒绝全部代理目标；黑名单为空时，默认模式保留原有拦截行为。
 
-两份名单独立保存，切换模式不会清空：白名单在三个模式中都优先生效，黑名单在 `default` 和 `blacklist` 模式中生效；`whitelist` 模式只允许白名单，其余拒绝。默认模式和黑名单模式目前行为一致。信息卡按模式和名单内容显示生效的规则顺序，空名单不显示对应匹配步骤。配置重新生成、凭据重置和中转/落地增删也会保留并重新应用策略。
+仅保留 `default` 和 `whitelist` 两种模式。两份名单独立保存，切换模式不会清空：白名单在两个模式中都优先生效，黑名单在 `default` 模式中生效；`whitelist` 模式只允许白名单，其余拒绝。信息卡按模式和名单内容显示生效的规则顺序，空名单不显示对应匹配步骤。配置重新生成、凭据重置和中转/落地增删也会保留并重新应用策略。
+
+不接受或自动转换已移除的 `blacklist` 模式；已有访问控制文件若使用此模式，需手动将 `mode` 改为 `default`，两份名单保持原内容。
 
 Xray 的域名和 IP/网段规则分别使用 `white-domain`、`white-ip`、`black-domain`、`black-ip` 作为 `ruleTag`。其他访问控制辅助标签使用 `access-` 前缀，例如 `access-final`、`access-scope` 和 `access-dns`。不兼容旧的 `pf-access-` 标签，使用旧标签的配置需要重新生成。
 
@@ -179,7 +181,6 @@ sudo proxyforge config access add xray white 192.168.1.0/24 --yes
 
 sudo proxyforge config access add xray black denied.example.com --yes
 sudo proxyforge config access mode xray whitelist --yes
-sudo proxyforge config access mode xray blacklist --yes
 sudo proxyforge config access mode xray default --yes
 sudo proxyforge config access list xray
 

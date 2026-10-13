@@ -3,7 +3,7 @@ package domain
 import "testing"
 
 func TestAccessPolicyActiveWithOnlyBlacklist(t *testing.T) {
-	for _, mode := range []string{"", AccessModeDefault, AccessModeBlacklist, AccessModeWhitelist} {
+	for _, mode := range []string{"", AccessModeDefault, AccessModeWhitelist} {
 		t.Run(mode, func(t *testing.T) {
 			policy := AccessPolicy{Mode: mode}
 			if policy.Active() != (mode == AccessModeWhitelist) {
@@ -14,7 +14,7 @@ func TestAccessPolicyActiveWithOnlyBlacklist(t *testing.T) {
 				t.Fatal("blacklist-only policy must activate")
 			}
 			if policy.BlacklistEnabled() != (mode != AccessModeWhitelist) {
-				t.Fatal("blacklist must apply in default and blacklist modes")
+				t.Fatal("blacklist must only apply in default mode")
 			}
 		})
 	}
@@ -53,13 +53,15 @@ func TestAccessPolicyDeduplicatesAndValidatesTypes(t *testing.T) {
 	if err != nil || len(got.Whitelist) != 2 {
 		t.Fatalf("got=%#v err=%v", got, err)
 	}
-	if _, err := (AccessPolicy{Mode: "invalid"}).Normalize(); err == nil {
-		t.Fatal("accepted invalid mode")
+	for _, mode := range []string{"invalid", "blacklist"} {
+		if _, err := (AccessPolicy{Mode: mode}).Normalize(); err == nil {
+			t.Fatalf("accepted unsupported mode %q", mode)
+		}
 	}
 	if _, err := (AccessPolicy{Whitelist: []AccessEntry{{Type: AccessEntryDomain, Value: "192.168.1.0"}}}).Normalize(); err == nil {
 		t.Fatal("accepted mismatched entry type")
 	}
-	if (AccessPolicy{Mode: AccessModeBlacklist}).Active() {
+	if (AccessPolicy{Mode: AccessModeDefault}).Active() {
 		t.Fatal("empty blacklist should retain original behavior")
 	}
 	if !(AccessPolicy{Mode: AccessModeWhitelist}).Active() {

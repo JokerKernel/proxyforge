@@ -96,11 +96,9 @@ func TestDefaultModeEnforcesBlacklistAndPreservesPriority(t *testing.T) {
 				if !reflect.DeepEqual(rules[lastBlack+1:], originalRules) {
 					t.Fatal("original blocking and relay rules must follow blacklist unchanged")
 				}
-				blacklist := next
-				blacklist.AccessPolicy.Mode = domain.AccessModeBlacklist
-				equivalent, err := handler.PatchAccessPolicy(generated, next, blacklist)
-				if err != nil || !reflect.DeepEqual(rootOf(t, equivalent), root) {
-					t.Fatalf("default and blacklist modes differ: %v", err)
+				reapplied, err := handler.PatchAccessPolicy(generated, next, next)
+				if err != nil || !reflect.DeepEqual(rootOf(t, reapplied), root) {
+					t.Fatalf("reapplying default policy changed generated rules: %v", err)
 				}
 				restored, err := handler.PatchAccessPolicy(generated, next, n)
 				if err != nil || !reflect.DeepEqual(rootOf(t, restored), rootOf(t, original)) {
@@ -193,7 +191,7 @@ func TestPolicyDomainAndIPMatchesAndClientExceptions(t *testing.T) {
 	for _, p := range []provider.CoreProvider{xray.New(), singbox.New()} {
 		t.Run(p.Name(), func(t *testing.T) {
 			n := policyNode(p.Name())
-			n.AccessPolicy = domain.AccessPolicy{Mode: "blacklist", Whitelist: []domain.AccessEntry{{Type: "domain", Value: "allowed.com", IncludeSubdomains: true}, {Type: "domain", Value: "exact.com"}, {Type: "cidr", Value: "192.168.1.0/24"}}, Blacklist: []domain.AccessEntry{{Type: "domain", Value: "denied.com", IncludeSubdomains: true}}}
+			n.AccessPolicy = domain.AccessPolicy{Mode: "default", Whitelist: []domain.AccessEntry{{Type: "domain", Value: "allowed.com", IncludeSubdomains: true}, {Type: "domain", Value: "exact.com"}, {Type: "cidr", Value: "192.168.1.0/24"}}, Blacklist: []domain.AccessEntry{{Type: "domain", Value: "denied.com", IncludeSubdomains: true}}}
 			config, err := p.RenderServer(n)
 			if err != nil {
 				t.Fatal(err)
@@ -279,7 +277,7 @@ func TestXrayAccessRuleTagsReapplyAndRemoveWithoutDuplicates(t *testing.T) {
 	}
 	next := n
 	next.AccessPolicy = domain.AccessPolicy{
-		Mode: domain.AccessModeBlacklist,
+		Mode: domain.AccessModeDefault,
 		Whitelist: []domain.AccessEntry{
 			{Type: domain.AccessEntryDomain, Value: "allowed.com", IncludeSubdomains: true},
 			{Type: domain.AccessEntryIP, Value: "192.168.1.10"},

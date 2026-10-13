@@ -95,11 +95,8 @@ func TestAccessPolicyLifecyclePersistsAcrossNodeAndLinkChanges(t *testing.T) {
 			if err := a.AddAccessEntry(ctx, core, "black", "denied.com", false); err != nil {
 				t.Fatal(err)
 			}
-			if err := a.SetAccessMode(ctx, core, domain.AccessModeBlacklist); err != nil {
-				t.Fatal(err)
-			}
 			policy, err := a.AccessPolicy(core)
-			if err != nil || len(policy.Whitelist) != 2 || len(policy.Blacklist) != 1 {
+			if err != nil || policy.EffectiveMode() != domain.AccessModeDefault || len(policy.Whitelist) != 2 || len(policy.Blacklist) != 1 {
 				t.Fatalf("policy=%#v err=%v", policy, err)
 			}
 			// Editing another setting keeps generated white-list exceptions in sync.
@@ -236,7 +233,7 @@ func TestAccessPolicyRollbackAndManualConfigPreservation(t *testing.T) {
 			if accesspolicy.HasComponents(clean, core) {
 				t.Fatal("disabling empty policy left generated components")
 			}
-			for _, mode := range []string{"whitelist", "blacklist", "default"} {
+			for _, mode := range []string{"whitelist", "default"} {
 				if err := a.SetAccessMode(ctx, core, mode); err != nil {
 					t.Fatal(err)
 				}
