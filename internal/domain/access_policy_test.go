@@ -1,6 +1,37 @@
 package domain
 
-import "testing"
+import (
+	"reflect"
+	"strings"
+	"testing"
+)
+
+func TestParseAccessEntriesNormalizesMixedBatches(t *testing.T) {
+	for _, exact := range []bool{false, true} {
+		got, err := ParseAccessEntries(" Example.COM.,example.com\t192.168.1.10，192.168.1.99/24,192.168.1.0/24 2001:db8::1 ::ffff:192.168.1.10 ", exact)
+		want := []AccessEntry{
+			{Type: AccessEntryDomain, Value: "example.com", IncludeSubdomains: !exact},
+			{Type: AccessEntryIP, Value: "192.168.1.10"},
+			{Type: AccessEntryCIDR, Value: "192.168.1.0/24"},
+			{Type: AccessEntryIP, Value: "2001:db8::1"},
+		}
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Fatalf("exact=%t got=%#v want=%#v err=%v", exact, got, want, err)
+		}
+	}
+}
+
+func TestParseAccessEntriesRejectsWholeInvalidBatch(t *testing.T) {
+	for _, input := range []string{"", " ,， \t", "good.com,https://bad.com,192.168.1.10", "good.com 192.168.1.0/99", "good.com 192.168.1.999"} {
+		got, err := ParseAccessEntries(input, false)
+		if err == nil || got != nil {
+			t.Fatalf("invalid batch %q returned partial entries: %#v err=%v", input, got, err)
+		}
+		if strings.HasPrefix(input, "good.com") && !strings.Contains(err.Error(), "第 2 个目标") {
+			t.Fatalf("invalid target not identified: %v", err)
+		}
+	}
+}
 
 func TestDisabledAccessPolicyIgnoresModeAndLists(t *testing.T) {
 	for _, mode := range []string{AccessModeDefault, AccessModeWhitelist} {

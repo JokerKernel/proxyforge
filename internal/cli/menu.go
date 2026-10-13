@@ -275,6 +275,7 @@ func (c *commandSet) selectCore(ctx context.Context) (string, bool, error) {
 		c.printProxyForgeHeader()
 		c.printMenuStatusChoice("1", "Xray-core", c.coreInstalled(ctx, domain.CoreXray))
 		c.printMenuStatusChoice("2", "sing-box", c.coreInstalled(ctx, domain.CoreSingBox))
+		fmt.Fprint(c.out, "\n\n")
 		c.printMenuChoice("3", "清理全部卸载残留（两个内核均已卸载后使用）")
 		c.printMenuChoice("0/q", "退出")
 		choice, err := c.chooseNumber("请选择", 0, 3, 1)

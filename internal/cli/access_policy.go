@@ -151,13 +151,26 @@ func (c *commandSet) accessCommand() *cobra.Command {
 	for _, operation := range []string{"add", "remove"} {
 		operation := operation
 		var exact bool
-		child := &cobra.Command{Use: operation + " <sing-box|xray> <white|black> <域名|IP|CIDR>", Short: map[string]string{"add": "添加允许或拒绝访问的目标", "remove": "删除目标规则"}[operation], Args: cobra.ExactArgs(3), RunE: func(cmd *cobra.Command, args []string) error {
-			entry, err := domain.ParseAccessEntry(args[2], exact)
-			if err != nil {
-				return err
-			}
+		use := operation + " <sing-box|xray> <white|black> <域名|IP|CIDR>"
+		validateArgs := cobra.ExactArgs(3)
+		if operation == "add" {
+			use += " [目标...]"
+			validateArgs = cobra.MinimumNArgs(3)
+		}
+		child := &cobra.Command{Use: use, Short: map[string]string{"add": "批量添加允许或拒绝访问的目标", "remove": "删除目标规则"}[operation], Args: validateArgs, RunE: func(cmd *cobra.Command, args []string) error {
 			if args[1] != "white" && args[1] != "black" {
 				return fmt.Errorf("名单类型必须为 white 或 black")
+			}
+			var additions []domain.AccessEntry
+			var removal domain.AccessEntry
+			var err error
+			if operation == "add" {
+				additions, err = domain.ParseAccessEntries(strings.Join(args[2:], " "), exact)
+			} else {
+				removal, err = domain.ParseAccessEntry(args[2], exact)
+			}
+			if err != nil {
+				return err
 			}
 			policy, err := c.app.AccessPolicy(args[0])
 			if err != nil {
@@ -167,20 +180,25 @@ func (c *commandSet) accessCommand() *cobra.Command {
 			if args[1] == "black" {
 				entries = &policy.Blacklist
 			}
-			found := -1
-			for i, item := range *entries {
-				if item == entry {
-					found = i
-					break
-				}
-			}
 			if operation == "add" {
-				if found >= 0 {
+				original := policy
+				*entries = append(*entries, additions...)
+				policy, err = policy.Normalize()
+				if err != nil {
+					return err
+				}
+				if reflect.DeepEqual(original, policy) {
 					fmt.Fprintln(c.out, "规则已存在，无需修改。")
 					return nil
 				}
-				*entries = append(*entries, entry)
 			} else {
+				found := -1
+				for i, item := range *entries {
+					if item == removal {
+						found = i
+						break
+					}
+				}
 				if found < 0 {
 					return fmt.Errorf("名单中不存在该规则")
 				}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/netip"
 	"strings"
+	"unicode"
 )
 
 const (
@@ -107,6 +108,33 @@ func ParseAccessEntry(value string, exact bool) (AccessEntry, error) {
 		return AccessEntry{}, fmt.Errorf("IP 地址格式无效")
 	}
 	return AccessEntry{Type: AccessEntryDomain, Value: value, IncludeSubdomains: !exact}, nil
+}
+
+// ParseAccessEntries validates a whole batch before returning any entries.
+// Exact matching applies to domains; IPs and networks retain their own semantics.
+func ParseAccessEntries(value string, exact bool) ([]AccessEntry, error) {
+	values := strings.FieldsFunc(value, func(r rune) bool {
+		return unicode.IsSpace(r) || r == ',' || r == '，'
+	})
+	if len(values) == 0 {
+		return nil, fmt.Errorf("请输入至少一个域名、IP 或 CIDR 网段")
+	}
+	var entries []AccessEntry
+	seen := map[AccessEntry]bool{}
+	for i, value := range values {
+		entry, err := ParseAccessEntry(value, false)
+		if err != nil {
+			return nil, fmt.Errorf("第 %d 个目标 %q 无效: %w", i+1, value, err)
+		}
+		if entry.Type == AccessEntryDomain {
+			entry.IncludeSubdomains = !exact
+		}
+		if !seen[entry] {
+			entries = append(entries, entry)
+			seen[entry] = true
+		}
+	}
+	return entries, nil
 }
 
 func (p AccessPolicy) Normalize() (AccessPolicy, error) {

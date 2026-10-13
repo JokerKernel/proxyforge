@@ -139,26 +139,40 @@ func (c *commandSet) accessListMenu(ctx context.Context, core, list string) erro
 			c.printPageHeader(core, "访问控制", section, "添加规则")
 			c.printLabeledCard("规则说明", [][2]string{
 				{"支持目标", "域名、单个 IP 或 CIDR 网段"},
+				{"批量输入", "一行输入多个目标，用空格或逗号分隔"},
 				{"域名匹配", "默认包括子域名，可选择精确匹配"},
 				{"返回", "输入 0/q 返回" + section},
 			})
-			value, err := c.askDefaultCancelable("域名、IP 或 CIDR 网段", "")
+			value, err := c.askDefaultCancelable("目标（多个用空格或逗号分隔）", "")
 			if errors.Is(err, errReturnToMenu) || value == "0" {
 				continue
 			}
 			if err != nil {
 				return err
 			}
-			entry, err := domain.ParseAccessEntry(value, false)
+			additions, err := domain.ParseAccessEntries(value, false)
 			if err != nil {
 				c.printMenuError(err)
 				c.pauseForMenu()
 				continue
 			}
-			if entry.Type == domain.AccessEntryDomain {
+			domainCount := 0
+			for _, entry := range additions {
+				if entry.Type == domain.AccessEntryDomain {
+					domainCount++
+				}
+			}
+			if domainCount > 0 {
 				c.clearScreen()
 				c.printPageHeader(core, "访问控制", section, "添加规则", "域名匹配")
-				c.printLabeledCard("目标规则", [][2]string{{"名单", name}, {"域名", entry.Value}})
+				c.printLabeledCard("目标规则", [][2]string{
+					{"名单", name}, {"目标数量", strconv.Itoa(len(additions)) + " 条"},
+					{"域名匹配", "以下选择对本次所有域名生效，IP 和网段不受影响"},
+				})
+				for i, entry := range additions {
+					fmt.Fprintf(c.out, "%d. %s\n", i+1, entry.Value)
+				}
+				fmt.Fprintln(c.out)
 				c.printMenuChoice("1", "域名及其全部子域名（默认）")
 				c.printMenuChoice("2", "仅完整域名")
 				c.printMenuChoice("0/q", "返回")
@@ -169,9 +183,13 @@ func (c *commandSet) accessListMenu(ctx context.Context, core, list string) erro
 				if err != nil {
 					return err
 				}
-				entry.IncludeSubdomains = selected == 1
+				for i := range additions {
+					if additions[i].Type == domain.AccessEntryDomain {
+						additions[i].IncludeSubdomains = selected == 1
+					}
+				}
 			}
-			*entries = append(*entries, entry)
+			*entries = append(*entries, additions...)
 		case 2:
 			c.printPageHeader(core, "访问控制", section, "删除规则")
 			c.printLabeledCard("当前名单", [][2]string{{"名单", name}, {"规则数量", strconv.Itoa(len(*entries)) + " 条"}})

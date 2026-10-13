@@ -19,7 +19,7 @@ proxyforge config access list <sing-box|xray>
 proxyforge config access mode <sing-box|xray> <default|whitelist>
 proxyforge config access enable <sing-box|xray>
 proxyforge config access disable <sing-box|xray>
-proxyforge config access add <sing-box|xray> <white|black> TARGET [--exact]
+proxyforge config access add <sing-box|xray> <white|black> TARGET [TARGET...] [--exact]
 proxyforge config access remove <sing-box|xray> <white|black> TARGET [--exact]
 proxyforge config access clear <sing-box|xray> <white|black>
 proxyforge service <sing-box|xray> <start|stop|restart|status|logs>
@@ -141,6 +141,8 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 白名单和黑名单管理采用相同布局：「1 添加规则」「2 删除规则」「3 清空名单」。清空白名单时，当前为仅允许白名单模式则同时切回默认模式，影响会在清空确认页说明；清空黑名单保留访问模式。清空其中一份名单会保留另一份名单和总开关状态，执行前显示变更后的策略并确认。各级菜单及确认页均支持 `0/q` 直接返回，取消修改不要求额外回车。策略按内核独立管理，适用于该内核的普通用户、复用主入站的落地用户、独立 TLS 落地接入和中转线路；REALITY 未认证回落的 SNI/Host 防护继续使用原来的规则。
 
+「添加规则」支持在一行中输入多个域名、IP 和 CIDR，使用空格、英文或中文逗号分隔。例如 `baidu.com, example.com 192.168.1.0/24`。本次所有域名统一选择包括子域名或精确匹配，IP 和网段不受该选择影响；命令行批量添加时 `--exact` 同样只影响域名。所有目标先校验、标准化和去重，再统一预览并一次性应用；任一目标无效时整批不添加。关闭访问控制时批量添加也保持关闭状态。
+
 总开关、访问模式、白名单和黑名单保存在独立配置文件中：Xray 使用 `/var/lib/proxyforge/access/xray.json`，sing-box 使用 `/var/lib/proxyforge/access/sing-box.json`。`disabled: true` 表示关闭；默认是 `false`，即启用。文件权限为 `0600`，目录权限为 `0700`。节点状态文件不再保存 `access_policy`，也不读取或迁移旧字段。独立文件不存在时使用默认模式、启用开关和空名单；空名单下仍执行原有拦截。文件损坏、规则无效或权限不安全时会报错。
 
 文件格式如下，两份名单为空时也保留数组：
@@ -178,6 +180,10 @@ Xray 的域名和 IP/网段规则分别使用 `white-domain`、`white-ip`、`bla
 ```bash
 # 域名及全部子域名：example.com、www.example.com、a.b.example.com
 sudo proxyforge config access add xray white example.com --yes
+
+# 一次添加多个目标；逗号分隔也支持
+sudo proxyforge config access add xray white baidu.com example.com 192.168.1.0/24 --yes
+sudo proxyforge config access add xray black 'denied.example.com,192.168.2.0/24' --yes
 
 # 只匹配这个完整域名
 sudo proxyforge config access add xray white api.example.com --exact --yes
