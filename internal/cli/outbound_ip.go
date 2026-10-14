@@ -7,6 +7,7 @@ import (
 
 	"proxyforge/internal/domain"
 	"proxyforge/internal/provider"
+	"proxyforge/internal/system"
 )
 
 func (c *commandSet) outboundIPMenu(ctx context.Context, core string) error {
@@ -37,7 +38,7 @@ func (c *commandSet) outboundIPMenu(ctx context.Context, core string) error {
 	}
 	selected := settings.Strategies[choice-1]
 	if selected == settings.Current {
-		fmt.Fprintf(c.out, "[提示] 出站 IP 已经是 %s，无需修改。\n", outboundIPDisplay(selected))
+		system.WriteDetail(c.out, "操作提示", "出站 IP 已经是 %s，无需修改。", outboundIPDisplay(selected))
 		return nil
 	}
 
@@ -89,7 +90,7 @@ func (c *commandSet) outboundIPMenu(ctx context.Context, core string) error {
 		return err
 	}
 	if !confirmed {
-		fmt.Fprintln(c.out, "已取消出站 IP 修改。")
+		system.WriteDetail(c.out, "取消操作", "%s", "已取消出站 IP 修改。")
 		return nil
 	}
 	change, err := c.app.SetOutboundIPStrategy(ctx, core, selected)
@@ -97,14 +98,14 @@ func (c *commandSet) outboundIPMenu(ctx context.Context, core string) error {
 		return err
 	}
 	if !change.Changed {
-		fmt.Fprintf(c.out, "[提示] 出站 IP 已经是 %s，无需修改。\n", outboundIPDisplay(change.Current))
+		system.WriteDetail(c.out, "操作提示", "出站 IP 已经是 %s，无需修改。", outboundIPDisplay(change.Current))
 		return nil
 	}
 	effect := "服务当前未运行，将在下次启动时生效"
 	if change.Restarted {
 		effect = "服务已重启，设置已生效"
 	}
-	fmt.Fprintf(c.out, "[结果] %s 出站 IP 已从 %s 修改为 %s；%s。\n",
+	system.WriteDetail(c.out, "操作结果", "%s 出站 IP 已从 %s 修改为 %s；%s。",
 		core, outboundIPDisplay(change.Previous), outboundIPDisplay(change.Current), effect)
 	return nil
 }

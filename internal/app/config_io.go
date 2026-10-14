@@ -38,7 +38,7 @@ func (a *App) applyServerSetting(ctx context.Context, p provider.CoreProvider, c
 			}
 		}
 	}
-	a.progressf("使用 %s 原生命令校验 %s 配置", core, setting)
+	a.progressf("校验配置修改", "%s 原生命令，%s 配置", core, setting)
 	if err := validateRendered(ctx, p, a.Runner, configPath, patched); err != nil {
 		return false, err
 	}
@@ -51,15 +51,15 @@ func (a *App) applyServerSetting(ctx context.Context, p provider.CoreProvider, c
 	if a.Now != nil {
 		now = a.Now()
 	}
-	a.progressf("备份现有服务端配置 %s", configPath)
+	a.progressf("备份原配置", "%s", configPath)
 	if backup, err := system.BackupFile(configPath, a.Layout.BackupRoot(core), now); err != nil {
 		return false, err
 	} else if backup != "" {
-		a.progressf("现有配置已备份到 %s", backup)
+		a.progressf("备份位置", "%s", backup)
 	}
 
 	rollback := func(cause error) error {
-		a.progressf("%s 修改失败，正在恢复旧配置和服务", setting)
+		a.progressf("恢复原配置", "%s 修改失败，恢复旧配置和服务", setting)
 		restoreErr := restoreFile(configPath, oldConfig, true, metadata)
 		if running {
 			_ = a.Services.Restart(ctx, p.ServiceName())
@@ -70,7 +70,7 @@ func (a *App) applyServerSetting(ctx context.Context, p provider.CoreProvider, c
 		return fmt.Errorf("%v；已恢复旧配置", cause)
 	}
 
-	a.progressf("原子写入 %s 配置 %s", setting, configPath)
+	a.progressf("写入配置修改", "%s：%s（原子写入）", setting, configPath)
 	mode := metadata.mode
 	if mode == 0 {
 		mode = 0600
@@ -83,7 +83,7 @@ func (a *App) applyServerSetting(ctx context.Context, p provider.CoreProvider, c
 		return false, rollback(err)
 	}
 	if running {
-		a.progressf("重启 systemd 服务 %s 使 %s 设置立即生效", p.ServiceName(), setting)
+		a.progressf("应用配置修改", "重启 %s，使 %s 设置立即生效", p.ServiceName(), setting)
 		if err := a.Services.Restart(ctx, p.ServiceName()); err != nil {
 			return false, rollback(fmt.Errorf("重启 %s 失败: %w", p.ServiceName(), err))
 		}

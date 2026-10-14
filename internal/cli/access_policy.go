@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
 	"proxyforge/internal/domain"
+	"proxyforge/internal/system"
 )
 
 func accessModeLabel(mode string) string {
@@ -124,7 +126,7 @@ func (c *commandSet) accessCommand() *cobra.Command {
 		if err = c.app.SetAccessPolicy(cmd.Context(), args[0], policy); err != nil {
 			return err
 		}
-		fmt.Fprintln(c.out, "访问模式已更新："+accessModeLabel(policy.EffectiveMode()))
+		system.WriteDetail(c.out, "更新结果", "%s", "访问模式已更新："+accessModeLabel(policy.EffectiveMode()))
 		return nil
 	}})
 	for _, operation := range []string{"enable", "disable"} {
@@ -144,7 +146,7 @@ func (c *commandSet) accessCommand() *cobra.Command {
 			if err = c.app.SetAccessPolicy(cmd.Context(), args[0], policy); err != nil {
 				return err
 			}
-			fmt.Fprintln(c.out, "访问控制"+accessSwitchLabel(policy)+"。")
+			system.WriteDetail(c.out, "更新结果", "%s", "访问控制"+accessSwitchLabel(policy)+"。")
 			return nil
 		}})
 	}
@@ -188,7 +190,7 @@ func (c *commandSet) accessCommand() *cobra.Command {
 					return err
 				}
 				if reflect.DeepEqual(original, policy) {
-					fmt.Fprintln(c.out, "规则已存在，无需修改。")
+					system.WriteDetail(c.out, "当前状态", "%s", "规则已存在，无需修改。")
 					return nil
 				}
 			} else {
@@ -213,7 +215,7 @@ func (c *commandSet) accessCommand() *cobra.Command {
 			if err = c.app.SetAccessPolicy(cmd.Context(), args[0], policy); err != nil {
 				return err
 			}
-			fmt.Fprintln(c.out, "访问名单已更新。")
+			system.WriteDetail(c.out, "更新结果", "%s", "访问名单已更新。")
 			return nil
 		}}
 		child.Flags().BoolVar(&exact, "exact", false, "仅匹配完整域名（默认包含域名及其子域名）")
@@ -229,7 +231,7 @@ func (c *commandSet) accessCommand() *cobra.Command {
 			return err
 		}
 		if reflect.DeepEqual(policy, next) {
-			fmt.Fprintln(c.out, "当前名单已为空，无需修改。")
+			system.WriteDetail(c.out, "当前状态", "%s", "当前名单已为空，无需修改。")
 			return nil
 		}
 		if err = c.confirmAccessChange(next); err != nil {
@@ -241,7 +243,7 @@ func (c *commandSet) accessCommand() *cobra.Command {
 		if err = c.app.SetAccessPolicy(cmd.Context(), args[0], next); err != nil {
 			return err
 		}
-		fmt.Fprintln(c.out, "访问名单已清空。")
+		system.WriteDetail(c.out, "更新结果", "%s", "访问名单已清空。")
 		return nil
 	}})
 	return cmd

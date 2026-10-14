@@ -48,15 +48,15 @@ func TestPrintGenerateSuccessDisplaysNodeInformation(t *testing.T) {
 
 	for _, want := range []string{
 		"sing-box 服务端配置生成成功",
-		"服务状态：active（运行中）",
-		"开机启动：enabled（已启用）",
-		"连接地址：[2001:db8::10]:443",
-		"REALITY SNI：www.example.com",
-		"REALITY target：www.example.com:443",
-		"用户名称：phone",
-		"入站标签：phone-in",
-		"配置模式：标准安全配置",
-		"内核版本：sing-box version 1.13.16",
+		system.DetailLine("服务状态", "active（运行中）"),
+		system.DetailLine("开机启动", "enabled（已启用）"),
+		system.DetailLine("连接地址", "[2001:db8::10]:443"),
+		system.DetailLine("REALITY SNI", "www.example.com"),
+		system.DetailLine("REALITY target", "www.example.com:443"),
+		system.DetailLine("用户名称", "phone"),
+		system.DetailLine("入站标签", "phone-in"),
+		system.DetailLine("配置模式", "标准安全配置"),
+		system.DetailLine("内核版本", "sing-box version 1.13.16"),
 		"客户端配置",
 	} {
 		if !strings.Contains(out.String(), want) {
@@ -517,7 +517,7 @@ func TestFillGenerateSelectsSelfSignedTLS(t *testing.T) {
 func TestPrintGenerateSuccessDisplaysTLS(t *testing.T) {
 	var out bytes.Buffer
 	printGenerateSuccess(&out, domain.NodeSpec{Core: domain.CoreXray, Security: "tls", Server: "server.example.com", Port: 443, SNI: "pf-test.invalid"})
-	if !strings.Contains(out.String(), "VLESS + RAW + TLS + Vision") || !strings.Contains(out.String(), "TLS 名称：pf-test.invalid") || strings.Contains(out.String(), "REALITY target") {
+	if !strings.Contains(out.String(), "VLESS + RAW + TLS + Vision") || !strings.Contains(out.String(), system.DetailLine("TLS 名称", "pf-test.invalid")) || strings.Contains(out.String(), "REALITY target") {
 		t.Fatal(out.String())
 	}
 }

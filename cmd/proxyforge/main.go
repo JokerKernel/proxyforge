@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"proxyforge/internal/cli"
@@ -11,7 +10,7 @@ import (
 
 func main() {
 	if err := cli.New(version.String()).Execute(); err != nil {
-		fmt.Fprintln(system.NewTerminalColorWriter(os.Stderr), "[错误] 操作失败：", err)
+		system.WriteDetail(system.NewTerminalColorWriter(os.Stderr), "操作失败", "%v", err)
 		os.Exit(1)
 	}
 }

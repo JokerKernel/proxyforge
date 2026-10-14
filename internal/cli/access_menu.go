@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"proxyforge/internal/domain"
+	"proxyforge/internal/system"
 )
 
 func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
@@ -219,7 +220,7 @@ func (c *commandSet) accessListMenu(ctx context.Context, core, list string) erro
 			}
 			if reflect.DeepEqual(policy, next) {
 				c.printPageHeader(core, "访问控制", section, "清空名单")
-				fmt.Fprintln(c.out, "当前名单已为空，无需修改。")
+				system.WriteDetail(c.out, "当前状态", "%s", "当前名单已为空，无需修改。")
 				c.pauseForMenu()
 				continue
 			}
@@ -259,7 +260,7 @@ func (c *commandSet) applyAccessPolicyFromMenu(ctx context.Context, core, sectio
 		if err := c.app.SetAccessPolicy(ctx, core, next); err != nil {
 			c.printMenuError(err)
 		} else {
-			fmt.Fprintln(c.out, success)
+			system.WriteDetail(c.out, "更新结果", "%s", success)
 		}
 		c.pauseForMenu()
 	}

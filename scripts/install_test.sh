@@ -21,9 +21,9 @@ test_automatic_mode_skips_when_already_current() (
   local output
   output=$(main)
   [[ "${output}" == *"╭─ ProxyForge"* ]] || fail "missing installer header"
-  [[ "${output}" == *"当前版本：v1.2.3"* ]] || fail "missing current version summary"
-  [[ "${output}" == *"目标版本：v1.2.3"* ]] || fail "missing target version summary"
-  [[ "${output}" == *"[结果] 当前已是最新正式版本，无需更新"* ]] || fail "missing up-to-date result"
+  [[ "${output}" == *"当前版本               │ v1.2.3"* ]] || fail "missing current version summary"
+  [[ "${output}" == *"目标版本               │ v1.2.3"* ]] || fail "missing target version summary"
+  [[ "${output}" == *"更新结果               │ 当前已是最新正式版本，无需更新"* ]] || fail "missing up-to-date result"
   [[ "${output}" != *$'\033['* ]] || fail "redirected output contains ANSI controls"
   [[ "${output}" != *"SHA256SUMS"* ]] || fail "downloaded release files for current version"
 )
@@ -34,19 +34,19 @@ test_color_controls() (
   source "${script_dir}/install.sh"
 
   local output
-  output=$(info "彩色信息")
-  [[ "${output}" == *$'\033[34m[信息]\033[0m'* ]] || fail "blue information color was not applied"
+  output=$(info "版本信息" "彩色信息")
+  [[ "${output}" == *$'\033[34m版本信息\033[0m'* ]] || fail "blue information color was not applied"
   output=$(print_header)
   [[ "${output}" == *$'\033[1;38;5;208m╭─ ProxyForge\033[0m'* ]] || fail "orange title color was not applied"
-  output=$(step "彩色步骤")
-  [[ "${output}" == *$'\033[1;38;5;208m[步骤]\033[0m'* ]] || fail "orange step color was not applied"
+  output=$(step "检查环境" "彩色步骤")
+  [[ "${output}" == *$'\033[1;38;5;208m检查环境\033[0m'* ]] || fail "orange step color was not applied"
 
   installation_action=install
   resolved_version=v1.2.3
   output=$(print_completion)
-  [[ "${output}" == *$'\033[38;5;208m│ 版本：v1.2.3\033[0m'* ]] || fail "completion version line was not fully orange"
-  [[ "${output}" == *$'\033[38;5;208m│ 位置：/usr/local/sbin/proxyforge\033[0m'* ]] || fail "completion location line was not fully orange"
-  [[ "${output}" == *$'\033[38;5;208m│ 运行命令：sudo /usr/local/sbin/proxyforge\033[0m'* ]] || fail "run command was not included in the orange completion card"
+  [[ "${output}" == *$'\033[34m程序版本\033[0m               │ v1.2.3'* ]] || fail "completion version line was not fully orange"
+  [[ "${output}" == *$'\033[34m安装位置\033[0m               │ /usr/local/sbin/proxyforge'* ]] || fail "completion location line was not fully orange"
+  [[ "${output}" == *$'\033[34m运行命令\033[0m               │ sudo /usr/local/sbin/proxyforge'* ]] || fail "run command was not included in the orange completion card"
 )
 
 test_no_color_is_respected() (
@@ -55,8 +55,8 @@ test_no_color_is_respected() (
   source "${script_dir}/install.sh"
 
   local output
-  output=$(result "纯文本结果")
-  [[ "${output}" == "[结果] 纯文本结果" ]] || fail "NO_COLOR output was decorated: ${output}"
+  output=$(result "更新结果" "纯文本结果")
+  [[ "${output}" == "更新结果               │ 纯文本结果" ]] || fail "NO_COLOR output was decorated: ${output}"
 )
 
 test_version_comparison_and_classification() (
@@ -146,8 +146,8 @@ test_version_file_fallback() (
 
   local output
   output=$(main --yes)
-  [[ "${output}" == *"[警告] GitHub Releases API 不可用，改用 Release version 文件"* ]] || fail "missing API fallback status"
-  [[ "${output}" == *"最新正式版本：v1.2.3（Release version 文件）"* ]] || fail "version fallback failed"
+  [[ "${output}" == *"切换版本来源           │ GitHub Releases API 不可用，改用 Release version 文件"* ]] || fail "missing API fallback status"
+  [[ "${output}" == *"最新正式版本           │ v1.2.3（Release version 文件）"* ]] || fail "version fallback failed"
 )
 
 test_api_failure_retries_without_proxy() (
@@ -167,7 +167,7 @@ test_api_failure_retries_without_proxy() (
   local output
   output=$(main)
   [[ "${output}" == *"尝试忽略代理直连"* ]] || fail "missing direct retry notice"
-  [[ "${output}" == *"最新正式版本：v1.2.3（GitHub Releases API 直连）"* ]] || fail "direct API retry failed"
+  [[ "${output}" == *"最新正式版本           │ v1.2.3（GitHub Releases API 直连）"* ]] || fail "direct API retry failed"
   [[ "${output}" != *"改用 Release version 文件"* ]] || fail "version fallback ran after successful direct retry"
 )
 

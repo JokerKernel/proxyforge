@@ -37,7 +37,7 @@ func (a *App) DNSSettings(ctx context.Context, core string) (DNSSettings, error)
 		return DNSSettings{}, fmt.Errorf("%s 不支持 DNS 设置", core)
 	}
 	configPath := a.Layout.Resolve(p.ConfigPath())
-	a.progressf("读取 %s 当前 DNS 设置", core)
+	a.progressf("读取 DNS 设置", "%s", core)
 	config, err := os.ReadFile(configPath)
 	if os.IsNotExist(err) {
 		return DNSSettings{}, fmt.Errorf("尚未找到 %s 服务端配置 %s", core, p.ConfigPath())
@@ -69,7 +69,7 @@ func (a *App) SetDNSProfile(ctx context.Context, core, requested string) (DNSCha
 		return change, fmt.Errorf("%s 不支持 DNS 设置", core)
 	}
 	configPath := a.Layout.Resolve(p.ConfigPath())
-	a.progressf("读取并修改 %s DNS 设置", core)
+	a.progressf("修改 DNS 设置", "%s", core)
 	oldConfig, err := os.ReadFile(configPath)
 	if os.IsNotExist(err) {
 		return change, fmt.Errorf("尚未找到 %s 服务端配置 %s", core, p.ConfigPath())

@@ -15,6 +15,7 @@ import (
 
 	"proxyforge/internal/app"
 	"proxyforge/internal/domain"
+	"proxyforge/internal/system"
 )
 
 func (c *commandSet) landingCommand() *cobra.Command {
@@ -41,7 +42,7 @@ func (c *commandSet) landingAddCommand() *cobra.Command {
 		if output == "" {
 			_, err = c.out.Write(b)
 		} else {
-			fmt.Fprintf(c.out, "落地连接文件已安全写入 %s（0600）\n", output)
+			system.WriteDetail(c.out, "导出结果", "落地连接文件已安全写入 %s（0600）", output)
 		}
 		return err
 	}}
@@ -84,7 +85,7 @@ func (c *commandSet) landingExportCommand() *cobra.Command {
 		if output == "" {
 			_, err = c.out.Write(b)
 		} else {
-			fmt.Fprintf(c.out, "落地连接文件已安全写入 %s（0600）\n", output)
+			system.WriteDetail(c.out, "导出结果", "落地连接文件已安全写入 %s（0600）", output)
 		}
 		return err
 	}}
@@ -102,7 +103,7 @@ func (c *commandSet) landingToggleCommand(action string, enabled bool) *cobra.Co
 		if err := c.app.SetLandingAccessEnabled(cmd.Context(), args[0], args[1], enabled); err != nil {
 			return err
 		}
-		fmt.Fprintf(c.out, "落地接入 %s 已%s。\n", args[1], label)
+		system.WriteDetail(c.out, "更新结果", "落地接入 %s 已%s。", args[1], label)
 		return nil
 	}}
 }
@@ -114,7 +115,7 @@ func (c *commandSet) landingRotateCommand() *cobra.Command {
 		}
 		item, err := c.app.RotateLandingAccess(cmd.Context(), args[0], args[1])
 		if err == nil {
-			fmt.Fprintf(c.out, "落地接入 %s 的 UUID 已轮换为 %s，请重新生成并复制连接文本。\n", args[1], item.UUID)
+			system.WriteDetail(c.out, "更新结果", "落地接入 %s 的 UUID 已轮换为 %s，请重新生成并复制连接文本。", args[1], item.UUID)
 		}
 		return err
 	}}
@@ -128,7 +129,7 @@ func (c *commandSet) landingRemoveCommand() *cobra.Command {
 		if err := c.app.RemoveLandingAccess(cmd.Context(), args[0], args[1]); err != nil {
 			return err
 		}
-		fmt.Fprintf(c.out, "落地接入 %s 已删除。\n", args[1])
+		system.WriteDetail(c.out, "更新结果", "落地接入 %s 已删除。", args[1])
 		return nil
 	}}
 }
@@ -172,7 +173,7 @@ func (c *commandSet) relayAddCommand() *cobra.Command {
 		}
 		link, err := c.app.AddRelayLink(cmd.Context(), args[0], args[1], peer, app.RelayAddOptions{AllowUnreachable: allow})
 		if err == nil {
-			fmt.Fprintf(c.out, "中转线路 %s 已启用；客户端用户为 %s。\n", link.Name, link.UserName)
+			system.WriteDetail(c.out, "更新结果", "中转线路 %s 已启用；客户端用户为 %s。", link.Name, link.UserName)
 		}
 		return err
 	}}
@@ -215,7 +216,7 @@ func (c *commandSet) relayClientCommand() *cobra.Command {
 		if output == "" {
 			_, err = c.out.Write(b)
 		} else {
-			fmt.Fprintf(c.out, "客户端配置已安全写入 %s（0600）\n", output)
+			system.WriteDetail(c.out, "导出结果", "客户端配置已安全写入 %s（0600）", output)
 		}
 		return err
 	}}
@@ -235,7 +236,7 @@ func (c *commandSet) relayUpdateCommand() *cobra.Command {
 			return err
 		}
 		if err = c.app.UpdateRelayLink(cmd.Context(), args[0], args[1], peer, app.RelayAddOptions{AllowUnreachable: allow}); err == nil {
-			fmt.Fprintf(c.out, "中转线路 %s 已更新。\n", args[1])
+			system.WriteDetail(c.out, "更新结果", "中转线路 %s 已更新。", args[1])
 		}
 		return err
 	}}
@@ -250,7 +251,7 @@ func (c *commandSet) relayTestCommand() *cobra.Command {
 		if err := c.app.TestRelayLink(cmd.Context(), args[0], args[1]); err != nil {
 			return err
 		}
-		fmt.Fprintf(c.out, "中转线路 %s 的落地端点 TCP 可达。\n", args[1])
+		system.WriteDetail(c.out, "连通性结果", "中转线路 %s 的落地端点 TCP 可达。", args[1])
 		return nil
 	}}
 }
@@ -264,7 +265,7 @@ func (c *commandSet) relayToggleCommand(action string, enabled bool) *cobra.Comm
 		if err := c.app.SetRelayLinkEnabled(cmd.Context(), args[0], args[1], enabled); err != nil {
 			return err
 		}
-		fmt.Fprintf(c.out, "中转线路 %s 已%s。\n", args[1], label)
+		system.WriteDetail(c.out, "更新结果", "中转线路 %s 已%s。", args[1], label)
 		return nil
 	}}
 }
@@ -276,7 +277,7 @@ func (c *commandSet) relayRotateCommand() *cobra.Command {
 		}
 		item, err := c.app.RotateRelayLink(cmd.Context(), args[0], args[1])
 		if err == nil {
-			fmt.Fprintf(c.out, "中转线路 %s 的客户端 UUID 已轮换为 %s。\n", args[1], item.UUID)
+			system.WriteDetail(c.out, "更新结果", "中转线路 %s 的客户端 UUID 已轮换为 %s。", args[1], item.UUID)
 		}
 		return err
 	}}
@@ -290,7 +291,7 @@ func (c *commandSet) relayRemoveCommand() *cobra.Command {
 		if err := c.app.RemoveRelayLink(cmd.Context(), args[0], args[1]); err != nil {
 			return err
 		}
-		fmt.Fprintf(c.out, "中转线路 %s 已删除。\n", args[1])
+		system.WriteDetail(c.out, "更新结果", "中转线路 %s 已删除。", args[1])
 		return nil
 	}}
 }
@@ -529,7 +530,7 @@ func (c *commandSet) addLandingInteractive(ctx context.Context, core string) err
 	}
 	b, err := c.app.ExportLandingBundle(core, name, "", false)
 	if err == nil {
-		fmt.Fprintln(c.out, "落地接入已创建。请复制下面完整的 JSON 文本，在中转机的粘贴编辑器中使用：")
+		system.WriteDetail(c.out, "创建落地接入", "落地接入已创建。请复制下面完整的 JSON 文本，在中转机的粘贴编辑器中使用：")
 		fmt.Fprintln(c.out)
 		_, err = c.out.Write(b)
 	}
@@ -603,7 +604,7 @@ func (c *commandSet) addRelayInteractive(ctx context.Context, core string) error
 		link, err = c.app.AddRelayLink(ctx, core, name, peer, app.RelayAddOptions{AllowUnreachable: true})
 	}
 	if err == nil {
-		fmt.Fprintf(c.out, "中转线路 %s 已启用，客户端用户：%s。\n", link.Name, link.UserName)
+		system.WriteDetail(c.out, "更新结果", "中转线路 %s 已启用，客户端用户：%s。", link.Name, link.UserName)
 	}
 	return err
 }
@@ -645,7 +646,7 @@ func (c *commandSet) pasteLandingBundle() (domain.LandingPeer, error) {
 	if err != nil {
 		return domain.LandingPeer{}, fmt.Errorf("粘贴的落地连接文本无效: %w", err)
 	}
-	fmt.Fprintln(c.out, "连接文本解析成功，临时文件将在导入后自动删除。")
+	system.WriteDetail(c.out, "导入结果", "%s", "连接文本解析成功，临时文件将在导入后自动删除。")
 	return peer, nil
 }
 
@@ -792,7 +793,7 @@ func (c *commandSet) manageRelayInteractive(ctx context.Context, core string) er
 		if e := c.app.TestRelayLink(ctx, core, name); e != nil {
 			return e
 		}
-		fmt.Fprintln(c.out, "落地端点 TCP 可达。")
+		system.WriteDetail(c.out, "连通性结果", "%s", "落地端点 TCP 可达。")
 		return nil
 	case 3:
 		peer, e := c.pasteLandingBundle()

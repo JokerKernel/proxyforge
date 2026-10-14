@@ -544,12 +544,12 @@ func TestPrintInstallSuccessDistinguishesInstallAndUpgrade(t *testing.T) {
 	same := "Xray 26.3.27 (Xray, Penetrates Everything.) d2758a0 (go1.26.1 linux/amd64)"
 	printInstallSuccess(&unchanged, domain.CoreXray, same, same, true)
 
-	for _, want := range []string{"sing-box 安装成功", "版本：sing-box version 1.13.16", "服务：active（运行中）"} {
+	for _, want := range []string{"sing-box 安装成功", "版本：sing-box version 1.13.16", system.DetailLine("服务状态", "active（运行中）")} {
 		if !strings.Contains(installed.String(), want) {
 			t.Fatalf("install result missing %q: %q", want, installed.String())
 		}
 	}
-	for _, want := range []string{"xray 升级成功", "版本：Xray 25.1.1  ->  Xray 25.2.0", "服务：inactive（尚未运行）"} {
+	for _, want := range []string{"xray 升级成功", "版本：Xray 25.1.1  ->  Xray 25.2.0", system.DetailLine("服务状态", "inactive（尚未运行）")} {
 		if !strings.Contains(upgraded.String(), want) {
 			t.Fatalf("upgrade result missing %q: %q", want, upgraded.String())
 		}

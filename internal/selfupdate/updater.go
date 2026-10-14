@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"proxyforge/internal/install"
+	"proxyforge/internal/system"
 )
 
 const defaultScriptURL = "https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh"
@@ -49,16 +50,16 @@ func (u Updater) Run(ctx context.Context, opts Options) error {
 	if opts.Uninstall {
 		operation = "卸载"
 	}
-	fmt.Fprintf(output, "[步骤] 下载并验证 ProxyForge %s脚本\n", operation)
-	fmt.Fprintf(output, "[信息] 安装脚本地址：%s\n", scriptURL)
+	system.WriteDetail(output, "准备程序管理脚本", "下载并验证 ProxyForge %s脚本", operation)
+	system.WriteDetail(output, "脚本来源", "%s", scriptURL)
 	script, err := installer.PrepareScript(ctx, scriptURL, hosts)
 	if err != nil {
 		return fmt.Errorf("准备 ProxyForge %s脚本: %w", operation, err)
 	}
-	fmt.Fprintf(output, "[信息] 重定向后地址：%s\n", script.FinalURL)
-	fmt.Fprintf(output, "[信息] 脚本大小：%d bytes\n", len(script.Content))
-	fmt.Fprintf(output, "[信息] 脚本 SHA-256：%s\n", script.SHA256)
-	fmt.Fprintf(output, "[步骤] 启动 ProxyForge %s流程\n", operation)
+	system.WriteDetail(output, "重定向后地址", "%s", script.FinalURL)
+	system.WriteDetail(output, "脚本大小", "%d bytes", len(script.Content))
+	system.WriteDetail(output, "脚本 SHA-256", "%s", script.SHA256)
+	system.WriteDetail(output, "启动程序管理", "ProxyForge %s流程", operation)
 
 	var args []string
 	if opts.Uninstall {

@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"proxyforge/internal/system"
 )
 
 var configEditors = []string{"vim", "nano", "vi"}
@@ -26,15 +28,15 @@ func (c *commandSet) editServerConfig(ctx context.Context, core string) error {
 		return err
 	}
 	c.printPageHeader(core, "编辑服务端配置")
-	fmt.Fprintf(c.out, "使用 %s 打开 %s\n", filepath.Base(editor), path)
-	fmt.Fprintln(c.out, "警告：配置可能包含 UUID、REALITY 私钥等敏感信息。")
+	system.WriteDetail(c.out, "编辑服务端配置", "%s：%s", filepath.Base(editor), path)
+	system.WriteDetail(c.out, "风险提示", "配置可能包含 UUID、REALITY 私钥等敏感信息。")
 	for {
 		if err := c.runConfigEditor(editor, path); err != nil {
 			return fmt.Errorf("编辑器退出异常: %w", err)
 		}
-		fmt.Fprintln(c.out, "已关闭编辑器，正在校验配置……")
+		system.WriteDetail(c.out, "校验编辑结果", "已关闭编辑器，正在校验配置……")
 		if err := c.app.ValidateServerConfig(ctx, core); err != nil {
-			fmt.Fprintf(c.out, "[错误] 配置校验失败：%v\n", err)
+			system.WriteDetail(c.out, "配置校验失败", "%v", err)
 			fmt.Fprint(c.out, "\n按 Enter 重新打开配置文件……")
 			if c.reader == nil {
 				return fmt.Errorf("等待重新编辑配置: 输入读取器未初始化")
@@ -45,7 +47,7 @@ func (c *commandSet) editServerConfig(ctx context.Context, core string) error {
 			fmt.Fprintf(c.out, "重新使用 %s 打开 %s\n", filepath.Base(editor), path)
 			continue
 		}
-		fmt.Fprintln(c.out, "配置校验通过，正在重启服务应用配置……")
+		system.WriteDetail(c.out, "应用编辑结果", "配置校验通过，正在重启服务应用配置……")
 		output, err := c.app.Service(ctx, core, "restart")
 		if len(output) > 0 {
 			fmt.Fprint(c.out, string(output))
@@ -56,7 +58,7 @@ func (c *commandSet) editServerConfig(ctx context.Context, core string) error {
 		if err != nil {
 			return fmt.Errorf("配置校验通过，但重启 %s 服务失败: %w", core, err)
 		}
-		fmt.Fprintf(c.out, "%s 配置已通过校验，服务已重启并应用新配置。\n", core)
+		system.WriteDetail(c.out, "更新结果", "%s 配置已通过校验，服务已重启并应用新配置。", core)
 		return nil
 	}
 }

@@ -47,7 +47,7 @@ func TestAccessListMenusAddAndDeleteOnlySelectedList(t *testing.T) {
 						t.Fatalf("list did not refresh or breadcrumb omitted %q: %s", text, out.String())
 					}
 				}
-				if strings.Contains(out.String(), "[错误]") {
+				if strings.Contains(out.String(), "操作失败") {
 					t.Fatalf("list action failed: %s", out.String())
 				}
 			})

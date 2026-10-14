@@ -44,7 +44,7 @@ func TestAccessClearPreservesOtherListAndUpdatesModeAndRules(t *testing.T) {
 							if err := c.accessPolicyMenu(context.Background(), core); err != nil {
 								t.Fatal(err)
 							}
-							if !strings.Contains(out.String(), "清空") || strings.Contains(out.String(), "[错误]") {
+							if !strings.Contains(out.String(), "清空") || strings.Contains(out.String(), "操作失败") {
 								t.Fatalf("clear did not succeed: %s", out.String())
 							}
 							if mode == domain.AccessModeWhitelist && list == "white" && !strings.Contains(out.String(), "将退出仅允许白名单模式，切回默认模式") {

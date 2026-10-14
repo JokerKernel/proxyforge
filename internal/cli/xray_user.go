@@ -2,7 +2,8 @@ package cli
 
 import (
 	"context"
-	"fmt"
+
+	"proxyforge/internal/system"
 )
 
 func (c *commandSet) dedicatedXrayServiceUser(ctx context.Context) error {
@@ -25,7 +26,7 @@ func (c *commandSet) dedicatedXrayServiceUser(ctx context.Context) error {
 		return err
 	}
 	if !confirmed {
-		fmt.Fprintln(c.out, "已取消运行用户修改。")
+		system.WriteDetail(c.out, "取消操作", "%s", "已取消运行用户修改。")
 		return nil
 	}
 	change, err := c.app.UseDedicatedXrayServiceUser(ctx)
@@ -41,10 +42,10 @@ func (c *commandSet) dedicatedXrayServiceUser(ctx context.Context) error {
 		created = "已创建 xray 系统用户"
 	}
 	if !change.Changed {
-		fmt.Fprintf(c.out, "[结果] Xray 已使用专用系统用户 %s，账号、配置权限和 systemd 设置核验通过，无需修改。\n", change.Current)
+		system.WriteDetail(c.out, "操作结果", "Xray 已使用专用系统用户 %s，账号、配置权限和 systemd 设置核验通过，无需修改。", change.Current)
 		return nil
 	}
-	fmt.Fprintf(c.out, "[结果] Xray 运行用户已从 %s 修改为 %s；%s；%s。\n",
+	system.WriteDetail(c.out, "操作结果", "Xray 运行用户已从 %s 修改为 %s；%s；%s。",
 		change.Previous, change.Current, created, effect)
 	return nil
 }

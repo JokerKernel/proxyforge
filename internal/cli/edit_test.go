@@ -94,7 +94,7 @@ func TestEditServerConfigOpensResolvedPathWithPreferredEditor(t *testing.T) {
 	if openedEditor != "/usr/bin/vim" || openedPath != path {
 		t.Fatalf("opened editor=%q path=%q, want vim %q", openedEditor, openedPath, path)
 	}
-	if !strings.Contains(out.String(), "使用 vim 打开") || !strings.Contains(out.String(), "已关闭编辑器") {
+	if !strings.Contains(out.String(), system.DetailLine("编辑服务端配置", "vim："+path)) || !strings.Contains(out.String(), "已关闭编辑器") {
 		t.Fatalf("edit output=%q", out.String())
 	}
 	if calls := strings.Join(runner.calls, "\n"); !strings.Contains(calls, "sing-box check -c ") || !strings.Contains(calls, "systemctl restart sing-box.service") {

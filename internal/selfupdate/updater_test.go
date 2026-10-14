@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"proxyforge/internal/install"
+	"proxyforge/internal/system"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -75,16 +76,16 @@ func TestRunOnlyStartsPreparedScript(t *testing.T) {
 		t.Fatalf("executed script=%q", runner.script)
 	}
 	for _, expected := range []string{
-		"[步骤] 下载并验证 ProxyForge 安装/更新脚本",
-		"[信息] 安装脚本地址：https://official.example/install.sh",
-		"[信息] 重定向后地址：https://official.example/install.sh",
-		"[信息] 脚本 SHA-256：", "[步骤] 启动 ProxyForge 安装/更新流程", "install-ui",
+		system.DetailLine("准备程序管理脚本", "下载并验证 ProxyForge 安装/更新脚本"),
+		system.DetailLine("脚本来源", "https://official.example/install.sh"),
+		system.DetailLine("重定向后地址", "https://official.example/install.sh"),
+		system.DetailPrefix("脚本 SHA-256"), system.DetailLine("启动程序管理", "ProxyForge 安装/更新流程"), "install-ui",
 	} {
 		if !strings.Contains(output.String(), expected) {
 			t.Fatalf("output missing %q:\n%s", expected, output.String())
 		}
 	}
-	if strings.Contains(output.String(), "[Bash]") {
+	if strings.Contains(output.String(), system.DetailPrefix("管理脚本输出")) {
 		t.Fatalf("self-update UI should not be prefixed as an official script:\n%s", output.String())
 	}
 }

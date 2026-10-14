@@ -37,7 +37,7 @@ func (a *App) OutboundIPSettings(ctx context.Context, core string) (OutboundIPSe
 		return OutboundIPSettings{}, fmt.Errorf("%s 不支持出站 IP 设置", core)
 	}
 	configPath := a.Layout.Resolve(p.ConfigPath())
-	a.progressf("读取 %s 当前出站 IP 策略", core)
+	a.progressf("读取出站 IP 策略", "%s", core)
 	config, err := os.ReadFile(configPath)
 	if os.IsNotExist(err) {
 		return OutboundIPSettings{}, fmt.Errorf("尚未找到 %s 服务端配置 %s", core, p.ConfigPath())
@@ -69,7 +69,7 @@ func (a *App) SetOutboundIPStrategy(ctx context.Context, core, requested string)
 		return change, fmt.Errorf("%s 不支持出站 IP 设置", core)
 	}
 	configPath := a.Layout.Resolve(p.ConfigPath())
-	a.progressf("读取并修改 %s 出站 IP 策略", core)
+	a.progressf("修改出站 IP 策略", "%s", core)
 	oldConfig, err := os.ReadFile(configPath)
 	if os.IsNotExist(err) {
 		return change, fmt.Errorf("尚未找到 %s 服务端配置 %s", core, p.ConfigPath())

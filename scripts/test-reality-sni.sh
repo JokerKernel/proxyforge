@@ -24,7 +24,7 @@ EOF
 }
 
 die() {
-  printf '[错误] %s\n' "$*" >&2
+  printf '操作失败               │ %s\n' "$*" >&2
   exit 64
 }
 
@@ -88,7 +88,7 @@ allowed_subdomain="www.${allowed_sni}"
 probe_allowed_subdomain=true
 if ((${#allowed_subdomain} > 253)); then
   probe_allowed_subdomain=false
-  printf '[跳过] 允许 SNI 已过长，无法构造允许项的子域：%s\n' "${allowed_sni}" >&2
+  printf '跳过探测               │ 允许 SNI 已过长，无法构造允许项的子域：%s\n' "${allowed_sni}" >&2
 fi
 
 command -v openssl >/dev/null 2>&1 || die '未找到 openssl'
@@ -335,11 +335,11 @@ for candidate in "${rejected_snis[@]}"; do
   [[ -n ${candidate} ]] || die '--bad-sni 不能为空'
   [[ ${candidate} != *:* && ${candidate} != */* ]] || die '--bad-sni 必须是域名，不能包含端口或路径'
   if [[ ${candidate,,} == "${allowed_sni,,}" ]]; then
-    printf '[跳过] 错误 SNI 与允许 SNI 相同：%s\n' "${candidate}" >&2
+    printf '跳过探测               │ 错误 SNI 与允许 SNI 相同：%s\n' "${candidate}" >&2
     continue
   fi
   if ${probe_allowed_subdomain} && [[ ${candidate,,} == "${allowed_subdomain,,}" ]]; then
-    printf '[跳过] 该 SNI 已由允许项的子域探测覆盖：%s\n' "${candidate}" >&2
+    printf '跳过探测               │ 该 SNI 已由允许项的子域探测覆盖：%s\n' "${candidate}" >&2
     continue
   fi
   filtered_rejected_snis+=("${candidate}")

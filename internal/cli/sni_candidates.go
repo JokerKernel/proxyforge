@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"proxyforge/internal/app"
+	"proxyforge/internal/system"
 )
 
 var defaultSNICandidates = []string{
@@ -224,10 +225,10 @@ func (c *commandSet) retestSNICandidates(ctx context.Context, core string) error
 			fmt.Fprintf(c.out, "节点地址：%s\n", server)
 			fmt.Fprintf(c.out, "当前 SNI：%s\n", currentSNI)
 			if currentRank == 0 {
-				fmt.Fprintln(c.out, "\n[警告] 当前 SNI 未通过本次 DNS、TLS 或证书名称校验。")
+				system.WriteDetail(c.out, "SNI 检测警告", "当前 SNI 未通过本次 DNS、TLS 或证书名称校验。")
 				fmt.Fprintln(c.out, "检测结果可能受临时网络波动影响，可立即重新测试；本次不会修改配置。")
 			} else {
-				fmt.Fprintf(c.out, "\n[结果] 当前 SNI 通过检测，在全部有效候选中排名第 %d。\n", currentRank)
+				system.WriteDetail(c.out, "SNI 检测结果", "当前 SNI 通过检测，在全部有效候选中排名第 %d。", currentRank)
 				c.printSNICandidateDetails("当前 SNI：", currentResult)
 			}
 			fmt.Fprintf(c.out, "\n全部有效候选（%s）：\n", sniSortLabel(sortIPv4))

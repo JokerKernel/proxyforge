@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"proxyforge/internal/app"
+	"proxyforge/internal/system"
 )
 
 func (c *commandSet) clientCommand() *cobra.Command {
@@ -23,7 +24,7 @@ func (c *commandSet) clientCommand() *cobra.Command {
 			if output == "" {
 				_, err = c.out.Write(b)
 			} else {
-				fmt.Fprintf(c.out, "客户端配置已安全写入 %s（0600）\n", output)
+				system.WriteDetail(c.out, "导出结果", "客户端配置已安全写入 %s（0600）", output)
 			}
 			return err
 		},

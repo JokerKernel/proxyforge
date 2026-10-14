@@ -63,7 +63,7 @@ func TestAccessMenuSwitchPreservesSettingsAndAppliesSavedRules(t *testing.T) {
 				if accesspolicy.HasComponents(root, core) == step.disabled {
 					t.Fatal("applied rules do not reflect independent switch")
 				}
-				if step.disabled && !strings.Contains(out.String(), "原有拦截 → 其余放行") || strings.Contains(out.String(), "[错误]") {
+				if step.disabled && !strings.Contains(out.String(), "原有拦截 → 其余放行") || strings.Contains(out.String(), "操作失败") {
 					t.Fatalf("disabled rule display or switch failed: %s", out.String())
 				}
 			}

@@ -232,7 +232,7 @@ func TestAccessMenuReturnsWithoutExtraPause(t *testing.T) {
 					if err := c.modifyConfigMenu(context.Background(), core); err != nil {
 						t.Fatalf("return consumed input intended for the parent menu: %v", err)
 					}
-					if strings.Contains(out.String(), "按 Enter 返回菜单") || strings.Contains(out.String(), "[错误]") {
+					if strings.Contains(out.String(), "按 Enter 返回菜单") || strings.Contains(out.String(), "操作失败") {
 						t.Fatalf("return unexpectedly paused or failed: %s", out.String())
 					}
 					after, err := c.app.AccessPolicy(core)

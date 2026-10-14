@@ -336,4 +336,16 @@ sudo proxyforge config relay remove sing-box us --yes
 
 “服务端配置 → 服务管理”菜单可以启动、停止、重启服务，查看状态或持续查看 systemd journal；按 `Ctrl+C` 只停止实时日志并返回菜单。
 
-输出前缀用于区分 ProxyForge 流程、本机命令、官方脚本和服务日志。步骤与命令日志写入 stderr，客户端配置写入 stdout 或 `--output` 文件；密钥生成结果不会写入命令日志。
+运行信息统一采用“用途 │ 详情”格式，左侧按中文显示宽度对齐，右侧保留完整命令、路径、参数和结果，不使用 `[步骤]`、`[命令]` 等分类前缀。多行说明在详情列继续显示；服务日志和官方脚本实时输出也会注明来源。终端中的成功、失败和风险提示保留语义颜色。
+
+```text
+应用访问策略           │ 白名单优先，现有拦截规则兜底
+校验 xray 配置         │ xray run -test -config /usr/local/etc/xray/.proxyforge-validate-example.json
+命令结果               │ 校验 xray 配置：执行成功
+备份位置               │ /var/lib/proxyforge/backups/xray/20261014T081753.483797182Z/config.json
+重启服务               │ systemctl restart xray.service
+命令结果               │ 重启服务：执行成功
+更新结果               │ 白名单已更新。
+```
+
+流程与命令日志写入 stderr，客户端 JSON/YAML 和落地连接文本仍直接写入 stdout 或指定文件，保持原始内容。密钥生成结果不会写入命令日志，代理参数继续隐藏凭据。自身安装脚本使用同样的两列格式；直接连接终端的子进程仍保留其原生交互与下载进度。

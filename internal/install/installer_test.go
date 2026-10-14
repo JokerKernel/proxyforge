@@ -183,10 +183,10 @@ func TestExecutePreparedScriptStreamsOutput(t *testing.T) {
 		t.Fatalf("streaming=%v buffered=%v", runner.streamingCalled, runner.bufferedCalled)
 	}
 	for _, want := range []string{
-		"[状态] 开始执行，以下为实时输出",
-		"[Bash] stdout step",
-		"[Bash] stderr step",
-		"[状态] 执行完成",
+		system.DetailLine("执行管理脚本", "开始执行，以下为实时输出"),
+		system.DetailLine("管理脚本输出", "stdout step"),
+		system.DetailLine("管理脚本输出", "stderr step"),
+		system.DetailLine("脚本执行结果", "执行完成。"),
 	} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("output missing %q: %s", want, output.String())
@@ -215,7 +215,7 @@ func TestExecutePreparedScriptAttachedForwardsNativeStreams(t *testing.T) {
 	if got := stderr.String(); got != "stderr step\n" {
 		t.Fatalf("stderr=%q", got)
 	}
-	if strings.Contains(stdout.String()+stderr.String(), "[Bash]") {
+	if strings.Contains(stdout.String()+stderr.String(), system.DetailPrefix("管理脚本输出")) {
 		t.Fatalf("attached output was decorated: stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 	if _, err := os.Stat(runner.args[0]); !os.IsNotExist(err) {
@@ -247,17 +247,17 @@ func TestRunPassesRuntimeProxyToXrayScript(t *testing.T) {
 	if len(runner.args) != 4 || runner.args[1] != "install" || runner.args[2] != "--proxy" || runner.args[3] != proxyURL.String() {
 		t.Fatalf("args=%v, want <script> install --proxy <runtime proxy>", runner.args)
 	}
-	if !strings.Contains(output.String(), "检测到运行时代理") || strings.Contains(output.String(), proxyURL.String()) {
+	if !strings.Contains(output.String(), "运行时代理") || strings.Contains(output.String(), proxyURL.String()) {
 		t.Fatalf("proxy notice missing or proxy URL leaked: %s", output.String())
 	}
 	for _, want := range []string{
-		"[信息] 检测到运行时代理",
-		"[命令] 执行命令：bash -n",
-		"[官方脚本/信息] 来源：",
-		"[官方脚本/信息] SHA-256：",
-		"[官方脚本/风险]",
-		"[Bash] stdout step",
-		"[状态] 执行完成",
+		system.DetailLine("运行时代理", "已检测到，将传递给官方管理脚本。"),
+		system.DetailPrefix("校验脚本语法") + "bash -n",
+		system.DetailPrefix("脚本来源"),
+		system.DetailPrefix("脚本 SHA-256"),
+		system.DetailPrefix("脚本执行风险"),
+		system.DetailLine("管理脚本输出", "stdout step"),
+		system.DetailLine("脚本执行结果", "执行完成。"),
 	} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("labeled output missing %q: %s", want, output.String())

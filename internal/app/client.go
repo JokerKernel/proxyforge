@@ -50,7 +50,7 @@ func (a *App) ServerConfig(core string) ([]byte, error) {
 		return nil, err
 	}
 	path := a.Layout.Resolve(p.ConfigPath())
-	a.progressf("读取当前 %s 服务端配置 %s", core, path)
+	a.progressf("读取服务端配置", "%s：%s", core, path)
 	b, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return nil, fmt.Errorf("尚未找到 %s 服务端配置 %s", core, p.ConfigPath())
@@ -70,7 +70,7 @@ func (a *App) ValidateServerConfig(ctx context.Context, core string) error {
 	if err != nil {
 		return err
 	}
-	a.progressf("使用 %s 原生命令校验服务端配置 %s", core, path)
+	a.progressf("校验服务端配置", "%s：%s", core, path)
 	return p.ValidateConfig(ctx, a.Runner, path)
 }
 
@@ -123,12 +123,12 @@ func (a *App) ClientConfig(ctx context.Context, core, format, output string, for
 	if format != ClientFormatNative && format != ClientFormatClash {
 		return nil, fmt.Errorf("不支持的客户端格式 %q（可选 native 或 clash）", format)
 	}
-	a.progressf("开始生成 %s 客户端配置（格式：%s）", core, format)
+	a.progressf("生成客户端配置", "%s，格式：%s", core, format)
 	p, err := a.Registry.Get(core)
 	if err != nil {
 		return nil, err
 	}
-	a.progressf("读取受管节点状态并渲染客户端配置")
+	a.progressf("渲染客户端配置", "读取受管节点状态")
 	n, err := a.Store.Load(core)
 	if err != nil {
 		return nil, err
@@ -144,7 +144,7 @@ func (a *App) ClientConfig(ctx context.Context, core, format, output string, for
 		if err != nil {
 			return nil, err
 		}
-		a.progressf("已生成 Mihomo/Clash Meta YAML；不使用 %s 校验非原生格式", core)
+		a.progressf("客户端配置格式", "Mihomo/Clash Meta YAML；不使用 %s 校验非原生格式", core)
 	} else {
 		b, err = p.RenderClient(n)
 		if err != nil {
@@ -165,16 +165,16 @@ func (a *App) ClientConfig(ctx context.Context, core, format, output string, for
 		if err != nil {
 			return nil, err
 		}
-		a.progressf("使用 %s 原生命令校验客户端配置", core)
+		a.progressf("校验客户端配置", "%s 原生命令", core)
 		if err = p.ValidateConfig(ctx, a.Runner, path); err != nil {
 			return nil, err
 		}
 	}
 	if output == "" {
-		a.progressf("客户端配置生成完成，将 %s 输出到 stdout", clientFormatLabel(format))
+		a.progressf("输出客户端配置", "%s → stdout", clientFormatLabel(format))
 		return b, nil
 	}
-	a.progressf("以 0600 权限写入客户端配置 %s", output)
+	a.progressf("写入客户端配置", "%s（0600）", output)
 	flags := os.O_WRONLY | os.O_CREATE
 	if force {
 		flags |= os.O_TRUNC

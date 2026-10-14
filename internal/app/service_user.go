@@ -108,7 +108,7 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 	}
 
 	rollback := func(cause error) error {
-		a.progressf("运行用户迁移失败，正在恢复 systemd unit 和文件权限")
+		a.progressf("恢复运行用户设置", "迁移失败，恢复 systemd unit 和文件权限")
 		var rollbackErrors []error
 		if err := restoreSnapshots(snapshots); err != nil {
 			rollbackErrors = append(rollbackErrors, fmt.Errorf("恢复 systemd 配置文件: %w", err))
@@ -133,11 +133,11 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 		return fmt.Errorf("%v；已恢复旧 systemd 设置", cause)
 	}
 
-	a.progressf("将 Xray systemd unit 的运行用户设置为 %s", XrayDedicatedServiceUser)
+	a.progressf("设置运行用户", "Xray systemd unit：%s", XrayDedicatedServiceUser)
 	if err := writePreparedSnapshots(snapshots); err != nil {
 		return change, rollback(err)
 	}
-	a.progressf("通过 systemd-sysusers 创建或检查 Xray 专用系统用户 %s", XrayDedicatedServiceUser)
+	a.progressf("配置专用用户", "systemd-sysusers：%s", XrayDedicatedServiceUser)
 	created, err := a.ensureXrayServiceAccount(ctx)
 	change.UserCreated = created
 	if err != nil {
@@ -151,12 +151,12 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 	if err := a.secureXrayFilesForDedicatedUser(ctx, p.ConfigPath()); err != nil {
 		return change, rollback(err)
 	}
-	a.progressf("以 Xray 专用用户校验配置和引用文件权限")
+	a.progressf("校验文件权限", "以 Xray 专用用户检查配置及引用文件")
 	if err := a.validateXrayConfigAsDedicatedUser(ctx, p.ConfigPath()); err != nil {
 		return change, rollback(err)
 	}
 	if changedUnits {
-		a.progressf("刷新 systemd unit 缓存")
+		a.progressf("刷新服务缓存", "systemd unit")
 		if err := a.Services.DaemonReload(ctx); err != nil {
 			return change, rollback(fmt.Errorf("刷新 systemd unit 失败: %w", err))
 		}
@@ -169,7 +169,7 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 		return change, rollback(fmt.Errorf("Xray 有其他 systemd 配置覆盖了运行用户，当前仍为 %s", change.Current))
 	}
 	if wasRunning && (changedUnits || change.Previous != XrayDedicatedServiceUser) {
-		a.progressf("重启 Xray 使专用运行用户立即生效")
+		a.progressf("应用运行用户", "重启 Xray 使专用运行用户立即生效")
 		if err := a.Services.Restart(ctx, p.ServiceName()); err != nil {
 			return change, rollback(fmt.Errorf("重启 %s 失败: %w", p.ServiceName(), err))
 		}

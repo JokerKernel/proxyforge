@@ -337,7 +337,7 @@ func (a *App) AddRelayLink(ctx context.Context, core, name string, peer domain.L
 		if !opts.AllowUnreachable {
 			return domain.RelayLink{}, fmt.Errorf("落地端点不可达: %w（确认仍要配置时使用 --allow-unreachable）", err)
 		}
-		fmt.Fprintln(a.Out, "[警告] 落地端点当前不可达，已按要求继续配置："+err.Error())
+		system.WriteDetail(a.Out, "风险提示", "%s", "落地端点当前不可达，已按要求继续配置："+err.Error())
 	}
 	uuid, err := system.UUID()
 	if err != nil {
@@ -371,7 +371,7 @@ func (a *App) UpdateRelayLink(ctx context.Context, core, name string, peer domai
 		if !opts.AllowUnreachable {
 			return fmt.Errorf("落地端点不可达: %w（确认仍要配置时使用 --allow-unreachable）", err)
 		}
-		fmt.Fprintln(a.Out, "[警告] 落地端点当前不可达，已按要求继续配置："+err.Error())
+		system.WriteDetail(a.Out, "风险提示", "%s", "落地端点当前不可达，已按要求继续配置："+err.Error())
 	}
 	n.RelayLinks[index].Upstream = peer
 	n.RelayLinks[index].UpdatedAt = a.Now().UTC()
@@ -523,9 +523,9 @@ func (a *App) applyLinks(ctx context.Context, core string, next domain.NodeSpec,
 	}
 	managed := old.ConfigSHA256 != "" && old.ConfigSHA256 == system.SHA256(currentConfig)
 	if !managed {
-		fmt.Fprintln(a.Out, "[提示] 检测到手动修改；仅更新 ProxyForge 管理的线路组件并保留其他字段。")
+		system.WriteDetail(a.Out, "操作提示", "%s", "检测到手动修改；仅更新 ProxyForge 管理的线路组件并保留其他字段。")
 	}
-	a.progressf("更新%s，保留现有监听端口和普通用户路由", label)
+	a.progressf("更新线路配置", "%s；保留现有监听端口和普通用户路由", label)
 	patched, err := p.PatchLinks(currentConfig, old, next)
 	if err != nil {
 		return domain.NodeSpec{}, err

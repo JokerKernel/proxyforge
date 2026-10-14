@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"proxyforge/internal/domain"
+	"proxyforge/internal/system"
 )
 
 func (c *commandSet) serviceCommand() *cobra.Command {
@@ -98,7 +99,7 @@ func (c *commandSet) logLevelMenu(ctx context.Context, core string) error {
 	}
 	selected := settings.Levels[choice-1]
 	if selected == settings.Current {
-		fmt.Fprintf(c.out, "[提示] 日志级别已经是 %s，无需修改。\n", logLevelCardDisplay(core, selected))
+		system.WriteDetail(c.out, "操作提示", "日志级别已经是 %s，无需修改。", logLevelCardDisplay(core, selected))
 		return nil
 	}
 
@@ -127,7 +128,7 @@ func (c *commandSet) logLevelMenu(ctx context.Context, core string) error {
 		return err
 	}
 	if !confirmed {
-		fmt.Fprintln(c.out, "已取消日志级别修改。")
+		system.WriteDetail(c.out, "取消操作", "%s", "已取消日志级别修改。")
 		return nil
 	}
 	change, err := c.app.SetLogLevel(ctx, core, selected)
@@ -135,14 +136,14 @@ func (c *commandSet) logLevelMenu(ctx context.Context, core string) error {
 		return err
 	}
 	if !change.Changed {
-		fmt.Fprintf(c.out, "[提示] 日志级别已经是 %s，无需修改。\n", logLevelCardDisplay(core, change.Current))
+		system.WriteDetail(c.out, "操作提示", "日志级别已经是 %s，无需修改。", logLevelCardDisplay(core, change.Current))
 		return nil
 	}
 	effect := "服务当前未运行，将在下次启动时生效"
 	if change.Restarted {
 		effect = "服务已重启，设置已生效"
 	}
-	fmt.Fprintf(c.out, "[结果] %s 日志级别已从 %s 修改为 %s；%s。\n",
+	system.WriteDetail(c.out, "操作结果", "%s 日志级别已从 %s 修改为 %s；%s。",
 		core, logLevelCardDisplay(core, change.Previous), logLevelCardDisplay(core, change.Current), effect)
 	return nil
 }
@@ -200,7 +201,8 @@ func (c *commandSet) followServiceLogs(ctx context.Context, core string) error {
 		return ctx.Err()
 	}
 	if followCtx.Err() != nil {
-		fmt.Fprintln(c.out, "\n已停止实时日志，返回服务管理菜单。")
+		fmt.Fprintln(c.out)
+		system.WriteDetail(c.out, "停止实时日志", "已停止实时日志，返回服务管理菜单。")
 		return nil
 	}
 	return err

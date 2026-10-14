@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"proxyforge/internal/domain"
+	"proxyforge/internal/system"
 )
 
 func (c *commandSet) resetCommand() *cobra.Command {
@@ -22,14 +23,14 @@ func (c *commandSet) resetCommand() *cobra.Command {
 				}
 				if err := c.fillReset(cmd.Context(), args[0], &opts); err != nil {
 					if errors.Is(err, errReturnToMenu) {
-						fmt.Fprintln(c.out, "已取消节点重置。")
+						system.WriteDetail(c.out, "取消操作", "%s", "已取消节点重置。")
 						return nil
 					}
 					return err
 				}
 				confirmed, err := c.confirmCredentialReset(args[0], opts)
 				if errors.Is(err, errReturnToMenu) {
-					fmt.Fprintln(c.out, "已取消节点重置。")
+					system.WriteDetail(c.out, "取消操作", "%s", "已取消节点重置。")
 					return nil
 				}
 				if err != nil {
@@ -71,7 +72,7 @@ func (c *commandSet) resetChoice(ctx context.Context, core string, choice int) e
 			return err
 		}
 		if !confirmed {
-			fmt.Fprintln(c.out, "已取消节点重置。")
+			system.WriteDetail(c.out, "取消操作", "%s", "已取消节点重置。")
 			return nil
 		}
 		opts.Credentials = false
@@ -83,7 +84,7 @@ func (c *commandSet) resetChoice(ctx context.Context, core string, choice int) e
 			return err
 		}
 		if !confirmed {
-			fmt.Fprintln(c.out, "已取消凭证重置。")
+			system.WriteDetail(c.out, "取消操作", "%s", "已取消凭证重置。")
 			return nil
 		}
 		opts.Credentials = true
@@ -202,13 +203,13 @@ func (c *commandSet) runCredentialReset(ctx context.Context, core string, opts d
 		if opts.RotateCertificate {
 			action = "证书已重新生成，UUID 保持不变"
 		}
-		fmt.Fprintf(c.out, "%s TLS 节点%s；请重新导出客户端配置。\n", core, action)
+		system.WriteDetail(c.out, "重置结果", "%s TLS 节点%s；请重新导出客户端配置。", core, action)
 		return nil
 	}
 	if opts.Credentials {
-		fmt.Fprintf(c.out, "%s 节点凭据已全部重置，SNI=%s，target=%s；请重新导出并分发客户端配置。\n", core, n.SNI, n.Target)
+		system.WriteDetail(c.out, "重置结果", "%s 节点凭据已全部重置，SNI=%s，target=%s；请重新导出并分发客户端配置。", core, n.SNI, n.Target)
 	} else {
-		fmt.Fprintf(c.out, "%s 节点 SNI/target 已重置为 %s / %s。\n", core, n.SNI, n.Target)
+		system.WriteDetail(c.out, "更新结果", "%s 节点 SNI/target 已重置为 %s / %s。", core, n.SNI, n.Target)
 	}
 	return nil
 }

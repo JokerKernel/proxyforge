@@ -24,7 +24,7 @@ func (c *commandSet) generateCommand() *cobra.Command {
 			o.NonInteractive = !interactive
 			if err := c.confirmServerConfigOverwrite(args[0], interactive); err != nil {
 				if errors.Is(err, errReturnToMenu) {
-					fmt.Fprintln(c.out, "已取消生成服务端配置。")
+					system.WriteDetail(c.out, "取消操作", "%s", "已取消生成服务端配置。")
 					return nil
 				}
 				return err
@@ -32,7 +32,7 @@ func (c *commandSet) generateCommand() *cobra.Command {
 			if interactive {
 				if err := c.fillGenerate(cmd.Context(), args[0], &o); err != nil {
 					if errors.Is(err, errReturnToMenu) {
-						fmt.Fprintln(c.out, "已取消生成服务端配置。")
+						system.WriteDetail(c.out, "取消操作", "%s", "已取消生成服务端配置。")
 						return nil
 					}
 					return err
@@ -40,7 +40,7 @@ func (c *commandSet) generateCommand() *cobra.Command {
 			}
 			err := c.runGenerate(cmd.Context(), args[0], o)
 			if errors.Is(err, errReturnToMenu) {
-				fmt.Fprintln(c.out, "已取消生成服务端配置。")
+				system.WriteDetail(c.out, "取消操作", "%s", "已取消生成服务端配置。")
 				return nil
 			}
 			return err
@@ -110,7 +110,7 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 	}
 	if c.app != nil {
 		if current, err := c.app.Store.Load(core); err == nil && domain.NormalizeLandingSecurity(current.Security) != domain.NormalizeLandingSecurity(o.Security) {
-			fmt.Fprintln(c.out, "[提示] 切换协议将自动更换主节点 UUID，需要重新导出客户端配置。")
+			system.WriteDetail(c.out, "操作提示", "%s", "切换协议将自动更换主节点 UUID，需要重新导出客户端配置。")
 		}
 	}
 	tlsMode := domain.NormalizeLandingSecurity(o.Security) == domain.LandingSecurityTLS
@@ -464,7 +464,8 @@ func (c *commandSet) selectPublicAddress(ctx context.Context) (string, error) {
 		if err == nil {
 			return address, nil
 		}
-		fmt.Fprintf(c.out, "获取公网地址失败：%v，请重新选择。\n\n", err)
+		system.WriteDetail(c.out, "获取公网地址失败", "%v，请重新选择。", err)
+		fmt.Fprintln(c.out)
 	}
 }
 
@@ -517,20 +518,21 @@ func printGenerateSuccess(w io.Writer, n domain.NodeSpec) {
 	const border = "========================================================"
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, border)
-	fmt.Fprintf(w, "  [结果] %s 服务端配置生成成功\n", n.Core)
+	system.WriteDetail(w, "操作结果", "%s 服务端配置生成成功", n.Core)
 	fmt.Fprintln(w, border)
-	fmt.Fprintf(w, "服务状态：active（运行中）\n")
-	fmt.Fprintf(w, "开机启动：enabled（已启用）\n")
-	fmt.Fprintf(w, "连接地址：%s\n", netJoinHostPort(n.Server, strconv.Itoa(n.Port)))
-	fmt.Fprintf(w, "节点协议：%s\n", landingProtocolLabel(n.Security))
+	system.WriteDetail(w, "服务状态", "active（运行中）")
+	system.WriteDetail(w, "开机启动", "enabled（已启用）")
+	system.WriteDetail(w, "连接地址", "%s", netJoinHostPort(n.Server, strconv.Itoa(n.Port)))
+	system.WriteDetail(w, "节点协议", "%s", landingProtocolLabel(n.Security))
 	if n.IsTLS() {
-		fmt.Fprintf(w, "TLS 名称：%s\n证书验证：固定指纹\n", n.SNI)
+		system.WriteDetail(w, "TLS 名称", "%s", n.SNI)
+		system.WriteDetail(w, "证书验证", "固定指纹")
 	} else {
-		fmt.Fprintf(w, "REALITY SNI：%s\n", n.SNI)
-		fmt.Fprintf(w, "REALITY target：%s\n", n.Target)
+		system.WriteDetail(w, "REALITY SNI", "%s", n.SNI)
+		system.WriteDetail(w, "REALITY target", "%s", n.Target)
 	}
-	fmt.Fprintf(w, "用户名称：%s\n", n.UserName)
-	fmt.Fprintf(w, "入站标签：%s\n", n.InboundTag)
+	system.WriteDetail(w, "用户名称", "%s", n.UserName)
+	system.WriteDetail(w, "入站标签", "%s", n.InboundTag)
 	if n.Core == domain.CoreSingBox {
 		mode := "标准安全配置"
 		if n.SingBoxFallbackGuard {
@@ -546,7 +548,7 @@ func printGenerateSuccess(w io.Writer, n domain.NodeSpec) {
 		} else if n.SimplifiedConfig {
 			mode = "简化配置（系统 DNS）"
 		}
-		fmt.Fprintf(w, "配置模式：%s\n", mode)
+		system.WriteDetail(w, "配置模式", "%s", mode)
 	} else if n.Core == domain.CoreXray {
 		mode := "标准配置"
 		if n.XrayFallbackGuard {
@@ -560,9 +562,9 @@ func printGenerateSuccess(w io.Writer, n domain.NodeSpec) {
 			}
 			mode = fmt.Sprintf("回落防偷跑配置（tunnel 127.0.0.1:%d；%s；%s）", n.XrayFallbackPort, httpPolicy, domainPolicy)
 		}
-		fmt.Fprintf(w, "配置模式：%s\n", mode)
+		system.WriteDetail(w, "配置模式", "%s", mode)
 	}
-	fmt.Fprintf(w, "内核版本：%s\n", n.CoreVersion)
+	system.WriteDetail(w, "内核版本", "%s", n.CoreVersion)
 	fmt.Fprintln(w, border)
-	fmt.Fprintln(w, "提示：请从“客户端配置”导出并妥善保管。")
+	system.WriteDetail(w, "导出提示", "请从“客户端配置”导出并妥善保管。")
 }

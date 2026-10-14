@@ -104,7 +104,7 @@ func (c *commandSet) installCommand() *cobra.Command {
 				chosen, err := c.chooseInstallOptions(cmd.Context(), args[0], opts)
 				if err != nil {
 					if errors.Is(err, errReturnToMenu) {
-						fmt.Fprintln(c.out, "已取消安装/升级。")
+						system.WriteDetail(c.out, "取消操作", "%s", "已取消安装/升级。")
 						return nil
 					}
 					return err

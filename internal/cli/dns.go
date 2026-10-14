@@ -7,6 +7,7 @@ import (
 
 	"proxyforge/internal/domain"
 	"proxyforge/internal/provider"
+	"proxyforge/internal/system"
 )
 
 func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
@@ -36,7 +37,7 @@ func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
 	}
 	selected := settings.Profiles[choice-1]
 	if selected == settings.Current {
-		fmt.Fprintf(c.out, "[提示] DNS 已经是 %s，无需修改。\n", dnsProfileDisplay(core, selected))
+		system.WriteDetail(c.out, "操作提示", "DNS 已经是 %s，无需修改。", dnsProfileDisplay(core, selected))
 		return nil
 	}
 
@@ -85,7 +86,7 @@ func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
 		return err
 	}
 	if !confirmed {
-		fmt.Fprintln(c.out, "已取消 DNS 修改。")
+		system.WriteDetail(c.out, "取消操作", "%s", "已取消 DNS 修改。")
 		return nil
 	}
 	change, err := c.app.SetDNSProfile(ctx, core, selected)
@@ -93,14 +94,14 @@ func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
 		return err
 	}
 	if !change.Changed {
-		fmt.Fprintf(c.out, "[提示] DNS 已经是 %s，无需修改。\n", dnsProfileDisplay(core, change.Current))
+		system.WriteDetail(c.out, "操作提示", "DNS 已经是 %s，无需修改。", dnsProfileDisplay(core, change.Current))
 		return nil
 	}
 	effect := "服务当前未运行，将在下次启动时生效"
 	if change.Restarted {
 		effect = "服务已重启，设置已生效"
 	}
-	fmt.Fprintf(c.out, "[结果] %s DNS 已从 %s 修改为 %s；%s。\n",
+	system.WriteDetail(c.out, "操作结果", "%s DNS 已从 %s 修改为 %s；%s。",
 		core, dnsProfileDisplay(core, change.Previous), dnsProfileDisplay(core, change.Current), effect)
 	return nil
 }

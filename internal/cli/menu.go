@@ -31,7 +31,7 @@ func (c *commandSet) menu(ctx context.Context) error {
 			return err
 		}
 		if !selected {
-			fmt.Fprintln(c.out, "已退出 ProxyForge。")
+			system.WriteDetail(c.out, "退出程序", "已退出 ProxyForge。")
 			return nil
 		}
 		if err := c.coreMenu(ctx, core); err != nil {
@@ -78,15 +78,15 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 			if err == nil && confirmed {
 				err = c.app.Uninstall(ctx, core, install.Options{Confirm: c.confirm})
 			} else if err == nil {
-				fmt.Fprintln(c.out, "已取消卸载。")
+				system.WriteDetail(c.out, "取消操作", "%s", "已取消卸载。")
 			}
 		}
 		if errors.Is(err, errReturnToMenu) {
 			err = nil
 			if choice == 1 {
-				fmt.Fprintln(c.out, "已取消安装/升级。")
+				system.WriteDetail(c.out, "取消操作", "%s", "已取消安装/升级。")
 			} else if choice == 4 {
-				fmt.Fprintln(c.out, "已取消卸载。")
+				system.WriteDetail(c.out, "取消操作", "%s", "已取消卸载。")
 			}
 		}
 		if err != nil {
@@ -135,7 +135,7 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 				err = c.confirmServerConfigOverwrite(core, true)
 			}
 			if errors.Is(err, errReturnToMenu) {
-				fmt.Fprintln(c.out, "已取消生成服务端配置，返回服务端配置菜单。")
+				system.WriteDetail(c.out, "取消操作", "%s", "已取消生成服务端配置，返回服务端配置菜单。")
 				continue
 			}
 			if err == nil {
@@ -145,7 +145,7 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 				err = c.runGenerate(ctx, core, o)
 			}
 			if errors.Is(err, errReturnToMenu) {
-				fmt.Fprintln(c.out, "已取消生成服务端配置。")
+				system.WriteDetail(c.out, "取消操作", "%s", "已取消生成服务端配置。")
 				continue
 			}
 		case 2:
@@ -637,31 +637,9 @@ func (c *commandSet) printMenuBadgeChoice(key, title, badge string) {
 	fmt.Fprintf(c.out, "  %-3s %s%s%s\n", key, title, strings.Repeat(" ", padding), badge)
 }
 
-func menuDisplayWidth(value string) int {
-	width := 0
-	for _, r := range value {
-		if isWideMenuRune(r) {
-			width += 2
-		} else {
-			width++
-		}
-	}
-	return width
-}
+func menuDisplayWidth(value string) int { return system.DisplayWidth(value) }
 
-func isWideMenuRune(r rune) bool {
-	return r >= 0x1100 && (r <= 0x115f ||
-		r == 0x2329 || r == 0x232a ||
-		(r >= 0x2e80 && r <= 0xa4cf && r != 0x303f) ||
-		(r >= 0xac00 && r <= 0xd7a3) ||
-		(r >= 0xf900 && r <= 0xfaff) ||
-		(r >= 0xfe10 && r <= 0xfe19) ||
-		(r >= 0xfe30 && r <= 0xfe6f) ||
-		(r >= 0xff00 && r <= 0xff60) ||
-		(r >= 0xffe0 && r <= 0xffe6) ||
-		(r >= 0x1f300 && r <= 0x1faff) ||
-		(r >= 0x20000 && r <= 0x3fffd))
-}
+func isWideMenuRune(r rune) bool { return system.IsWideRune(r) }
 
 func splitMenuChoiceLabel(label string) (string, string) {
 	label = strings.TrimSpace(label)

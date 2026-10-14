@@ -84,7 +84,7 @@ func eraseChoiceRetry(w io.Writer) {
 }
 
 func (c *commandSet) printMenuError(err error) {
-	fmt.Fprintf(c.errOut, "[错误] 操作失败：%v\n", err)
+	system.WriteDetail(c.errOut, "操作失败", "%v", err)
 }
 
 func (c *commandSet) askDefaultCancelable(label, def string) (string, error) {

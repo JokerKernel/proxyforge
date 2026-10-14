@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -66,7 +65,7 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 		Use: "proxyforge", Short: "Linux 双内核 VLESS + REALITY/TLS + Vision 管理器", Version: version,
 		SilenceUsage: true, SilenceErrors: true,
 		PersistentPreRunE: func(*cobra.Command, []string) error {
-			fmt.Fprintln(c.errOut, "[步骤] 验证 root 运行权限")
+			system.WriteDetail(c.errOut, "权限检查", "%s", "验证 root 运行权限")
 			return rootCheck()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error { return c.menu(cmd.Context()) },

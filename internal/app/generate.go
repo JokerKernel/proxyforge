@@ -19,7 +19,7 @@ import (
 )
 
 func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOptions) (domain.NodeSpec, error) {
-	a.progressf("开始生成并应用 %s 服务端配置", core)
+	a.progressf("生成服务端配置", "%s", core)
 	if err := a.RootCheck(); err != nil {
 		return domain.NodeSpec{}, err
 	}
@@ -120,17 +120,17 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if !tlsMode && opts.Target == "" {
 		opts.Target = net.JoinHostPort(opts.SNI, "443")
 	}
-	a.progressf("验证服务地址和监听端口")
-	a.progressf("服务地址格式通过：%s", opts.Server)
-	a.progressf("监听端口范围通过：TCP/%d", opts.Port)
+	a.progressf("验证节点参数", "服务地址和监听端口")
+	a.progressf("服务地址校验", "%s，格式通过", opts.Server)
+	a.progressf("监听端口校验", "TCP/%d，范围通过", opts.Port)
 	if !tlsMode {
-		a.progressf("SNI 格式通过：%s", opts.SNI)
+		a.progressf("SNI 格式校验", "%s，格式通过", opts.SNI)
 		warnings, err := a.Targets.Validate(ctx, opts.Target, opts.SNI, opts.Server)
 		if err != nil {
 			return domain.NodeSpec{}, err
 		}
 		for _, warning := range warnings {
-			fmt.Fprintln(a.Out, "[警告] "+warning)
+			system.WriteDetail(a.Out, "风险提示", "%s", warning)
 		}
 	}
 	userName := strings.TrimSpace(opts.UserName)
@@ -173,7 +173,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 			return domain.NodeSpec{}, fmt.Errorf("回落端口 %d 已由受管的 %s 节点使用", fallbackPort, other)
 		}
 	}
-	a.progressf("检测 %s 版本和配置能力", core)
+	a.progressf("检测内核能力", "%s 版本和配置能力", core)
 	version, err := p.Version(ctx, a.Runner)
 	if err != nil {
 		return domain.NodeSpec{}, fmt.Errorf("内核不可用或不支持所需能力: %w", err)
@@ -200,13 +200,13 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		}
 	}
 	if protocolChanged {
-		fmt.Fprintln(a.Out, "[提示] 主节点协议已切换，将自动更换主节点 UUID；请重新导出客户端配置和复用主入站的落地连接文本。")
+		system.WriteDetail(a.Out, "操作提示", "%s", "主节点协议已切换，将自动更换主节点 UUID；请重新导出客户端配置和复用主入站的落地连接文本。")
 	}
 	if hasOld && opts.RotateCredentials && (len(old.LandingAccesses) > 0 || len(old.RelayLinks) > 0) {
-		fmt.Fprintln(a.Out, "[警告] 节点凭据轮换后，需要重新导出中转客户端，并重新生成本机落地连接文本。")
+		system.WriteDetail(a.Out, "风险提示", "%s", "节点凭据轮换后，需要重新导出中转客户端，并重新生成本机落地连接文本。")
 	}
 	if n.SimplifiedConfig {
-		fmt.Fprintln(a.Out, "[警告] 已选择 sing-box 简化配置；域名将在出站连接阶段由系统 DNS 解析，域名解析到私网地址时可能绕过路由私网拦截。")
+		system.WriteDetail(a.Out, "风险提示", "%s", "已选择 sing-box 简化配置；域名将在出站连接阶段由系统 DNS 解析，域名解析到私网地址时可能绕过路由私网拦截。")
 	}
 	if hasOld && !opts.RotateCredentials && !protocolChanged {
 		n.UUID = old.UUID
@@ -361,16 +361,16 @@ func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, co
 	if err != nil {
 		return n, err
 	}
-	a.progressf("使用 %s 原生命令校验候选配置", core)
+	a.progressf("校验候选配置", "%s 原生命令", core)
 	if err := validateRendered(ctx, p, a.Runner, configPath, config); err != nil {
 		return n, err
 	}
 	if hadConfig {
-		a.progressf("备份现有服务端配置 %s", configPath)
+		a.progressf("备份原配置", "%s", configPath)
 		if backup, err := system.BackupFile(configPath, a.Layout.BackupRoot(core), a.Now()); err != nil {
 			return n, err
 		} else if backup != "" {
-			a.progressf("现有配置已备份到 %s", backup)
+			a.progressf("备份位置", "%s", backup)
 		}
 	}
 	serviceStopped := false
@@ -378,7 +378,7 @@ func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, co
 		if !serviceStopped {
 			return cause
 		}
-		a.progressf("操作未应用，正在恢复 systemd 服务 %s", p.ServiceName())
+		a.progressf("恢复服务", "%s，操作未应用", p.ServiceName())
 		if _, startErr := a.Services.Action(ctx, p.ServiceName(), "start"); startErr != nil {
 			return fmt.Errorf("%v；且恢复 %s 失败: %w", cause, p.ServiceName(), startErr)
 		}
@@ -391,7 +391,7 @@ func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, co
 	if checkPublicPort || checkFallbackPort {
 		status, _ := a.Services.IsActive(ctx, p.ServiceName())
 		if status.Active && checkPublicPort {
-			a.progressf("临时停止 systemd 服务 %s 以检查监听端口", p.ServiceName())
+			a.progressf("检查监听端口", "临时停止 %s", p.ServiceName())
 			if _, err := a.Services.Action(ctx, p.ServiceName(), "stop"); err != nil {
 				return n, fmt.Errorf("停止 %s 失败: %w", p.ServiceName(), err)
 			}
@@ -405,24 +405,24 @@ func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, co
 			ports = append(ports, nFallbackPort)
 		}
 		for _, port := range ports {
-			a.progressf("检查监听端口 %d 是否可用", port)
+			a.progressf("检查端口占用", "TCP/%d", port)
 			if err := a.PortFree(port); err != nil {
 				return n, restoreStoppedService(err)
 			}
 		}
 	}
-	a.progressf("原子写入服务端配置 %s", configPath)
+	a.progressf("写入服务端配置", "%s（原子写入）", configPath)
 	if err := system.AtomicWrite(configPath, config, 0600); err != nil {
 		return n, restoreStoppedService(err)
 	}
 	serviceUser := a.Services.User(ctx, p.ServiceName())
-	a.progressf("按 systemd 服务用户 %s 设置配置权限", serviceUser)
+	a.progressf("设置配置权限", "systemd 服务用户：%s", serviceUser)
 	if err := secureConfigForUser(configPath, serviceUser); err != nil {
 		_ = restoreFile(configPath, oldConfig, hadConfig, oldMetadata)
 		return n, restoreStoppedService(err)
 	}
 	rollback := func(cause error) error {
-		a.progressf("操作失败，正在恢复旧配置、状态和服务")
+		a.progressf("操作回滚", "操作失败，恢复旧配置、状态和服务")
 		restoreErr := restoreFile(configPath, oldConfig, hadConfig, oldMetadata)
 		// StateStore.Save restores completed writes if saving any file fails.
 		// Earlier failures leave node state and standalone settings untouched.
@@ -432,11 +432,11 @@ func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, co
 		}
 		return fmt.Errorf("%v；已恢复旧配置和状态", cause)
 	}
-	a.progressf("重启 systemd 服务 %s", p.ServiceName())
+	a.progressf("重启服务", "%s", p.ServiceName())
 	if err := a.Services.Restart(ctx, p.ServiceName()); err != nil {
 		return n, rollback(fmt.Errorf("重启 %s 失败: %w", p.ServiceName(), err))
 	}
-	a.progressf("确认服务 active 并监听端口 %d", n.Port)
+	a.progressf("检查运行状态", "确认服务 active 并监听端口 %d", n.Port)
 	status, err := a.Services.IsActive(ctx, p.ServiceName())
 	if err != nil || !status.Active {
 		return n, rollback(fmt.Errorf("%s 未进入 active 状态: %s: %w", p.ServiceName(), status.Detail, err))
@@ -444,11 +444,12 @@ func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, co
 	if err := a.Listening(ctx, n.Port, 4*time.Second); err != nil {
 		return n, rollback(err)
 	}
-	a.progressf("启用 systemd 服务 %s 开机启动", p.ServiceName())
+	a.progressf("运行状态", "%s active，端口 %d 正常", p.ServiceName(), n.Port)
+	a.progressf("启用开机自启", "%s", p.ServiceName())
 	if err := a.Services.Enable(ctx, p.ServiceName()); err != nil {
 		return n, rollback(fmt.Errorf("启用 %s 开机启动失败: %w", p.ServiceName(), err))
 	}
-	a.progressf("保存 ProxyForge 节点状态、访问控制与线路配置")
+	a.progressf("保存管理数据", "ProxyForge 节点状态、访问控制与线路配置")
 	if err := a.Store.Save(n); err != nil {
 		return n, rollback(fmt.Errorf("保存状态失败: %w", err))
 	}
@@ -529,7 +530,7 @@ func validateGenerate(o domain.GenerateOptions) error {
 func (a *App) firewallHint(port int) {
 	for _, name := range []string{"ufw", "firewall-cmd"} {
 		if _, err := a.lookPath(name); err == nil {
-			fmt.Fprintf(a.Out, "[提示] 检测到 %s，请确认已放行 TCP/%d；ProxyForge 不会自动修改防火墙。\n", name, port)
+			system.WriteDetail(a.Out, "操作提示", "检测到 %s，请确认已放行 TCP/%d；ProxyForge 不会自动修改防火墙。", name, port)
 			return
 		}
 	}

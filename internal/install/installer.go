@@ -68,7 +68,7 @@ func (i Installer) Run(ctx context.Context, p provider.CoreProvider, opts Option
 			return "", fmt.Errorf("检查运行时代理: %w", err)
 		}
 		if proxyURL != "" && i.Output != nil {
-			fmt.Fprintln(i.Output, "[信息] 检测到运行时代理，将传递给官方管理脚本。")
+			system.WriteDetail(i.Output, "运行时代理", "已检测到，将传递给官方管理脚本。")
 		}
 		args = append(args, proxyProvider.ScriptProxyArgs(proxyURL)...)
 	}
@@ -97,11 +97,11 @@ func (i Installer) runScript(ctx context.Context, p provider.CoreProvider, opts 
 		return "", err
 	}
 	if i.Output != nil {
-		fmt.Fprintf(i.Output, "[官方脚本/信息] 来源：%s\n", scriptURL)
-		fmt.Fprintf(i.Output, "[官方脚本/信息] 最终地址：%s\n", script.FinalURL)
-		fmt.Fprintf(i.Output, "[官方脚本/信息] 大小：%d bytes\n", len(script.Content))
-		fmt.Fprintf(i.Output, "[官方脚本/信息] SHA-256：%s\n", script.SHA256)
-		fmt.Fprintf(i.Output, "[官方脚本/风险] 将以 root 执行%s操作，可能修改二进制、systemd unit 和软件包文件。\n", operation)
+		system.WriteDetail(i.Output, "脚本来源", "%s", scriptURL)
+		system.WriteDetail(i.Output, "重定向后地址", "%s", script.FinalURL)
+		system.WriteDetail(i.Output, "脚本大小", "%d bytes", len(script.Content))
+		system.WriteDetail(i.Output, "脚本 SHA-256", "%s", script.SHA256)
+		system.WriteDetail(i.Output, "脚本执行风险", "将以 root 执行%s操作，可能修改二进制、systemd unit 和软件包文件。", operation)
 	}
 	if err := i.trust(p.Name(), script.SHA256, opts); err != nil {
 		return script.SHA256, err
@@ -134,7 +134,7 @@ func (i Installer) PrepareScript(ctx context.Context, scriptURL string, hosts []
 // ExecutePreparedScript writes a validated script to a private temporary file
 // and executes it. Environment entries are applied only to the child process.
 func (i Installer) ExecutePreparedScript(ctx context.Context, script DownloadedScript, environment []string, scriptArgs ...string) error {
-	return i.executePreparedScript(ctx, script, environment, "[Bash] ", scriptArgs...)
+	return i.executePreparedScript(ctx, script, environment, system.DetailPrefix("管理脚本输出"), scriptArgs...)
 }
 
 // ExecutePreparedScriptAttached executes a validated first-party script with
@@ -215,7 +215,7 @@ func (i Installer) executeScriptCommand(ctx context.Context, command string, arg
 	if output == nil {
 		output = io.Discard
 	}
-	fmt.Fprintln(output, "[状态] 开始执行，以下为实时输出：")
+	system.WriteDetail(output, "执行管理脚本", "开始执行，以下为实时输出")
 	liveOutput := output
 	if outputPrefix != "" {
 		liveOutput = system.NewLinePrefixWriter(output, outputPrefix)
@@ -236,7 +236,7 @@ func (i Installer) executeScriptCommand(ctx context.Context, command string, arg
 			}
 			return fmt.Errorf("官方管理脚本执行失败: %w", runErr)
 		}
-		fmt.Fprintln(output, "[状态] 执行完成。")
+		system.WriteDetail(output, "脚本执行结果", "执行完成。")
 		return nil
 	}
 
@@ -250,7 +250,7 @@ func (i Installer) executeScriptCommand(ctx context.Context, command string, arg
 	if err != nil {
 		return fmt.Errorf("官方管理脚本执行失败: %w", err)
 	}
-	fmt.Fprintln(output, "[状态] 执行完成。")
+	system.WriteDetail(output, "脚本执行结果", "执行完成。")
 	return nil
 }
 
@@ -482,17 +482,17 @@ func bashSyntaxLogged(ctx context.Context, b []byte, output io.Writer) error {
 		return err
 	}
 	if output != nil {
-		fmt.Fprintf(output, "[命令] 执行命令：bash -n %s\n", path)
+		system.WriteDetail(output, "校验脚本语法", "%s", system.CommandLine("bash", "-n", path))
 	}
 	cmd := exec.CommandContext(ctx, "bash", "-n", path)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if output != nil {
-			fmt.Fprintln(output, "[命令] 命令失败：bash")
+			system.WriteDetail(output, "脚本校验失败", "bash -n")
 		}
 		return fmt.Errorf("安装脚本 bash -n 校验失败: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 	if output != nil {
-		fmt.Fprintln(output, "[命令] 命令完成：bash")
+		system.WriteDetail(output, "脚本校验结果", "bash -n，校验通过")
 	}
 	return nil
 }

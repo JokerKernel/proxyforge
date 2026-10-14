@@ -109,7 +109,7 @@ func TestServiceManagerFollowsJournalLogs(t *testing.T) {
 	if runner.name != "journalctl" || !reflect.DeepEqual(runner.args, wantArgs) {
 		t.Fatalf("command=%s args=%v, want journalctl %v", runner.name, runner.args, wantArgs)
 	}
-	if output.String() != "[服务日志/xray] live log line\n" {
+	if output.String() != DetailLine("服务日志 xray", "live log line") {
 		t.Fatalf("output=%q", output.String())
 	}
 }
@@ -121,14 +121,14 @@ func TestServiceManagerLabelsBufferedOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := string(logs), "[服务日志/sing-box] line one\n[服务日志/sing-box] line two\n"; got != want {
+	if got, want := string(logs), DetailLine("服务日志 sing-box", "line one")+DetailLine("服务日志 sing-box", "line two"); got != want {
 		t.Fatalf("logs=%q, want %q", got, want)
 	}
 	status, err := manager.Action(context.Background(), "sing-box.service", "status")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := string(status), "[系统命令/输出]\nline one\nline two\n"; got != want {
+	if got, want := string(status), DetailLine("服务命令输出", "line one")+DetailLine("服务命令输出", "line two"); got != want {
 		t.Fatalf("status=%q, want %q", got, want)
 	}
 }
@@ -147,25 +147,18 @@ func TestLinePrefixWriterHandlesFragmentedLines(t *testing.T) {
 	}
 }
 
-func TestBlockPrefixWriterLabelsOutputOnce(t *testing.T) {
-	var output bytes.Buffer
-	w := NewBlockPrefixWriter(&output, "[系统命令/输出]")
-	if _, err := io.WriteString(w, "first\npart"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := io.WriteString(w, "ial\nlast\n"); err != nil {
-		t.Fatal(err)
-	}
-	if got, want := output.String(), "[系统命令/输出]\nfirst\npartial\nlast\n"; got != want {
-		t.Fatalf("output=%q, want %q", got, want)
-	}
-}
-
 func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
 	var output bytes.Buffer
 	w := NewColorWriter(&output, true)
 	for _, line := range []string{
 		"╭─ ProxyForge\n",
+		DetailLine("应用访问策略", "白名单优先"),
+		DetailLine("风险提示", "谨慎操作"),
+		DetailLine("操作结果", "成功"),
+		DetailLine("操作失败", "配置无效"),
+		DetailLine("命令结果", "校验配置：执行失败"),
+		DetailLine("命令结果", "查看日志：已停止"),
+		DetailLine("服务日志 xray", "accepted connection"),
 		"│ 服务管理：xray  [版本 v1.2.3]\n",
 		"╰──────────────────────────────────────────────\n",
 		"========================================\n",
@@ -182,20 +175,6 @@ func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
 		"  3   Xray（Docker）      [已停止]\n",
 		"  3   Xray（Docker）      [已移除·数据保留]\n",
 		"  5   恢复默认            [当前]\n",
-		"[步骤] 检查环境\n",
-		"[信息] 普通信息\n",
-		"[命令] 执行命令：xray version\n",
-		"[命令] 命令完成：xray\n",
-		"[命令] 命令失败：sh\n",
-		"[命令] 命令已停止：journalctl\n",
-		"[警告] 谨慎操作\n",
-		"[结果] 操作成功\n",
-		"[系统命令/输出] system output\n",
-		"[官方脚本/风险] 将以 root 执行\n",
-		"[状态] 开始执行\n",
-		"[状态] 执行完成\n",
-		"[Bash] script output\n",
-		"[服务日志/xray] accepted connection\n",
 		" 1) example.com  [默认]\n",
 		"请选择 [1]: ",
 		"请输入 yes/y 确认；其他输入取消： ",
@@ -232,6 +211,13 @@ func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
 	got := output.String()
 	for _, want := range []string{
 		"\x1b[1;38;5;208m╭─ ProxyForge\x1b[0m",
+		"\x1b[34m应用访问策略\x1b[0m",
+		"\x1b[1;33m风险提示\x1b[0m",
+		"\x1b[1;32m操作结果\x1b[0m",
+		"\x1b[1;31m操作失败\x1b[0m",
+		"\x1b[1;31m命令结果\x1b[0m",
+		"\x1b[1;33m命令结果\x1b[0m",
+		"\x1b[35m服务日志 xray\x1b[0m",
 		"\x1b[38;5;208m│ 服务管理：xray  \x1b[0m\x1b[1;32m[版本 v1.2.3]\x1b[0m",
 		"\x1b[1;38;5;208m╰──────────────────────────────────────────────\x1b[0m",
 		"\x1b[1;38;5;208m========================================\x1b[0m",
@@ -248,20 +234,6 @@ func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
 		"  \x1b[34m3\x1b[0m   Xray（Docker）      \x1b[38;5;208m[已停止]\x1b[0m",
 		"  \x1b[34m3\x1b[0m   Xray（Docker）      \x1b[38;5;208m[已移除·数据保留]\x1b[0m",
 		"  \x1b[34m5\x1b[0m   恢复默认            \x1b[38;5;208m[当前]\x1b[0m",
-		"\x1b[1;38;5;208m[步骤]\x1b[0m",
-		"\x1b[34m[信息]\x1b[0m",
-		"\x1b[34m[命令]\x1b[0m 执行命令：xray version",
-		"\x1b[1;32m[命令]\x1b[0m 命令完成：xray",
-		"\x1b[1;31m[命令]\x1b[0m 命令失败：sh",
-		"\x1b[1;33m[命令]\x1b[0m 命令已停止：journalctl",
-		"\x1b[1;33m[警告]\x1b[0m",
-		"\x1b[1;32m[结果]\x1b[0m",
-		"\x1b[90m[系统命令/输出]\x1b[0m",
-		"\x1b[1;33m[官方脚本/风险]\x1b[0m",
-		"\x1b[35m[状态]\x1b[0m 开始执行",
-		"\x1b[1;32m[状态]\x1b[0m 执行完成",
-		"\x1b[34m[Bash]\x1b[0m script output",
-		"\x1b[35m[服务日志/xray]\x1b[0m",
 		"\x1b[34m1\x1b[0m \x1b[1;38;5;208mexample.com\x1b[0m  \x1b[1;33m[默认]\x1b[0m",
 		"\x1b[34m请选择 [1]: \x1b[0m",
 		"\x1b[1;33m请输入 yes/y 确认；其他输入取消： \x1b[0m",
@@ -299,7 +271,7 @@ func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
 func TestColorWriterDisabledKeepsPlainOutput(t *testing.T) {
 	var output bytes.Buffer
 	w := NewColorWriter(&output, false)
-	want := "[错误] 操作失败\n1) 返回\n"
+	want := DetailLine("操作失败", "失败原因") + "1) 返回\n"
 	if _, err := io.WriteString(w, want); err != nil {
 		t.Fatal(err)
 	}
@@ -315,10 +287,10 @@ func TestTerminalColorWriterHonorsColorModeOverride(t *testing.T) {
 	t.Run("always", func(t *testing.T) {
 		t.Setenv("PROXYFORGE_COLOR", "always")
 		var output bytes.Buffer
-		if _, err := io.WriteString(NewTerminalColorWriter(&output), "[结果] 完成\n"); err != nil {
+		if _, err := io.WriteString(NewTerminalColorWriter(&output), DetailLine("操作结果", "完成")); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(output.String(), "\x1b[1;32m[结果]\x1b[0m") {
+		if !strings.Contains(output.String(), "\x1b[1;32m操作结果\x1b[0m") {
 			t.Fatalf("forced color output=%q", output.String())
 		}
 	})
@@ -326,7 +298,7 @@ func TestTerminalColorWriterHonorsColorModeOverride(t *testing.T) {
 	t.Run("never", func(t *testing.T) {
 		t.Setenv("PROXYFORGE_COLOR", "never")
 		var output bytes.Buffer
-		want := "[结果] 完成\n"
+		want := DetailLine("操作结果", "完成")
 		if _, err := io.WriteString(NewTerminalColorWriter(&output), want); err != nil {
 			t.Fatal(err)
 		}
@@ -385,7 +357,7 @@ func TestLoggingRunnerReportsCommandWithoutLeakingBufferedOutput(t *testing.T) {
 	if string(b) != "private-key-output" {
 		t.Fatalf("output=%q", b)
 	}
-	for _, want := range []string{"[命令] 执行命令：sing-box generate reality-keypair", "[命令] 命令完成：sing-box"} {
+	for _, want := range []string{DetailLine("生成 REALITY 密钥", "sing-box generate reality-keypair"), DetailLine("命令结果", "生成 REALITY 密钥：执行成功")} {
 		if !strings.Contains(log.String(), want) {
 			t.Fatalf("log missing %q: %s", want, log.String())
 		}
@@ -403,7 +375,7 @@ func TestLoggingRunnerReportsCanceledStreamingCommandAsStopped(t *testing.T) {
 	if err := runner.RunStreaming(ctx, io.Discard, io.Discard, "journalctl", "-f"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("error=%v, want context cancellation", err)
 	}
-	if !strings.Contains(log.String(), "[命令] 命令已停止：journalctl") || strings.Contains(log.String(), "命令失败") {
+	if !strings.Contains(log.String(), DetailLine("命令结果", "查看服务日志：已停止")) || strings.Contains(log.String(), "执行失败") {
 		t.Fatalf("unexpected cancellation log: %s", log.String())
 	}
 }
@@ -666,7 +638,7 @@ func TestRemovePackageLabelsStreamingCommandOutput(t *testing.T) {
 	if err := RemovePackage(context.Background(), runner, Layout{Root: root}, "sing-box", &output); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := output.String(), "[系统命令/输出]\nlive log line\n"; got != want {
+	if got, want := output.String(), DetailLine("软件包输出", "live log line"); got != want {
 		t.Fatalf("output=%q, want %q", got, want)
 	}
 }

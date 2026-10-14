@@ -23,7 +23,7 @@ type LogLevelChange struct {
 }
 
 func (a *App) Service(ctx context.Context, core, action string) ([]byte, error) {
-	a.progressf("执行 %s 服务操作：%s", core, action)
+	a.progressf("执行服务操作", "%s：%s", core, action)
 	if err := a.RootCheck(); err != nil {
 		return nil, err
 	}
@@ -35,7 +35,7 @@ func (a *App) Service(ctx context.Context, core, action string) ([]byte, error) 
 }
 
 func (a *App) FollowServiceLogs(ctx context.Context, core string, output io.Writer) error {
-	a.progressf("实时查看 %s 服务日志", core)
+	a.progressf("查看实时日志", "%s", core)
 	if err := a.RootCheck(); err != nil {
 		return err
 	}
@@ -62,7 +62,7 @@ func (a *App) LogLevelSettings(ctx context.Context, core string) (LogLevelSettin
 		return LogLevelSettings{}, fmt.Errorf("%s 不支持日志级别设置", core)
 	}
 	configPath := a.Layout.Resolve(p.ConfigPath())
-	a.progressf("读取 %s 当前日志级别", core)
+	a.progressf("读取日志级别", "%s", core)
 	config, err := os.ReadFile(configPath)
 	if os.IsNotExist(err) {
 		return LogLevelSettings{}, fmt.Errorf("尚未找到 %s 服务端配置 %s", core, p.ConfigPath())
@@ -94,7 +94,7 @@ func (a *App) SetLogLevel(ctx context.Context, core, requested string) (LogLevel
 		return change, fmt.Errorf("%s 不支持日志级别设置", core)
 	}
 	configPath := a.Layout.Resolve(p.ConfigPath())
-	a.progressf("读取并修改 %s 日志级别", core)
+	a.progressf("修改日志级别", "%s", core)
 	oldConfig, err := os.ReadFile(configPath)
 	if os.IsNotExist(err) {
 		return change, fmt.Errorf("尚未找到 %s 服务端配置 %s", core, p.ConfigPath())

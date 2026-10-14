@@ -15,7 +15,7 @@ import (
 // ResetCredentials atomically rotates every client credential, optionally
 // changing SNI and target while preserving the node's address and port.
 func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.ResetOptions) (domain.NodeSpec, error) {
-	a.progressf("开始重置 %s 节点凭据", core)
+	a.progressf("重置节点凭据", "%s", core)
 	if err := a.RootCheck(); err != nil {
 		return domain.NodeSpec{}, err
 	}
@@ -48,16 +48,16 @@ func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.Res
 		}
 	}
 	if updateEndpoint {
-		a.progressf("验证新的 SNI 和 REALITY target")
+		a.progressf("验证节点修改", "新的 SNI 和 REALITY target")
 		warnings, err := a.Targets.Validate(ctx, desiredTarget, desiredSNI, current.Server)
 		if err != nil {
 			return domain.NodeSpec{}, err
 		}
 		for _, warning := range warnings {
-			fmt.Fprintln(a.Out, "[警告] "+warning)
+			system.WriteDetail(a.Out, "风险提示", "%s", warning)
 		}
 	}
-	a.progressf("检测 %s 版本并生成新的 UUID、REALITY 密钥和 short ID", core)
+	a.progressf("生成节点凭据", "%s 版本检查，UUID、REALITY 密钥和 short ID", core)
 	version, err := p.Version(ctx, a.Runner)
 	if err != nil {
 		return domain.NodeSpec{}, fmt.Errorf("内核不可用或不支持所需能力: %w", err)
@@ -69,7 +69,7 @@ func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.Res
 	n.UpdatedAt = a.Now().UTC()
 	rotateCredentials := opts.Credentials || (requestedSNI == "" && requestedTarget == "")
 	if (rotateCredentials || updateEndpoint) && (len(current.LandingAccesses) > 0 || len(current.RelayLinks) > 0) {
-		fmt.Fprintln(a.Out, "[警告] SNI 或 REALITY 凭据变化后，需要重新导出受影响的中转客户端，并重新生成落地连接文本。")
+		system.WriteDetail(a.Out, "风险提示", "%s", "SNI 或 REALITY 凭据变化后，需要重新导出受影响的中转客户端，并重新生成落地连接文本。")
 	}
 	if !rotateCredentials {
 		n.UUID, n.PrivateKey, n.PublicKey, n.ShortID = current.UUID, current.PrivateKey, current.PublicKey, current.ShortID
@@ -100,9 +100,9 @@ func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.Res
 	}
 	managedConfig := current.ConfigSHA256 != "" && system.SHA256(currentConfig) == current.ConfigSHA256
 	if !managedConfig {
-		fmt.Fprintln(a.Out, "[提示] 检测到配置包含手动修改；本次只更新受管节点字段，其他内容和外部配置属性将保留。")
+		system.WriteDetail(a.Out, "操作提示", "%s", "检测到配置包含手动修改；本次只更新受管节点字段，其他内容和外部配置属性将保留。")
 	}
-	a.progressf("仅更新现有配置中的受管节点字段，保留其他手动配置")
+	a.progressf("更新受管节点", "仅修改受管字段，保留其他手动配置")
 	patched, err := p.PatchServer(currentConfig, current, n, updateEndpoint)
 	if err != nil {
 		return n, err

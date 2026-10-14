@@ -135,6 +135,8 @@ func decorateOutputFragment(fragment string, atLineStart bool) string {
 	if atLineStart {
 		trimmed := strings.TrimSpace(body)
 		switch {
+		case isDetailRow(body):
+			body = decorateDetailRow(body)
 		case strings.HasPrefix(trimmed, "╭─ "), strings.HasPrefix(trimmed, "╰─"):
 			body = wrapANSI(ansiBoldOrange, body)
 		case strings.HasPrefix(trimmed, "│ "):
@@ -167,7 +169,7 @@ func decorateOutputFragment(fragment string, atLineStart bool) string {
 		}
 	}
 	body = decorateMenuDescription(body)
-	body = decorateSourceLabels(body)
+	body = decorateMenuBadges(body)
 	return body + lineEnding
 }
 
@@ -235,20 +237,36 @@ func decorateHomeSubtitle(value string) string {
 	return wrapANSI(ansiOrange, value[:badgeStart]) + wrapANSI(ansiBoldGreen, value[badgeStart:])
 }
 
-func decorateSourceLabels(value string) string {
+func isDetailRow(value string) bool {
+	left, _, ok := strings.Cut(value, " │ ")
+	return ok && DisplayWidth(left) >= detailLabelWidth && !strings.ContainsAny(left, "\"{}[]:")
+}
+
+func decorateDetailRow(value string) string {
+	left, right, _ := strings.Cut(value, " │ ")
+	label := strings.TrimRight(left, " ")
+	if label == "" {
+		return left + " " + wrapANSI(ansiBrightBlack, "│") + " " + right
+	}
+	color := ansiBlue
+	switch {
+	case strings.Contains(label, "失败") || strings.Contains(right, "：执行失败"):
+		color = ansiBoldRed
+	case strings.Contains(label, "警告") || strings.Contains(label, "风险") || strings.HasSuffix(right, "：已停止"):
+		color = ansiBoldYellow
+	case strings.Contains(label, "结果") || strings.Contains(label, "完成") || strings.HasSuffix(right, "，格式通过") || strings.HasSuffix(right, "，范围通过"):
+		color = ansiBoldGreen
+	case strings.HasPrefix(label, "服务日志"):
+		color = ansiMagenta
+	}
+	return wrapANSI(color, label) + left[len(label):] + " " + wrapANSI(ansiBrightBlack, "│") + " " + right
+}
+
+func decorateMenuBadges(value string) string {
 	labels := []struct {
 		text  string
 		color string
 	}{
-		{"[步骤]", ansiBoldOrange},
-		{"[信息]", ansiBlue},
-		{"[提示]", ansiBlue},
-		{"[警告]", ansiBoldYellow},
-		{"[结果]", ansiBoldGreen},
-		{"[错误]", ansiBoldRed},
-		{"[系统命令/输出]", ansiBrightBlack},
-		{"[官方脚本/信息]", ansiBlue},
-		{"[官方脚本/风险]", ansiBoldYellow},
 		{"[默认]", ansiBoldYellow},
 		{"[已安装]", ansiOrange},
 		{"[运行中]", ansiOrange},
@@ -260,59 +278,14 @@ func decorateSourceLabels(value string) string {
 		{"[待配置]", ansiBrightBlack},
 		{"[当前]", ansiOrange},
 	}
-	value = colorizeLabel(value, "[命令]", commandLabelColor(value))
-	value = colorizeLabel(value, "[状态]", statusLabelColor(value))
 	for _, label := range labels {
 		value = colorizeLabel(value, label.text, label.color)
-	}
-	value = colorizeLabel(value, "[Bash]", ansiBlue)
-	for start := strings.Index(value, "[服务日志/"); start >= 0; {
-		relativeEnd := strings.IndexByte(value[start:], ']')
-		if relativeEnd < 0 {
-			break
-		}
-		end := start + relativeEnd + 1
-		label := value[start:end]
-		colored := wrapANSI(ansiMagenta, label)
-		value = value[:start] + colored + value[end:]
-		next := start + len(colored)
-		relativeStart := strings.Index(value[next:], "[服务日志/")
-		if relativeStart < 0 {
-			break
-		}
-		start = next + relativeStart
 	}
 	return value
 }
 
 func colorizeLabel(value, label, color string) string {
 	return strings.ReplaceAll(value, label, wrapANSI(color, label))
-}
-
-func commandLabelColor(value string) string {
-	switch {
-	case strings.Contains(value, "命令完成"):
-		return ansiBoldGreen
-	case strings.Contains(value, "命令失败"):
-		return ansiBoldRed
-	case strings.Contains(value, "命令已停止"):
-		return ansiBoldYellow
-	default:
-		return ansiBlue
-	}
-}
-
-func statusLabelColor(value string) string {
-	switch {
-	case strings.Contains(value, "执行完成"):
-		return ansiBoldGreen
-	case strings.Contains(value, "失败") || strings.Contains(value, "错误"):
-		return ansiBoldRed
-	case strings.Contains(value, "停止") || strings.Contains(value, "取消"):
-		return ansiBoldYellow
-	default:
-		return ansiMagenta
-	}
 }
 
 func decorateNumberedChoice(value string) string {

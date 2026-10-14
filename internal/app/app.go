@@ -38,15 +38,12 @@ func New(reg *provider.Registry, runner provider.Runner, layout system.Layout, o
 		Out: out, Progress: out, Now: time.Now,
 		RootCheck: RequireRoot, LookPath: exec.LookPath, PortFree: checkPortFree, Listening: waitListening, Reachable: probeTCP,
 	}
-	a.Targets = NetworkTargetValidator{Progress: func(message string) { a.progressf("%s", message) }}
+	a.Targets = NetworkTargetValidator{Progress: func(message string) { a.progressf("目标检查", "%s", message) }}
 	return a
 }
 
-func (a *App) progressf(format string, args ...any) {
-	if a.Progress == nil {
-		return
-	}
-	fmt.Fprintf(a.Progress, "[步骤] "+format+"\n", args...)
+func (a *App) progressf(label, format string, args ...any) {
+	system.WriteDetail(a.Progress, label, format, args...)
 }
 
 func RequireRoot() error {
