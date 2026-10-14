@@ -282,7 +282,7 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 		StreamSettings: &stream, Tag: n.InboundTag, Sniffing: &sniffing,
 	}
 	routing := privateNetworkRouting()
-	fallbackDomain := n.SNI
+	fallbackDomain := xraySubdomain(n.SNI)
 	if n.XrayFallbackExactDomain {
 		fallbackDomain = xrayFullDomain(n.SNI)
 	}
@@ -310,6 +310,10 @@ func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
 }
 func xrayFullDomain(name string) string {
 	return "full:" + name
+}
+
+func xraySubdomain(name string) string {
+	return "domain:" + name
 }
 
 func (*Provider) RenderClient(n domain.NodeSpec) ([]byte, error) {

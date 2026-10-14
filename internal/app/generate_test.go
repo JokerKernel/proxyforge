@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -611,6 +612,71 @@ func TestGenerateRejectsManagedPortConflict(t *testing.T) {
 	}
 	if strings.Contains(r.callLog(), "systemctl restart") {
 		t.Fatalf("service changed on conflict: %s", r.callLog())
+	}
+}
+
+func TestGenerateRejectsLandingPortConflictsBeforeChangingService(t *testing.T) {
+	for _, core := range []string{domain.CoreSingBox, domain.CoreXray} {
+		for _, sameCore := range []bool{false, true} {
+			for _, fallback := range []bool{false, true} {
+				for _, enabled := range []bool{false, true} {
+					t.Run(fmt.Sprintf("%s/same=%v/fallback=%v/enabled=%v", core, sameCore, fallback, enabled), func(t *testing.T) {
+						r := &fakeRunner{}
+						a, _ := testApp(t, r)
+						owner := domain.CoreXray
+						if core == owner {
+							owner = domain.CoreSingBox
+						}
+						if sameCore {
+							owner = core
+						}
+						if err := a.Store.Save(domain.NodeSpec{ManagedBy: "proxyforge", Core: owner, Port: 8443,
+							LandingAccesses: []domain.LandingAccess{{Name: "independent", Security: "tls", Port: 31443, Enabled: enabled}},
+						}); err != nil {
+							t.Fatal(err)
+						}
+						opts := domain.GenerateOptions{Server: "server.example.com", Port: 31443, SNI: "example.com", StandardConfig: true}
+						if fallback {
+							opts.Port, opts.StandardConfig = 443, false
+							if core == domain.CoreSingBox {
+								opts.SingBoxFallbackPort = 31443
+							} else {
+								opts.XrayFallbackPort = 31443
+							}
+						}
+						_, err := a.Generate(context.Background(), core, opts)
+						if err == nil || !strings.Contains(err.Error(), "端口") {
+							t.Fatalf("error=%v, want port conflict", err)
+						}
+						if strings.Contains(r.callLog(), "systemctl restart") || strings.Contains(r.callLog(), "systemctl stop") {
+							t.Fatalf("service changed on conflict: %s", r.callLog())
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
+func TestDefaultPortReservesDisabledTLSLandingPorts(t *testing.T) {
+	a, _ := testApp(t, &fakeRunner{})
+	if err := a.Store.Save(domain.NodeSpec{ManagedBy: "proxyforge", Core: domain.CoreXray, Port: 15443,
+		LandingAccesses: []domain.LandingAccess{{Name: "independent", Security: "tls", Port: 443}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := DefaultPort(a.Store, domain.CoreSingBox); got != 8443 {
+		t.Fatalf("default port=%d, want 8443", got)
+	}
+}
+
+func TestGenerateRejectsFallbackPortInSimplifiedMode(t *testing.T) {
+	a, _ := testApp(t, &fakeRunner{})
+	_, err := a.Generate(context.Background(), domain.CoreSingBox, domain.GenerateOptions{
+		Server: "server.example.com", Port: 443, SNI: "example.com", SimplifiedConfig: true, SingBoxFallbackPort: 31443,
+	})
+	if err == nil || !strings.Contains(err.Error(), "简化配置") {
+		t.Fatalf("error=%v, want incompatible options", err)
 	}
 }
 

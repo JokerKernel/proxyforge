@@ -155,7 +155,7 @@ func xrayFallbackRuleProtocolMatches(rule map[string]any, protocol string) bool 
 }
 
 func xrayFallbackDomainContains(value any, sni string) bool {
-	return xrayStringListContains(value, sni) || xrayStringListContains(value, xrayFullDomain(sni))
+	return xrayStringListContains(value, sni) || xrayStringListContains(value, xraySubdomain(sni)) || xrayStringListContains(value, xrayFullDomain(sni))
 }
 
 func xrayReplaceFallbackDomain(rule map[string]any, oldSNI, nextSNI, protocol string) error {
@@ -166,8 +166,8 @@ func xrayReplaceFallbackDomain(rule map[string]any, oldSNI, nextSNI, protocol st
 	matches := 0
 	for index, value := range values {
 		switch value {
-		case oldSNI:
-			values[index] = nextSNI
+		case oldSNI, xraySubdomain(oldSNI):
+			values[index] = xraySubdomain(nextSNI)
 			matches++
 		case xrayFullDomain(oldSNI):
 			values[index] = xrayFullDomain(nextSNI)

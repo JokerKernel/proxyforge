@@ -5,7 +5,9 @@ import (
 	"slices"
 	"strings"
 
+	"proxyforge/internal/domain"
 	"proxyforge/internal/provider"
+	"proxyforge/internal/provider/accesspolicy"
 )
 
 var supportedOutboundIPStrategies = []string{
@@ -274,7 +276,9 @@ func setResolveRuleStrategy(root map[string]any, strategy string) bool {
 		} else {
 			rule["strategy"] = strategy
 		}
-		updated = true
+		if !accesspolicy.IsPolicyRule(rule, domain.CoreSingBox) {
+			updated = true
+		}
 	}
 	return updated
 }
@@ -286,8 +290,12 @@ func prependResolveRule(root map[string]any, strategy string) {
 		root["route"] = route
 	}
 	rules, _ := route["rules"].([]any)
+	server := domainResolverServer(route["default_domain_resolver"])
+	if server == "" {
+		server = "local"
+	}
 	route["rules"] = append([]any{map[string]any{
-		"action": "resolve", "server": "local", "strategy": strategy,
+		"action": "resolve", "server": server, "strategy": strategy,
 	}}, rules...)
 }
 

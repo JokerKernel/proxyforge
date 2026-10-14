@@ -66,6 +66,13 @@ func ownedRule(rule map[string]any, core string) bool {
 	return false
 }
 
+// IsPolicyRule identifies rules that are rebuilt when access settings change.
+// DNS and IP settings must also update a persistent resolve rule so they survive
+// that rebuild or disabling access control.
+func IsPolicyRule(rule map[string]any, core string) bool {
+	return ownedRule(rule, core)
+}
+
 // Strip removes only generated policy components; ordinary routes stay intact.
 func Strip(root map[string]any, core string) {
 	if root == nil {

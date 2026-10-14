@@ -69,7 +69,7 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if opts.StandardConfig && (opts.SimplifiedConfig || opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != 0 || opts.SingBoxFallbackHTTPDomain || opts.SingBoxFallbackExactDomain || opts.XrayFallbackGuard || opts.XrayFallbackPort != 0 || opts.XrayFallbackHTTPDomain || opts.XrayFallbackExactDomain) {
 		return domain.NodeSpec{}, fmt.Errorf("--standard-config 不能与简化或回落防偷跑配置参数同时使用")
 	}
-	if opts.SingBoxFallbackGuard && opts.SimplifiedConfig {
+	if opts.SimplifiedConfig && (opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != 0) {
 		return domain.NodeSpec{}, fmt.Errorf("sing-box 简化配置不能与回落防偷跑配置同时启用")
 	}
 	if (opts.SingBoxFallbackGuard || opts.SingBoxFallbackPort != 0 || opts.SingBoxFallbackHTTPDomain || opts.SingBoxFallbackExactDomain) && core != domain.CoreSingBox {
@@ -163,13 +163,22 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if core == other {
 		other = domain.CoreXray
 	}
+	if !opts.DropLinks {
+		for _, access := range landings {
+			if access.UsesPrimaryInbound() {
+				continue
+			}
+			if access.Port == opts.Port || access.Port == optionsFallbackPort(opts) {
+				return domain.NodeSpec{}, fmt.Errorf("端口 %d 已由 TLS 落地接入 %q 使用", access.Port, access.Name)
+			}
+		}
+	}
 	if otherState, e := a.Store.Load(other); e == nil {
-		otherFallbackPort := nodeFallbackPort(otherState)
-		if otherState.Port == opts.Port || otherFallbackPort == opts.Port {
+		if portUsedByNode(otherState, opts.Port) {
 			return domain.NodeSpec{}, fmt.Errorf("端口 %d 已由受管的 %s 节点使用", opts.Port, other)
 		}
 		fallbackPort := optionsFallbackPort(opts)
-		if fallbackPort != 0 && (otherState.Port == fallbackPort || otherFallbackPort == fallbackPort) {
+		if fallbackPort != 0 && portUsedByNode(otherState, fallbackPort) {
 			return domain.NodeSpec{}, fmt.Errorf("回落端口 %d 已由受管的 %s 节点使用", fallbackPort, other)
 		}
 	}
@@ -537,7 +546,8 @@ func (a *App) firewallHint(port int) {
 }
 
 func PickFallbackPort(store system.StateStore, core string, publicPort int) (int, error) {
-	if current, err := store.Load(core); err == nil {
+	current, err := store.Load(core)
+	if err == nil {
 		if port := nodeFallbackPort(current); port != 0 {
 			return port, nil
 		}
@@ -545,6 +555,11 @@ func PickFallbackPort(store system.StateStore, core string, publicPort int) (int
 	avoid := map[int]struct{}{}
 	if publicPort != 0 {
 		avoid[publicPort] = struct{}{}
+	}
+	for _, access := range current.LandingAccesses {
+		if !access.UsesPrimaryInbound() {
+			avoid[access.Port] = struct{}{}
+		}
 	}
 	other := domain.CoreSingBox
 	if core == domain.CoreSingBox {
@@ -556,6 +571,11 @@ func PickFallbackPort(store system.StateStore, core string, publicPort int) (int
 		}
 		if port := nodeFallbackPort(otherState); port != 0 {
 			avoid[port] = struct{}{}
+		}
+		for _, access := range otherState.LandingAccesses {
+			if !access.UsesPrimaryInbound() {
+				avoid[access.Port] = struct{}{}
+			}
 		}
 	}
 	return pickFallbackPortInRange(domain.FallbackPortMin, domain.FallbackPortMax, avoid, func(port int) bool {
@@ -623,5 +643,13 @@ func DefaultPort(store system.StateStore, core string) int {
 }
 
 func portUsedByNode(n domain.NodeSpec, port int) bool {
-	return n.Port == port || nodeFallbackPort(n) == port
+	if n.Port == port || nodeFallbackPort(n) == port {
+		return true
+	}
+	for _, access := range n.LandingAccesses {
+		if !access.UsesPrimaryInbound() && access.Port == port {
+			return true
+		}
+	}
+	return false
 }

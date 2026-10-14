@@ -175,23 +175,10 @@ func (a *App) ClientConfig(ctx context.Context, core, format, output string, for
 		return b, nil
 	}
 	a.progressf("写入客户端配置", "%s（0600）", output)
-	flags := os.O_WRONLY | os.O_CREATE
-	if force {
-		flags |= os.O_TRUNC
-	} else {
-		flags |= os.O_EXCL
-	}
-	f, err := os.OpenFile(output, flags, 0600)
-	if err != nil {
+	if err := writePrivateFile(output, b, force); err != nil {
 		return nil, fmt.Errorf("写客户端配置: %w", err)
 	}
-	if _, err = f.Write(b); err == nil {
-		err = f.Sync()
-	}
-	if closeErr := f.Close(); err == nil {
-		err = closeErr
-	}
-	return b, err
+	return b, nil
 }
 
 func clientFormatLabel(format string) string {

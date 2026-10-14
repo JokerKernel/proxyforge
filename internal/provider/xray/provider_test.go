@@ -316,7 +316,7 @@ func assertFallbackGuardConfig(t *testing.T, config []byte, targetHost string, t
 	}
 	rules := root["routing"].(map[string]any)["rules"].([]any)
 	serverName := root["inbounds"].([]any)[1].(map[string]any)["streamSettings"].(map[string]any)["realitySettings"].(map[string]any)["serverNames"].([]any)[0].(string)
-	wantDomain := serverName
+	wantDomain := "domain:" + serverName
 	if exactDomain {
 		wantDomain = "full:" + serverName
 	}
@@ -397,8 +397,40 @@ func TestPatchFallbackGuardPreservesOriginalDefaultRule(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := root["routing"].(map[string]any)["rules"].([]any)[0].(map[string]any)["domain"]
-	if !reflect.DeepEqual(got, []any{"new.example.com"}) {
+	if !reflect.DeepEqual(got, []any{"domain:new.example.com"}) {
 		t.Fatalf("default fallback domain=%#v", got)
+	}
+}
+
+func TestPatchFallbackGuardMigratesLegacySubstringDomain(t *testing.T) {
+	p := New()
+	old := domain.NodeSpec{InboundTag: "xray-one", SNI: "old.example.com", Target: "old.example.com:443", UserName: "one",
+		UUID: "uuid", PrivateKey: "private", ShortID: "short", XrayFallbackGuard: true, XrayFallbackPort: 61431}
+	config, err := p.RenderServer(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(config, &root); err != nil {
+		t.Fatal(err)
+	}
+	root["routing"].(map[string]any)["rules"].([]any)[0].(map[string]any)["domain"] = []any{old.SNI}
+	config, err = json.Marshal(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := old
+	next.SNI, next.Target = "new.example.com", "new.example.com:443"
+	patched, err := p.PatchServer(config, old, next, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(patched, &root); err != nil {
+		t.Fatal(err)
+	}
+	got := root["routing"].(map[string]any)["rules"].([]any)[0].(map[string]any)["domain"]
+	if !reflect.DeepEqual(got, []any{"domain:new.example.com"}) {
+		t.Fatalf("legacy fallback domain=%#v", got)
 	}
 }
 

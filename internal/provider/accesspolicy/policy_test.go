@@ -29,6 +29,55 @@ func rootOf(t *testing.T, b []byte) map[string]any {
 	return root
 }
 
+func TestSimplifiedDNSAndIPSettingsSurviveAccessChanges(t *testing.T) {
+	for _, profile := range []string{"", provider.DNSProfileDoHCloudflare} {
+		t.Run("dns="+profile, func(t *testing.T) {
+			p := singbox.New()
+			n := policyNode(domain.CoreSingBox)
+			n.SimplifiedConfig = true
+			n.AccessPolicy = domain.AccessPolicy{Mode: domain.AccessModeWhitelist, Whitelist: []domain.AccessEntry{{Type: "domain", Value: "allowed.test"}}}
+			b, err := p.RenderServer(n)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if profile != "" {
+				b, err = p.PatchDNSProfile(b, profile)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			b, err = p.PatchOutboundIPStrategy(b, provider.OutboundIPIPv6Only)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, operation := range []string{"reapply", "links", "disable"} {
+				t.Run(operation, func(t *testing.T) {
+					var patched []byte
+					var err error
+					if operation == "links" {
+						patched, err = p.PatchLinks(b, n, n)
+					} else {
+						next := n
+						next.AccessPolicy.Disabled = operation == "disable"
+						patched, err = p.PatchAccessPolicy(b, n, next)
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					if got, err := p.CurrentOutboundIPStrategy(patched); err != nil || got != provider.OutboundIPIPv6Only {
+						t.Fatalf("strategy=%q error=%v, want ipv6-only", got, err)
+					}
+					if profile != "" {
+						if got, err := p.CurrentDNSProfile(patched); err != nil || got != profile {
+							t.Fatalf("DNS profile=%q error=%v, want %s", got, err, profile)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestDefaultModeEnforcesBlacklistAndPreservesPriority(t *testing.T) {
 	for _, p := range []provider.CoreProvider{xray.New(), singbox.New()} {
 		for _, withWhite := range []bool{false, true} {

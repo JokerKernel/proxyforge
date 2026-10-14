@@ -6,7 +6,9 @@ import (
 	"slices"
 	"strings"
 
+	"proxyforge/internal/domain"
 	"proxyforge/internal/provider"
+	"proxyforge/internal/provider/accesspolicy"
 )
 
 var supportedDNSProfiles = []string{
@@ -184,7 +186,9 @@ func (*Provider) PatchDNSProfile(config []byte, profile string) ([]byte, error) 
 		}
 		if action, _ := rule["action"].(string); action == "resolve" {
 			rule["server"] = tag
-			updatedResolve = true
+			if !accesspolicy.IsPolicyRule(rule, domain.CoreSingBox) {
+				updatedResolve = true
+			}
 		}
 	}
 	if !updatedResolve {

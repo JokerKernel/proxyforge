@@ -33,8 +33,18 @@ func TestClientOutputPermissionsAndForce(t *testing.T) {
 	if _, err := a.Client(context.Background(), domain.CoreSingBox, path, false); err == nil {
 		t.Fatal("expected existing-file refusal")
 	}
+	if err := os.Chmod(path, 0644); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := a.Client(context.Background(), domain.CoreSingBox, path, true); err != nil {
 		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("forced output mode=%o, want 0600", info.Mode().Perm())
 	}
 }
 

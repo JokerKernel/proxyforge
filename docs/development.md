@@ -78,6 +78,21 @@ SING_BOX_BIN=/path/to/sing-box XRAY_BIN=/path/to/xray \
 
 测试使用临时自签 TLS 节点、本机 HTTP 服务和固定测试 DNS 映射，不访问外部网站。部分黑名单/空白名单用例在测试配置中放行 loopback，以单独检验名单规则；其他用例保留默认私网拦截，验证明确白名单例外。测试退出时停止临时内核并删除临时配置。
 
+参数组合验收覆盖标准、回落防护、自签 TLS 和 sing-box 简化模式，并在访问控制、独立 TLS 落地及 REALITY/TLS 中转同时存在时检查五种 DNS 配置、五种出站 IP 策略、回落 IP 策略和日志级别：
+
+```bash
+SING_BOX_BIN=/path/to/sing-box XRAY_BIN=/path/to/xray MIHOMO_BIN=/path/to/mihomo \
+  go test -v ./internal/integration -run 'TestRealConfigurationSettingsMatrix|TestRealMihomoClientConfigs'
+```
+
+回落域名边界验收直接连接生成的内部回落入站，检查完整域名、子域名以及夹带 SNI 的无关域名。仅使用本机 HTTP 测试服务，不依赖公网 REALITY 目标：
+
+```bash
+PROXYFORGE_FALLBACK_CONNECT_TEST=1 \
+SING_BOX_BIN=/path/to/sing-box XRAY_BIN=/path/to/xray \
+  go test -v ./internal/integration -run TestRealFallbackDomainBoundaries
+```
+
 一次性 Debian/Ubuntu 或 Rocky/AlmaLinux systemd VM 可以运行 `scripts/smoke-systemd.sh`。该脚本会真实安装两个内核、生成 443/8443 节点、验证客户端并确认服务 active，不应直接用于生产主机。
 
 REALITY SNI 黑盒测试见 [REALITY SNI 检测指南](reality-sni-check.md)。
