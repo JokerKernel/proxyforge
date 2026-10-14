@@ -26,7 +26,7 @@ func TestDockerEntryReturnsToMainMenu(t *testing.T) {
 	if err != nil || !selected || core != "sing-box" {
 		t.Fatalf("Docker return routing core=%s selected=%v err=%v", core, selected, err)
 	}
-	for _, part := range []string{"Xray（Docker）", "Docker 未安装", "部署/升级", "清理全部卸载残留"} {
+	for _, part := range []string{"  3   Xray（Docker）      [Docker 未安装]", "部署/升级", "清理全部卸载残留"} {
 		if !strings.Contains(out.String(), part) {
 			t.Fatalf("menu missing %s: %s", part, out.String())
 		}

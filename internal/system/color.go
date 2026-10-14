@@ -251,9 +251,13 @@ func decorateSourceLabels(value string) string {
 		{"[官方脚本/风险]", ansiBoldYellow},
 		{"[默认]", ansiBoldYellow},
 		{"[已安装]", ansiOrange},
+		{"[运行中]", ansiOrange},
+		{"[已停止]", ansiOrange},
+		{"[已移除·数据保留]", ansiOrange},
 		{"[稳定版]", ansiOrange},
 		{"[开发版]", ansiOrange},
 		{"[未安装]", ansiBrightBlack},
+		{"[待配置]", ansiBrightBlack},
 		{"[当前]", ansiOrange},
 	}
 	value = colorizeLabel(value, "[命令]", commandLabelColor(value))

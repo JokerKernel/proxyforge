@@ -471,6 +471,7 @@ func TestSelectCoreAcceptsQToExit(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "  1   Xray-core           [未安装]") ||
 		!strings.Contains(out.String(), "  2   sing-box            [未安装]") ||
+		!strings.Contains(out.String(), "  3   Xray（Docker）      [未部署]") ||
 		!strings.Contains(out.String(), "  0/q 退出") ||
 		!strings.Contains(out.String(), "❯ 请选择 [1]：") {
 		t.Fatalf("menu style output=%q", out.String())
@@ -503,6 +504,9 @@ func TestSelectCoreShowsInstallStatus(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "  2   sing-box            [未安装]") {
 		t.Fatalf("missing sing-box status: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "  3   Xray（Docker）      [未部署]") {
+		t.Fatalf("docker status column is misaligned: %q", out.String())
 	}
 }
 
