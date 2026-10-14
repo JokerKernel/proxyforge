@@ -30,6 +30,39 @@ func rootBytes(t *testing.T, r map[string]any) []byte {
 	}
 	return b
 }
+func TestApplyConfigPrintsEachStep(t *testing.T) {
+	m, _ := deployed(t)
+	var errOut bytes.Buffer
+	m.errOut = &errOut
+	s, err := m.LoadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, err := model.ParseAccessEntry("123.123.123.123", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := s.Node.AccessPolicy
+	policy.Blacklist = append(policy.Blacklist, entry)
+	if err = m.SetPolicy(context.Background(), policy); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"正在用本机镜像启动临时容器，执行 xray run -test 校验配置",
+		"配置校验通过",
+		"正在写入服务端配置",
+		"正在重启容器，使新配置生效",
+		"正在检查容器是否稳定监听端口",
+		"容器已稳定监听",
+		"正在保存节点状态",
+		"配置已生效",
+	} {
+		if !strings.Contains(errOut.String(), want) {
+			t.Fatalf("missing %q:\n%s", want, errOut.String())
+		}
+	}
+}
+
 func TestIndependentPolicyKeepsRelayAndFallbackPriority(t *testing.T) {
 	m, _ := prepared(t)
 	ctx := context.Background()

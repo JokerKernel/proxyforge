@@ -69,9 +69,11 @@ func (m *Manager) validateBytes(ctx context.Context, imageID string, data []byte
 			return err
 		}
 	}
+	m.progress("正在用本机镜像启动临时容器，执行 xray run -test 校验配置")
 	_, err = m.coreRun(ctx, imageID, []string{"--mount", "type=bind,src=" + path + ",dst=/run/proxyforge/config.json,readonly", "--mount", "type=bind,src=" + m.paths.TLS() + ",dst=/etc/xray/tls,readonly"}, "run", "-test", "-config", "/run/proxyforge/config.json")
 	if err != nil {
 		return fmt.Errorf("Docker Xray 配置校验失败: %w", err)
 	}
+	m.progress("配置校验通过")
 	return nil
 }

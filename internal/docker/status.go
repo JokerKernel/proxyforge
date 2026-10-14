@@ -213,6 +213,8 @@ func (m *Manager) waitHealthy(ctx context.Context, ports []int, imageID string) 
 	var id, started string
 	var restarts int
 	var stableSince time.Time
+	lastWait := time.Now()
+	readyAnnounced := false
 	for {
 		in, err := m.inspect(ctx)
 		if err != nil {
@@ -240,6 +242,17 @@ func (m *Manager) waitHealthy(ctx context.Context, ports []int, imageID string) 
 				break
 			}
 			_ = conn.Close()
+		}
+		if ready && !readyAnnounced {
+			remaining := 5*time.Second - time.Since(stableSince)
+			if remaining > 0 {
+				m.progress("端口已可连接，继续观察 %d 秒，确认容器没有重启", int(remaining.Round(time.Second)/time.Second))
+			}
+			readyAnnounced = true
+		}
+		if !ready && time.Since(lastWait) >= 2*time.Second {
+			m.progress("仍在等待容器监听端口")
+			lastWait = time.Now()
 		}
 		if ready && time.Since(stableSince) >= 5*time.Second {
 			return nil

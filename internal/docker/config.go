@@ -11,6 +11,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 
 	"proxyforge/internal/docker/model"
 	"proxyforge/internal/docker/xray/accesspolicy"
@@ -345,16 +346,19 @@ func (m *Manager) applyConfig(ctx context.Context, md Metadata, in *inspection, 
 	changed := !slices.Equal(oldPorts, ports)
 	if running && changed {
 		if in != nil && in.State.Running {
+			m.progress("监听端口有变化，正在停止容器")
 			if _, err = m.compose(ctx, "stop", Service); err != nil {
 				return fail(err)
 			}
 		}
+		m.progress("正在确认端口 %s 可用", formatPorts(ports))
 		for _, p := range ports {
 			if err = m.portFree(p); err != nil {
 				return fail(err)
 			}
 		}
 	}
+	m.progress("正在写入服务端配置")
 	if err = atomicWrite(m.paths.Config(), b, 0600); err != nil {
 		return fail(err)
 	}
@@ -363,16 +367,22 @@ func (m *Manager) applyConfig(ctx context.Context, md Metadata, in *inspection, 
 	}
 	if running && (configChanged || start) {
 		if in == nil {
+			m.progress("正在启动容器")
 			_, err = m.compose(ctx, "up", "-d", "--no-deps", "--pull", "never", Service)
 		} else {
+			m.progress("正在重启容器，使新配置生效")
 			_, err = m.compose(ctx, "restart", Service)
 		}
 		if err != nil {
 			return fail(err)
 		}
+		m.progress("正在检查容器是否稳定监听端口 %s", formatPorts(ports))
 		if err = m.healthCheck(ctx, ports, md.ImageID); err != nil {
 			return fail(err)
 		}
+		m.progress("容器已稳定监听")
+	} else if !running {
+		m.progress("容器当前未运行，配置已写入，启动后生效")
 	}
 	if running {
 		md.DesiredState = "running"
@@ -382,6 +392,7 @@ func (m *Manager) applyConfig(ctx context.Context, md Metadata, in *inspection, 
 	if err = m.phase(&j, "runtime-applied"); err != nil {
 		return fail(err)
 	}
+	m.progress("正在保存节点状态")
 	n.ConfigSHA256 = digest(b)
 	n.UpdatedAt = m.now().UTC()
 	if err = m.saveNode(n); err != nil {
@@ -394,7 +405,16 @@ func (m *Manager) applyConfig(ctx context.Context, md Metadata, in *inspection, 
 	if err = m.commit(j); err != nil {
 		return fail(err)
 	}
+	m.progress("配置已生效")
 	return nil
+}
+
+func formatPorts(ports []int) string {
+	parts := make([]string, len(ports))
+	for i, port := range ports {
+		parts[i] = strconv.Itoa(port)
+	}
+	return strings.Join(parts, "、")
 }
 func (m *Manager) PatchSetting(ctx context.Context, setting, value string) error {
 	return m.withLock(ctx, func() error {
