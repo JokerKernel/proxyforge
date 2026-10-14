@@ -55,7 +55,7 @@ func TestDockerMenusReplacePreviousScreen(t *testing.T) {
 	if err := m.Menu(context.Background(), in); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"╭─ Xray（Docker）", "Docker 服务端配置", "╭─ Xray（Docker）", "Docker 服务管理", "╭─ Xray（Docker）"}
+	want := []string{"╭─ 当前实例", "›  服务端配置", "╭─ 当前实例", "›  服务管理", "╭─ 当前实例"}
 	if len(in.screens) != len(want) {
 		t.Fatalf("unexpected prompts: %d", len(in.screens))
 	}
@@ -63,7 +63,7 @@ func TestDockerMenusReplacePreviousScreen(t *testing.T) {
 		if !strings.Contains(screen, want[i]) {
 			t.Fatalf("prompt %d missing current menu %q: %s", i, want[i], screen)
 		}
-		for _, other := range []string{"╭─ Xray（Docker）", "Docker 服务端配置", "Docker 服务管理"} {
+		for _, other := range []string{"╭─ 当前实例", "›  服务端配置", "›  服务管理"} {
 			if other != want[i] && strings.Contains(screen, other) {
 				t.Fatalf("prompt %d retained previous menu %q: %s", i, other, screen)
 			}
@@ -92,13 +92,13 @@ func TestDockerMenuResultsWaitBeforeRedraw(t *testing.T) {
 				t.Fatalf("result pause consumed navigation incorrectly: %d prompts", len(in.screens))
 			}
 			result := in.screens[2]
-			if !strings.Contains(result, "按 Enter 返回菜单") || strings.Contains(result, "Docker 服务端配置") {
+			if !strings.Contains(result, "按 Enter 返回菜单") || strings.Contains(result, "生成/更新配置") {
 				t.Fatalf("result was not shown on its own page: %s", result)
 			}
-			if showConfig && !strings.Contains(result, "配置包含 UUID 和私钥") || !showConfig && !strings.Contains(result, "[Docker/错误]") {
+			if showConfig && !strings.Contains(result, "REALITY 私钥") || !showConfig && !strings.Contains(result, "[错误] 操作失败：") {
 				t.Fatalf("result disappeared before pause: %s", result)
 			}
-			if !strings.Contains(in.screens[3], "Docker 服务端配置") || strings.Contains(in.screens[3], "按 Enter") || strings.Contains(in.screens[3], "[Docker/错误]") {
+			if !strings.Contains(in.screens[3], "›  服务端配置") || strings.Contains(in.screens[3], "按 Enter") || strings.Contains(in.screens[3], "[错误] 操作失败：") {
 				t.Fatalf("result remained after returning to menu: %s", in.screens[3])
 			}
 		})
