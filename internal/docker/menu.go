@@ -20,8 +20,9 @@ import (
 var errCancelled = errors.New("用户取消")
 
 type ui struct {
-	reader *bufio.Reader
-	out    io.Writer
+	reader      *bufio.Reader
+	out         io.Writer
+	interactive bool
 }
 
 func newUI(input io.Reader, out io.Writer) *ui {
@@ -29,7 +30,35 @@ func newUI(input io.Reader, out io.Writer) *ui {
 	if !ok {
 		r = bufio.NewReader(input)
 	}
-	return &ui{reader: r, out: out}
+	interactiveInput := terminalInput(input)
+	if reporter, ok := input.(interface{ IsTerminal() bool }); ok {
+		interactiveInput = reporter.IsTerminal()
+	} else if _, buffered := input.(*bufio.Reader); buffered {
+		// The main menu passes its shared stdin reader so buffered input stays
+		// with the same owner when entering and leaving the Docker menu.
+		interactiveInput = terminalInput(os.Stdin)
+	}
+	interactiveOutput := false
+	if reporter, ok := out.(interface{ IsTerminal() bool }); ok {
+		interactiveOutput = reporter.IsTerminal()
+	} else if f, ok := out.(*os.File); ok {
+		info, err := f.Stat()
+		interactiveOutput = err == nil && info.Mode()&os.ModeCharDevice != 0
+	}
+	return &ui{reader: r, out: out, interactive: interactiveInput && interactiveOutput && os.Getenv("TERM") != "dumb"}
+}
+func (u *ui) clearScreen() {
+	if u.interactive {
+		fmt.Fprint(u.out, "\033[H\033[2J\033[3J")
+	}
+}
+func (u *ui) pause() error {
+	if !u.interactive {
+		return nil
+	}
+	fmt.Fprint(u.out, "\n按 Enter 返回菜单……")
+	_, err := u.reader.ReadString('\n')
+	return err
 }
 func (u *ui) ask(label, def string) (string, error) {
 	if def != "" {
@@ -156,6 +185,7 @@ func (m *Manager) Menu(ctx context.Context, input io.Reader) error {
 		statusCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 		s, _ := m.Status(statusCtx)
 		cancel()
+		u.clearScreen()
 		fmt.Fprintf(m.out, "\n╭─ Xray（Docker）\n│ 容器 %s  [%s]\n", Container, s.Label)
 		if s.Version != "" {
 			fmt.Fprintf(m.out, "│ %s\n", s.Version)
@@ -174,6 +204,8 @@ func (m *Manager) Menu(ctx context.Context, input io.Reader) error {
 		if choice == 0 {
 			return nil
 		}
+		u.clearScreen()
+		shouldPause := true
 		switch choice {
 		case 1:
 			var version string
@@ -208,6 +240,7 @@ func (m *Manager) Menu(ctx context.Context, input io.Reader) error {
 				}
 			}
 		case 2:
+			shouldPause = false
 			err = m.configMenu(ctx, u)
 		case 3:
 			var format, name string
@@ -223,6 +256,7 @@ func (m *Manager) Menu(ctx context.Context, input io.Reader) error {
 				}
 			}
 		case 4:
+			shouldPause = false
 			err = m.serviceMenu(ctx, u)
 		case 5:
 			if err = u.confirm("移除本实例容器，保留配置和数据？"); err == nil {
@@ -243,6 +277,14 @@ func (m *Manager) Menu(ctx context.Context, input io.Reader) error {
 		} else if err != nil {
 			fmt.Fprintf(m.errOut, "[Docker/错误] %v\n", err)
 		}
+		if shouldPause || err != nil {
+			if err := u.pause(); err != nil {
+				if errors.Is(err, io.EOF) {
+					return nil
+				}
+				return err
+			}
+		}
 	}
 }
 func (m *Manager) configMenu(ctx context.Context, u *ui) error {
@@ -250,6 +292,7 @@ func (m *Manager) configMenu(ctx context.Context, u *ui) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		u.clearScreen()
 		fmt.Fprintln(m.out, "\nDocker 服务端配置\n  1  生成/更新配置\n  2  查看配置（含凭据）\n  3  编辑配置副本\n  4  校验配置\n  5  DNS/日志/出站设置\n  6  重置节点凭据\n  7  访问控制\n  8  落地接入\n  9  中转线路\n  0/q 返回")
 		choice, err := u.choose(9)
 		if err != nil {
@@ -258,6 +301,7 @@ func (m *Manager) configMenu(ctx context.Context, u *ui) error {
 		if choice == 0 {
 			return nil
 		}
+		u.clearScreen()
 		switch choice {
 		case 1:
 			if _, e := os.Stat(m.paths.Config()); e == nil {
@@ -313,6 +357,9 @@ func (m *Manager) configMenu(ctx context.Context, u *ui) error {
 		} else if err != nil {
 			fmt.Fprintf(m.errOut, "[Docker/错误] %v\n", err)
 		}
+		if err := u.pause(); err != nil {
+			return err
+		}
 	}
 }
 func (m *Manager) serviceMenu(ctx context.Context, u *ui) error {
@@ -320,6 +367,7 @@ func (m *Manager) serviceMenu(ctx context.Context, u *ui) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		u.clearScreen()
 		fmt.Fprintln(m.out, "\nDocker 服务管理\n  1  启动\n  2  停止\n  3  重启\n  4  状态\n  5  日志\n  6  实时日志（Ctrl+C 返回）\n  0/q 返回")
 		n, err := u.choose(6)
 		if err != nil {
@@ -328,6 +376,7 @@ func (m *Manager) serviceMenu(ctx context.Context, u *ui) error {
 		if n == 0 {
 			return nil
 		}
+		u.clearScreen()
 		if n == 4 {
 			s, e := m.Status(ctx)
 			b, _ := jsonBytes(s)
@@ -348,6 +397,12 @@ func (m *Manager) serviceMenu(ctx context.Context, u *ui) error {
 		}
 		if err != nil {
 			fmt.Fprintf(m.errOut, "[Docker/错误] %v\n", err)
+		}
+		if errors.Is(err, io.EOF) {
+			return err
+		}
+		if err := u.pause(); err != nil {
+			return err
 		}
 	}
 }
