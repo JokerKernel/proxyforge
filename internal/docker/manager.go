@@ -40,21 +40,23 @@ type Options struct {
 }
 
 type Manager struct {
-	paths       Paths
-	runner      Runner
-	out, errOut io.Writer
-	now         func() time.Time
-	rootCheck   func() error
-	lookPath    func(string) (string, error)
-	targetCheck func(context.Context, string, string, string) error
-	healthCheck func(context.Context, []int, string) error
-	portFree    func(int) error
-	http        *http.Client
-	codec       *xray.Codec
-	stateWrite  func(string, []byte, os.FileMode) error
-	physicalIPs func() ([]publicAddress, error)
-	externalIP  func(context.Context) (string, error)
-	probeSNI    func(context.Context, []string, string, int) ([]sniCandidate, error)
+	paths            Paths
+	runner           Runner
+	out, errOut      io.Writer
+	now              func() time.Time
+	rootCheck        func() error
+	lookPath         func(string) (string, error)
+	targetCheck      func(context.Context, string, string, string) error
+	healthCheck      func(context.Context, []int, string) error
+	portFree         func(int) error
+	http             *http.Client
+	codec            *xray.Codec
+	stateWrite       func(string, []byte, os.FileMode) error
+	physicalIPs      func() ([]publicAddress, error)
+	externalIP       func(context.Context) (string, error)
+	probeSNI         func(context.Context, []string, string, int) ([]sniCandidate, error)
+	quietDockerNotes bool
+	review           *ui
 }
 
 func New(opts Options) *Manager {
@@ -113,6 +115,9 @@ func (m *Manager) dockerStream(ctx context.Context, out, errOut io.Writer, args 
 	return m.runner.RunStreaming(ctx, out, errOut, "docker", full...)
 }
 func (m *Manager) noteDockerCall(args []string) {
+	if m.quietDockerNotes {
+		return
+	}
 	m.progress("调用：docker %s", formatCommandArgs(args))
 }
 func formatCommandArgs(args []string) string {

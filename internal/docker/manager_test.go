@@ -34,6 +34,7 @@ type simulatedDocker struct {
 	foreignProject    bool
 	unavailable       bool
 	healthFailures    int
+	failPull          bool
 	latestVersion     string
 	latestImageID     string
 	prereleaseVersion string
@@ -66,6 +67,9 @@ func (f *simulatedDocker) Run(_ context.Context, name string, args ...string) ([
 		return []byte(`{"OSType":"linux","Architecture":"` + runtime.GOARCH + `","SecurityOptions":["name=seccomp,profile=builtin"]}`), nil
 	case "image":
 		if a[1] == "pull" {
+			if f.failPull {
+				return nil, errors.New("pull failed")
+			}
 			tag := a[2]
 			version := strings.TrimPrefix(tag, Repository+":")
 			if version == "latest" {

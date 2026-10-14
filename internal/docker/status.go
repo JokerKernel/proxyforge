@@ -105,6 +105,12 @@ func (m *Manager) checkOwned(in *inspection) error {
 	return nil
 }
 func (m *Manager) Status(ctx context.Context) (Status, error) {
+	previous := m.quietDockerNotes
+	m.quietDockerNotes = true
+	defer func() { m.quietDockerNotes = previous }()
+	return m.collectStatus(ctx)
+}
+func (m *Manager) collectStatus(ctx context.Context) (Status, error) {
 	s := Status{Label: "未部署"}
 	if _, err := m.lookPath("docker"); err != nil {
 		s.Label = "Docker 未安装"

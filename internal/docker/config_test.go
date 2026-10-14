@@ -30,6 +30,21 @@ func rootBytes(t *testing.T, r map[string]any) []byte {
 	}
 	return b
 }
+func TestStatusDoesNotPrintDockerCalls(t *testing.T) {
+	m, fake := testManager(t)
+	var errOut bytes.Buffer
+	m.errOut = &errOut
+	if _, err := m.Status(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.calls) == 0 {
+		t.Fatal("status did not query docker")
+	}
+	if strings.Contains(errOut.String(), "调用：") {
+		t.Fatalf("status probe was printed:\n%s", errOut.String())
+	}
+}
+
 func TestRemoveCleanupAndRecoverPrintEachStep(t *testing.T) {
 	m, f := deployed(t)
 	var errOut bytes.Buffer

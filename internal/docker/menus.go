@@ -25,6 +25,9 @@ func (m *Manager) Menu(ctx context.Context, input io.Reader) error {
 		return err
 	}
 	u := newUI(input, m.out)
+	previous := m.review
+	m.review = u
+	defer func() { m.review = previous }()
 	for {
 		if err := ctx.Err(); err != nil {
 			return err

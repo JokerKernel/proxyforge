@@ -54,6 +54,18 @@ func (u *ui) pause() error {
 	_, err := u.reader.ReadString('\n')
 	return err
 }
+func (m *Manager) pauseAfterOutput() error {
+	u := m.review
+	if u == nil || !u.interactive {
+		return nil
+	}
+	fmt.Fprint(m.errOut, "\n按 Enter 继续……")
+	_, err := u.reader.ReadString('\n')
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+	return err
+}
 func terminalInput(r io.Reader) bool {
 	f, ok := r.(*os.File)
 	if !ok {

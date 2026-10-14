@@ -271,11 +271,12 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 
 func (c *commandSet) selectCore(ctx context.Context) (string, bool, error) {
 	for {
+		dockerLabel := c.dockerLabel(ctx)
 		c.clearScreen()
 		c.printProxyForgeHeader()
 		c.printMenuStatusChoice("1", "Xray-core", c.coreInstalled(ctx, domain.CoreXray))
 		c.printMenuStatusChoice("2", "sing-box", c.coreInstalled(ctx, domain.CoreSingBox))
-		c.printMenuBadgeChoice("3", "Xray（Docker）", "["+c.dockerLabel(ctx)+"]")
+		c.printMenuBadgeChoice("3", "Xray（Docker）", "["+dockerLabel+"]")
 		fmt.Fprint(c.out, "\n\n")
 		c.printMenuChoice("4", "清理全部卸载残留（原生内核已卸载且 Docker 实例已移除后使用）")
 		c.printMenuChoice("0/q", "退出")

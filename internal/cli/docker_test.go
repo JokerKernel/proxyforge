@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -32,6 +33,44 @@ func TestDockerEntryReturnsToMainMenu(t *testing.T) {
 		}
 	}
 }
+
+type menuProbeRunner struct{}
+
+func (menuProbeRunner) Run(context.Context, string, ...string) ([]byte, error) {
+	return nil, errors.New("probe")
+}
+func (menuProbeRunner) RunStreaming(context.Context, io.Writer, io.Writer, string, ...string) error {
+	return errors.New("probe")
+}
+
+func TestMainMenuKeepsDockerProbeOffTheItems(t *testing.T) {
+	var out bytes.Buffer
+	m := dockerfeature.New(dockerfeature.Options{
+		Root: t.TempDir(), Out: &out, ErrOut: &out,
+		Runner:    menuProbeRunner{},
+		RootCheck: func() error { return nil },
+		LookPath:  func(string) (string, error) { return "/usr/bin/docker", nil },
+	})
+	c := &commandSet{docker: m, reader: bufio.NewReader(strings.NewReader("q\n")), out: &out, errOut: &out}
+	if _, _, err := c.selectCore(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	if strings.Contains(got, "调用：docker") {
+		t.Fatalf("docker probe split the menu:\n%s", got)
+	}
+	xray := strings.Index(got, "  1   Xray-core")
+	sing := strings.Index(got, "  2   sing-box")
+	dockerItem := strings.Index(got, "  3   Xray（Docker）")
+	cleanup := strings.Index(got, "  4   清理全部卸载残留")
+	if xray < 0 || sing < xray || dockerItem < sing || cleanup < dockerItem {
+		t.Fatalf("menu order broken:\n%s", got)
+	}
+	if strings.Contains(got[sing:dockerItem], "\n\n\n") {
+		t.Fatalf("blank gap between sing-box and docker:\n%s", got)
+	}
+}
+
 func TestDockerCommandTreeIsSeparate(t *testing.T) {
 	root := New("test")
 	for _, args := range [][]string{{"docker"}, {"docker", "prepare"}, {"docker", "deploy"}, {"docker", "upgrade"}, {"docker", "recover"}, {"docker", "config", "generate"}, {"docker", "config", "client"}, {"docker", "config", "access"}, {"docker", "service"}} {
