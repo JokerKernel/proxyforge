@@ -278,6 +278,23 @@ func (m *Manager) Generate(ctx context.Context, opts model.GenerateOptions, star
 		return nil
 	})
 }
+
+// preferredListenPort uses 443 when it is free or already belongs to this node.
+// Otherwise it keeps an existing high port, or allocates a new random one.
+func (m *Manager) preferredListenPort(current int) (int, error) {
+	if current == 443 || m.portFree(443) == nil {
+		return 443, nil
+	}
+	if current >= model.FallbackPortMin && current <= model.FallbackPortMax {
+		return current, nil
+	}
+	port, err := m.freeHighPort(443)
+	if err != nil {
+		return 0, fmt.Errorf("443 已被占用，且没有可用的高位端口")
+	}
+	return port, nil
+}
+
 func (m *Manager) freeHighPort(exclude int) (int, error) {
 	for i := 0; i < 100; i++ {
 		s, err := randomHex(2)
