@@ -19,6 +19,8 @@
 
 ## 配置事务
 
+Docker 版自有文件、权限、状态、备份和事务位于独立目录，不调用原生存储与 systemd 代码。详见 [Xray Docker 使用指南](docker-xray.md)。原生全局清理保留 `/var/lib/proxyforge/docker/`，由入口层完成全部预检查后交给 Docker 模块清理；Docker daemon 不可达且无法核验时拒绝删除数据。
+
 配置更新先写入临时文件，运行 `sing-box check` 或 `xray run -test`，再原子替换目标文件。ProxyForge 只重启目标服务，并确认其 active 状态和监听端口。
 
 新生成的主节点证书在配置与状态成功应用后才成为受管证书，应用失败时清理本次生成的证书。证书轮换保留旧文件，保证配置备份引用仍可用。

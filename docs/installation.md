@@ -1,5 +1,7 @@
 # 安装、升级与卸载
 
+Xray Docker 部署使用独立入口，需预先安装本机 Docker 与 Compose v2；ProxyForge 不会自动安装 Docker。镜像准备、Compose 部署和升级回滚见 [Xray Docker 使用指南](docker-xray.md)。以下官方脚本与软件包安装流程用于原生内核。
+
 ProxyForge 支持 Debian/Ubuntu 与 RHEL/CentOS/Rocky/AlmaLinux/Fedora 系发行版的 amd64、arm64。除 `--help` 和 `--version` 外，所有操作都必须由 root 执行；PID 1 不是 systemd 时会拒绝安装。
 
 ## 安装 ProxyForge

@@ -1,6 +1,6 @@
 # Xray Docker 独立模块开发设计
 
-本文定义 ProxyForge 新增 Xray Docker 功能的开发方案、模块边界和验收条件。当前为设计文档，文中的新接口、命令和目录尚未实现。现有行为以代码和其他使用文档为准。
+本文记录 ProxyForge Xray Docker 功能的模块边界、设计约定和验收条件。独立模块、主界面、CLI、配置、Compose 生命周期及模拟测试已实现；本文的文件拆分和接口草案用于解释职责，实际接口以代码为准。操作入口见 [使用指南](docker-xray.md)。真实 Docker、官方镜像和端到端代理连接仍需在具备环境的 Linux 主机完成验收。
 
 ## 1. 目标与范围
 
@@ -241,6 +241,7 @@ func (m *Manager) Recover(context.Context) error
 | 中转线路 | `/var/lib/proxyforge/docker/xray/relays.json` |
 | 版本偏好 | `/var/lib/proxyforge/docker/xray/preferences.json` |
 | 部署元数据 | `/var/lib/proxyforge/docker/xray/deployment.json` |
+| 目录归属标记 | `/var/lib/proxyforge/docker/xray/owner.json` |
 | 配置与升级备份 | `/var/lib/proxyforge/docker/xray/backups/<timestamp>/` |
 | 候选文件 | `/var/lib/proxyforge/docker/xray/staging/` |
 | 事务恢复记录 | `/var/lib/proxyforge/docker/xray/transaction.json` |
@@ -274,15 +275,11 @@ Docker 模块独立实现 StateStore、访问策略、线路和版本偏好的�
   "schema_version": 1,
   "managed_by": "proxyforge",
   "instance_id": "xray-docker",
-  "core": "xray",
-  "runtime": "docker",
-  "project": "proxyforge-xray",
-  "service": "xray",
-  "container_name": "proxyforge-xray",
   "channel": "stable",
   "requested_version": "<选定版本>",
   "image_ref": "ghcr.io/xtls/xray-core@sha256:<已解析摘要>",
   "image_id": "sha256:<本机镜像ID>",
+  "version": "Xray <选定版本> (...)" ,
   "compose_sha256": "<生成文件摘要>",
   "desired_state": "stopped",
   "updated_at": "<UTC时间>"
@@ -293,14 +290,14 @@ Docker 模块独立实现 StateStore、访问策略、线路和版本偏好的�
 
 ## 6. Compose 模板
 
-以下为 Go 模板，`ImageRef` 由程序解析版本并拉取后填入官方仓库 digest 引用。实际生成文件没有模板占位符。
+以下为 Go 模板，模板输入字符串由程序解析版本并拉取后填入官方仓库 digest 引用。实际生成文件没有模板占位符；代码中的内嵌模板采用等价的 YAML 列表格式。
 
 ```yaml
 name: proxyforge-xray
 
 services:
   xray:
-    image: "{{ .ImageRef }}"
+    image: "{{ . }}"
     container_name: proxyforge-xray
     restart: unless-stopped
     network_mode: host
@@ -608,7 +605,7 @@ Docker 自有节点、DNS、访问策略和线路业务统一调用模块内部�
 
 ### 13.4 CLI 草案
 
-以下为开发目标，不是当前可执行命令：
+当前入口均位于独立的 `docker` 命令组，实际参数与子命令以 `--help` 和 [使用指南](docker-xray.md) 为准：
 
 ```bash
 # Docker 专属生命周期
@@ -657,9 +654,9 @@ daemon 不可达时不能证明容器已移除，应拒绝删除数据并报告�
 2. 顶层 CLI 调用 `docker.Manager.CheckCleanup`，由 Docker 模块自行确认业务与临时容器已移除。
 3. 全部检查通过后分别调用各模块的清理入口；Docker 只删除第 5 节的自有路径。
 
-为保证边界，原生 `Cleanup("all")` 必须取消对共享 `/var/lib/proxyforge` 的递归删除，改为删除原生明确所属资源后仅尝试删除空公共目录。可提取原生只读 `CheckCleanup` 接口供 CLI 先检查；它不引用 Docker 包、不执行 Docker 命令。原生单独卸载与清理不能触碰 `/var/lib/proxyforge/docker/` 或 `/opt/proxyforge/xray-docker/`。
+为保证边界，原生 `Cleanup("all")` 取消对共享 `/var/lib/proxyforge` 的整体递归删除，保留整个 `docker/` 命名空间。其他原生数据和自定义残留沿用原有全局清理语义，处理后仅尝试删除空公共目录。原生只读 `CheckCleanup` 接口供 CLI 先检查；它不引用 Docker 包、不执行 Docker 命令。原生单独卸载与清理不能触碰 `/var/lib/proxyforge/docker/` 或 `/opt/proxyforge/xray-docker/`。
 
-全局协调是入口外壳的职责；Docker 的实际检查、删除、归属校验与错误处理仍全部在模块内部。两个清理入口都应在真正删除前再次核验自己的前置条件，Docker 检查与清理由同一个实例锁保护。
+全局协调是入口外壳的职责；Docker 的实际检查、删除、归属校验与错误处理仍全部在模块内部。`BeginCleanup` 返回模块自己的清理 lease，让入口在原生清理期间持有 Docker 实例锁；模块不回调原生业务。两个清理入口在真正删除前再次核验自己的前置条件，归属标记也纳入预检查，防止先删除原生数据后才发现 Docker 数据不可清理。
 
 Docker 根本未安装且没有该模块元数据、目录和恢复记录时可视为未启用；一旦存在受管记录而无法核验，拒绝全局清理。检测到安装的 daemon 不可达时也不能跳过 Docker 检查。
 
@@ -667,7 +664,7 @@ Docker 根本未安装且没有该模块元数据、目录和恢复记录时可�
 
 ## 15. 测试与验收
 
-文档阶段不新增实现测试；下列为功能开发完成后的交付检查。
+已实现模拟 Docker 的单元测试及原生回归检查。下列包含已覆盖的单元行为和发布前仍需完成的真实运行验收；模拟执行器不安装 Docker、不拉取镜像、不启动容器。
 
 ### 15.1 模块测试
 
@@ -732,7 +729,7 @@ Docker 根本未安装且没有该模块元数据、目录和恢复记录时可�
 | 5 | 升级、恢复记录、移除、独立清理与全局清理 | 保留旧镜像可回滚；数据和外部资源边界正确 |
 | 6 | 菜单/CLI 完整接入、真实 Docker 验收和用户文档 | 达到发布完成条件 |
 
-主界面入口可以在开发过程中先加入，但只有阶段 6 验收完成后才能宣称 Docker 功能完整交付。所有 Docker 实现位于 `internal/docker/`，外部只有菜单/命令注册和清理协调；不建立原生与 Docker 共用的业务后端。原生清理对共享根目录的递归删除必须收紧，这是保护 Docker 数据所需的接入改动。
+当前独立实现、菜单、CLI 和模拟回归已落地，阶段 6 的真实 Docker/镜像/连接验收仍待完成。只有这些验收通过后才能宣称 Docker 功能完整运行验收通过。所有 Docker 实现位于 `internal/docker/`，外部只有菜单/命令注册和清理协调；不建立原生与 Docker 共用的业务后端。原生清理对共享根目录的递归删除已收紧，这是保护 Docker 数据所需的接入改动。
 
 ## 17. 官方参考
 

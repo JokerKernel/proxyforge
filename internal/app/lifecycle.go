@@ -343,8 +343,8 @@ func (a *App) Cleanup(ctx context.Context, target string) error {
 	}
 	if target == "all" {
 		path := a.Layout.Resolve("/var/lib/proxyforge")
-		a.progressf("删除 ProxyForge 数据根目录 %s", path)
-		if err := removeCleanupPath(path); err != nil {
+		a.progressf("清理原生管理数据，保留独立模块的数据目录 %s", path)
+		if err := removeNativeDataRoot(path); err != nil {
 			cleanupErrors = append(cleanupErrors, fmt.Errorf("删除 %s: %w", path, err))
 		}
 	} else if err := a.removeEmptyProxyForgeRoot(); err != nil {
@@ -359,6 +359,53 @@ func (a *App) Cleanup(ctx context.Context, target string) error {
 	}
 	fmt.Fprintf(a.Out, "[结果] %s 的卸载残留已清理。\n", target)
 	return nil
+}
+
+// CheckCleanup is read-only, so the entry layer can check every independent
+// module before any of them deletes data. It does not depend on Docker.
+func (a *App) CheckCleanup(ctx context.Context, target string) error {
+	if err := a.RootCheck(); err != nil {
+		return err
+	}
+	cores := []string{target}
+	if target == "all" {
+		cores = a.Registry.Names()
+	}
+	for _, core := range cores {
+		p, err := a.Registry.Get(core)
+		if err != nil {
+			return err
+		}
+		artifacts, err := a.inspectUninstallArtifacts(ctx, p)
+		if err != nil {
+			return err
+		}
+		if remaining := describeUninstallArtifacts(p, artifacts); len(remaining) > 0 {
+			return fmt.Errorf("仍检测到 %s 未完成卸载：%s；请先执行 uninstall", core, strings.Join(remaining, "、"))
+		}
+	}
+	return nil
+}
+
+func removeNativeDataRoot(path string) error {
+	entries, err := os.ReadDir(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		// The entire reserved namespace belongs to independent modules. Keep it
+		// even when empty or when called directly without CLI coordination.
+		if entry.Name() == "docker" {
+			continue
+		}
+		if err := removeCleanupPath(filepath.Join(path, entry.Name())); err != nil {
+			return err
+		}
+	}
+	return removeEmptyCleanupDirectory(path)
 }
 
 func (a *App) removeEmptyProxyForgeRoot() error {

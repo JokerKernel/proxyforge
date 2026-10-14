@@ -1,6 +1,6 @@
 # 构建、测试与发布
 
-Xray Docker 功能的待实现方案见 [Xray Docker 独立模块开发设计](xray-docker-development.md)。该文档定义完全独立的 `internal/docker` 模块，不依赖原生 app/system/provider/domain 业务；涵盖自建 Compose 实例、配置、存储、事务、菜单和验收要求，不代表当前版本已经支持 Docker。
+Xray Docker 使用完全独立的 `internal/docker` 模块，不依赖原生 app/system/provider/domain 业务。模块边界、Compose、存储、事务与验收要求见 [开发设计](xray-docker-development.md)，操作入口见 [使用指南](docker-xray.md)。
 
 ## 构建
 
@@ -8,6 +8,14 @@ Xray Docker 功能的待实现方案见 [Xray Docker 独立模块开发设计](x
 ./scripts/build.sh
 go test ./...
 ```
+
+Docker 单元测试使用模拟执行器，不安装 Docker、不拉取镜像、不运行真实容器。依赖边界检查要求模块生产和测试代码仅导入自身子包、标准库和通用第三方库；回滚测试覆盖配置、镜像、运行状态及中断恢复。
+
+```bash
+go test -race ./internal/docker ./internal/cli
+```
+
+真实 Docker、官方镜像与端到端代理连接需要另行在已安装 Docker 的 Linux 环境验收，不能以模拟命令测试替代。
 
 构建脚本从 Git 自动读取版本和提交号，并注入 UTC 构建时间；`make build` 是快捷入口。也可以显式覆盖元数据：
 

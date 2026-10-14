@@ -275,10 +275,11 @@ func (c *commandSet) selectCore(ctx context.Context) (string, bool, error) {
 		c.printProxyForgeHeader()
 		c.printMenuStatusChoice("1", "Xray-core", c.coreInstalled(ctx, domain.CoreXray))
 		c.printMenuStatusChoice("2", "sing-box", c.coreInstalled(ctx, domain.CoreSingBox))
+		c.printMenuChoice("3", "Xray（Docker）          ["+c.dockerLabel(ctx)+"]")
 		fmt.Fprint(c.out, "\n\n")
-		c.printMenuChoice("3", "清理全部卸载残留（两个内核均已卸载后使用）")
+		c.printMenuChoice("4", "清理全部卸载残留（原生内核已卸载且 Docker 实例已移除后使用）")
 		c.printMenuChoice("0/q", "退出")
-		choice, err := c.chooseNumber("请选择", 0, 3, 1)
+		choice, err := c.chooseNumber("请选择", 0, 4, 1)
 		if err != nil {
 			return "", false, err
 		}
@@ -288,6 +289,11 @@ func (c *commandSet) selectCore(ctx context.Context) (string, bool, error) {
 		case 2:
 			return domain.CoreSingBox, true, nil
 		case 3:
+			if err := c.dockerManager().Menu(ctx, c.reader); err != nil {
+				c.printMenuError(err)
+			}
+			continue
+		case 4:
 			confirmed, err := c.confirmCleanup("all")
 			if errors.Is(err, errReturnToMenu) || (err == nil && !confirmed) {
 				continue
@@ -295,7 +301,7 @@ func (c *commandSet) selectCore(ctx context.Context) (string, bool, error) {
 			if err != nil {
 				return "", false, err
 			}
-			if err := c.app.Cleanup(ctx, "all"); err != nil {
+			if err := c.cleanupTarget(ctx, "all"); err != nil {
 				c.printMenuError(err)
 			}
 			c.pauseForMenu()

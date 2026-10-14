@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"proxyforge/internal/app"
+	dockerfeature "proxyforge/internal/docker"
 	"proxyforge/internal/provider"
 	"proxyforge/internal/provider/singbox"
 	"proxyforge/internal/provider/xray"
@@ -23,6 +24,7 @@ var errReturnToMenu = errors.New("返回主菜单")
 
 type commandSet struct {
 	app              *app.App
+	docker           *dockerfeature.Manager
 	in               io.Reader
 	reader           *bufio.Reader
 	out              io.Writer
@@ -58,6 +60,7 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 	updater := selfupdate.Updater{Installer: selfInstaller, Stdout: os.Stdout, Stderr: os.Stderr}
 	c := &commandSet{
 		app: a, in: os.Stdin, reader: bufio.NewReader(os.Stdin), out: stdout, errOut: stderr,
+		docker:      dockerfeature.New(dockerfeature.Options{Root: layout.Root, Out: stdout, ErrOut: stderr}),
 		probeSNI:    app.ProbeSNICandidates,
 		physicalIPs: app.PhysicalInterfaceAddresses, externalIP: app.PublicAddress,
 		currentVersion: strings.SplitN(version, "\n", 2)[0], selfUpdate: updater.Run,
@@ -76,7 +79,7 @@ func newCommand(version string, rootCheck func() error) *cobra.Command {
 	root.SetIn(os.Stdin)
 	root.SetVersionTemplate("{{.Name}} {{.Version}}\n")
 	root.PersistentFlags().BoolVarP(&c.yes, "yes", "y", false, "非交互确认（内核管理脚本仍必须提供 SHA-256）")
-	root.AddCommand(c.installCommand(), c.updateCommand(), c.uninstallCommand(), c.cleanupCommand(), c.configCommand(), c.serviceCommand())
+	root.AddCommand(c.installCommand(), c.updateCommand(), c.uninstallCommand(), c.cleanupCommand(), c.configCommand(), c.serviceCommand(), c.docker.Command())
 	return root
 }
 

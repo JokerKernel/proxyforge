@@ -1,0 +1,40 @@
+name: proxyforge-xray
+
+services:
+  xray:
+    image: "{{ . }}"
+    container_name: proxyforge-xray
+    restart: unless-stopped
+    network_mode: host
+    command: ["run", "-config", "/usr/local/etc/xray/config.json"]
+    user: "0:0"
+    read_only: true
+    cap_drop: ["ALL"]
+    cap_add: ["NET_BIND_SERVICE"]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - type: bind
+        source: ./config
+        target: /usr/local/etc/xray
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./tls
+        target: /etc/xray/tls
+        read_only: true
+        bind:
+          create_host_path: false
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+      - /var/log/xray:rw,noexec,nosuid,nodev,size=16m,mode=0700
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    stop_grace_period: 10s
+    labels:
+      io.proxyforge.managed: "true"
+      io.proxyforge.core: "xray"
+      io.proxyforge.instance: "xray-docker"
