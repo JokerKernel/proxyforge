@@ -88,7 +88,7 @@ func (c *commandSet) lookEditor(name string) (string, error) {
 	return exec.LookPath(name)
 }
 
-func (c *commandSet) runConfigEditor(editor, path string) error {
+func (c *commandSet) runConfigEditor(editor, path string, inheritedFiles ...*os.File) error {
 	if c.runEditor != nil {
 		return c.runEditor(editor, path)
 	}
@@ -96,5 +96,6 @@ func (c *commandSet) runConfigEditor(editor, path string) error {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.ExtraFiles = inheritedFiles
 	return cmd.Run()
 }

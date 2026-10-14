@@ -617,22 +617,20 @@ func (c *commandSet) pasteLandingBundle() (domain.LandingPeer, error) {
 	if err != nil {
 		return domain.LandingPeer{}, err
 	}
-	f, err := os.CreateTemp("", "proxyforge-landing-paste-*.json")
+	w, err := newLandingPasteWorkspace(c.reportPasteCleanupFailure)
 	if err != nil {
-		return domain.LandingPeer{}, fmt.Errorf("创建临时粘贴文件: %w", err)
+		return domain.LandingPeer{}, fmt.Errorf("准备临时粘贴目录: %w", err)
 	}
-	path := f.Name()
-	defer os.Remove(path)
-	if err = f.Chmod(0600); err == nil {
-		err = f.Close()
-	} else {
-		_ = f.Close()
-	}
-	if err != nil {
-		return domain.LandingPeer{}, err
-	}
+	path := w.path()
+	defer func() {
+		if err := w.close(); err != nil {
+			c.reportPasteCleanupFailure(w.dir, err)
+		} else {
+			system.WriteDetail(c.out, "临时目录清理", "已删除 %s（含编辑器备份和交换文件）", w.dir)
+		}
+	}()
 	fmt.Fprintf(c.out, "将打开 %s。请粘贴落地服务器生成的完整 JSON，保存并退出。\n", filepath.Base(editor))
-	if err := c.runConfigEditor(editor, path); err != nil {
+	if err := c.runConfigEditor(editor, path, w.lock); err != nil {
 		return domain.LandingPeer{}, fmt.Errorf("编辑器退出异常: %w", err)
 	}
 	b, err := os.ReadFile(path)
@@ -646,8 +644,16 @@ func (c *commandSet) pasteLandingBundle() (domain.LandingPeer, error) {
 	if err != nil {
 		return domain.LandingPeer{}, fmt.Errorf("粘贴的落地连接文本无效: %w", err)
 	}
-	system.WriteDetail(c.out, "导入结果", "%s", "连接文本解析成功，临时文件将在导入后自动删除。")
+	system.WriteDetail(c.out, "导入结果", "连接文本解析成功。")
 	return peer, nil
+}
+
+func (c *commandSet) reportPasteCleanupFailure(path string, err error) {
+	output := c.errOut
+	if output == nil {
+		output = c.out
+	}
+	system.WriteDetail(output, "临时目录清理失败", "残留路径：%s；%v；下次使用粘贴导入时会再次检查。", path, err)
 }
 
 func (c *commandSet) askLandingPeer() (domain.LandingPeer, error) {

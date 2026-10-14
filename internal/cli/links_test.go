@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -32,6 +33,7 @@ const validLandingText = `{
 }`
 
 func TestPasteLandingBundleUsesPrivateTemporaryFileAndDeletesIt(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
 	var out bytes.Buffer
 	var openedPath string
 	c := &commandSet{
@@ -48,6 +50,16 @@ func TestPasteLandingBundleUsesPrivateTemporaryFileAndDeletesIt(t *testing.T) {
 			if got := info.Mode().Perm(); got != 0600 {
 				t.Fatalf("temporary file mode=%#o, want 0600", got)
 			}
+			dir := filepath.Dir(path)
+			info, err = os.Stat(dir)
+			if err != nil || info.Mode().Perm() != 0700 {
+				t.Fatalf("temporary directory info=%v, error=%v", info, err)
+			}
+			for _, name := range []string{".landing.json.swp", "landing.json~"} {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte("editor backup"), 0600); err != nil {
+					return err
+				}
+			}
 			return os.WriteFile(path, []byte(validLandingText), 0600)
 		},
 	}
@@ -62,10 +74,10 @@ func TestPasteLandingBundleUsesPrivateTemporaryFileAndDeletesIt(t *testing.T) {
 	if openedPath == "" {
 		t.Fatal("editor was not opened")
 	}
-	if _, err := os.Stat(openedPath); !os.IsNotExist(err) {
-		t.Fatalf("temporary file still exists after import: %q, error=%v", openedPath, err)
+	if _, err := os.Stat(filepath.Dir(openedPath)); !os.IsNotExist(err) {
+		t.Fatalf("temporary directory still exists after import: %q, error=%v", openedPath, err)
 	}
-	for _, want := range []string{"粘贴落地服务器生成的完整 JSON", "临时文件将在导入后自动删除"} {
+	for _, want := range []string{"粘贴落地服务器生成的完整 JSON", "连接文本解析成功", "临时目录清理", "含编辑器备份和交换文件"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("output missing %q: %q", want, out.String())
 		}
