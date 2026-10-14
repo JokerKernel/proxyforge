@@ -85,6 +85,12 @@ func TestDockerMenusReplacePreviousScreen(t *testing.T) {
 	if strings.Contains(rootScreen, "4   服务管理") || strings.Contains(rootScreen, "专用运行用户") {
 		t.Fatalf("root menu kept a native-only or old item: %s", rootScreen)
 	}
+	if !strings.Contains(rootScreen, "中转节点配置\n\n  4   移除容器") {
+		t.Fatalf("root menu blank line is not between items 3 and 4:\n%s", rootScreen)
+	}
+	if strings.Contains(rootScreen, "保留配置和数据\n\n  5   清理卸载残留") {
+		t.Fatalf("root menu still separates item 4 from item 5:\n%s", rootScreen)
+	}
 	configScreen := in.screens[1]
 	for _, want := range []string{"重置节点与 SNI 检测", "6   服务管理", "7   中转与落地配置"} {
 		if !strings.Contains(configScreen, want) {

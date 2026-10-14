@@ -11,6 +11,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"proxyforge/internal/docker/xray"
@@ -101,10 +103,30 @@ func (m *Manager) progress(format string, args ...any) {
 	fmt.Fprintf(m.errOut, "[Docker] "+format+"\n", args...)
 }
 func (m *Manager) docker(ctx context.Context, args ...string) ([]byte, error) {
-	return m.runner.Run(ctx, "docker", append([]string{"--host", endpoint}, args...)...)
+	full := append([]string{"--host", endpoint}, args...)
+	m.noteDockerCall(full)
+	return m.runner.Run(ctx, "docker", full...)
 }
 func (m *Manager) dockerStream(ctx context.Context, out, errOut io.Writer, args ...string) error {
-	return m.runner.RunStreaming(ctx, out, errOut, "docker", append([]string{"--host", endpoint}, args...)...)
+	full := append([]string{"--host", endpoint}, args...)
+	m.noteDockerCall(full)
+	return m.runner.RunStreaming(ctx, out, errOut, "docker", full...)
+}
+func (m *Manager) noteDockerCall(args []string) {
+	m.progress("调用：docker %s", formatCommandArgs(args))
+}
+func formatCommandArgs(args []string) string {
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		quoted[i] = quoteCommandArg(arg)
+	}
+	return strings.Join(quoted, " ")
+}
+func quoteCommandArg(arg string) string {
+	if arg == "" || strings.ContainsAny(arg, " \t\n\"'\\$`") {
+		return strconv.Quote(arg)
+	}
+	return arg
 }
 func (m *Manager) compose(ctx context.Context, args ...string) ([]byte, error) {
 	prefix := []string{"compose", "--project-name", Project, "--project-directory", m.paths.Deploy(), "--file", m.paths.Compose()}

@@ -41,6 +41,7 @@ func TestRemoveCleanupAndRecoverPrintEachStep(t *testing.T) {
 		"正在停止并移除容器 " + Container,
 		"正在记录已移除状态，配置和数据保留",
 		"容器已移除，配置、凭据和备份已保留",
+		"调用：docker --host " + endpoint + " compose --project-name " + Project + " --project-directory " + m.paths.Deploy() + " --file " + m.paths.Compose() + " down",
 	} {
 		if !strings.Contains(errOut.String(), want) {
 			t.Fatalf("remove missing %q:\n%s", want, errOut.String())
@@ -126,6 +127,9 @@ func TestApplyConfigPrintsEachStep(t *testing.T) {
 	}
 	for _, want := range []string{
 		"正在用本机镜像启动临时容器，执行 xray run -test 校验配置",
+		"调用：docker --host " + endpoint,
+		"--pull never",
+		"run -test -config /run/proxyforge/config.json",
 		"配置校验通过",
 		"正在写入服务端配置",
 		"正在重启容器，使新配置生效",
