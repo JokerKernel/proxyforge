@@ -30,6 +30,83 @@ func rootBytes(t *testing.T, r map[string]any) []byte {
 	}
 	return b
 }
+func TestRemoveCleanupAndRecoverPrintEachStep(t *testing.T) {
+	m, f := deployed(t)
+	var errOut bytes.Buffer
+	m.errOut = &errOut
+	if err := m.Remove(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"正在停止并移除容器 " + Container,
+		"正在记录已移除状态，配置和数据保留",
+		"容器已移除，配置、凭据和备份已保留",
+	} {
+		if !strings.Contains(errOut.String(), want) {
+			t.Fatalf("remove missing %q:\n%s", want, errOut.String())
+		}
+	}
+	errOut.Reset()
+	if err := m.Cleanup(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"正在确认容器已移除，且没有未完成事务",
+		"正在永久删除配置、凭据、证书和备份",
+		"正在删除 " + m.paths.Deploy(),
+		"正在删除 " + m.paths.Data(),
+		"Docker Xray 残留已清理，其他容器和镜像未改动",
+	} {
+		if !strings.Contains(errOut.String(), want) {
+			t.Fatalf("cleanup missing %q:\n%s", want, errOut.String())
+		}
+	}
+
+	m, f = deployed(t)
+	errOut.Reset()
+	m.errOut = &errOut
+	before := readFile(t, m.paths.Config())
+	j, err := m.begin("config", f.container)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = atomicWrite(m.paths.Config(), []byte(`{"broken":true}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = m.phase(&j, "files-committed"); err != nil {
+		t.Fatal(err)
+	}
+	if err = m.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, readFile(t, m.paths.Config())) {
+		t.Fatal("recovery lost old config")
+	}
+	for _, want := range []string{
+		"发现未完成的配置事务，正在继续恢复",
+		"正在读取事务快照",
+		"正在停止当前容器",
+		"正在恢复配置、状态和部署记录",
+		"正在按中断前的运行状态启动容器",
+		"正在检查恢复后的容器是否稳定监听",
+		"容器已稳定监听",
+		"正在清除恢复记录",
+		"事务恢复完成",
+	} {
+		if !strings.Contains(errOut.String(), want) {
+			t.Fatalf("recover missing %q:\n%s", want, errOut.String())
+		}
+	}
+
+	errOut.Reset()
+	if err = m.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(errOut.String(), "没有未完成事务") {
+		t.Fatalf("idle recover missing notice:\n%s", errOut.String())
+	}
+}
+
 func TestApplyConfigPrintsEachStep(t *testing.T) {
 	m, _ := deployed(t)
 	var errOut bytes.Buffer

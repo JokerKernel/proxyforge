@@ -145,6 +145,7 @@ func (m *Manager) restoreTransaction(ctx context.Context, j journal) error {
 	if j.SchemaVersion != 1 || j.InstanceID != Instance || filepath.Dir(j.Backup) != m.paths.Backups() {
 		return fmt.Errorf("事务恢复记录标识/路径无效")
 	}
+	m.progress("正在读取事务快照")
 	var snaps []fileSnapshot
 	if err := loadSnapshot(filepath.Join(j.Backup, "snapshot.json"), &snaps); err != nil {
 		return err
@@ -167,11 +168,13 @@ func (m *Manager) restoreTransaction(ctx context.Context, j journal) error {
 		return err
 	}
 	if in != nil {
+		m.progress("正在停止当前容器")
 		if _, err = m.docker(ctx, "container", "stop", in.ID); err != nil {
 			return err
 		}
 	}
 	// Files are restored before runtime recreation. Metadata is consequently old.
+	m.progress("正在恢复配置、状态和部署记录")
 	for _, s := range snaps {
 		if err = restore(s); err != nil {
 			return err
@@ -187,8 +190,10 @@ func (m *Manager) restoreTransaction(ctx context.Context, j journal) error {
 		}
 		args := []string{"up", "--no-deps", "--pull", "never", "--force-recreate"}
 		if j.OldRunning {
+			m.progress("正在按中断前的运行状态启动容器")
 			args = append(args, "-d")
 		} else {
+			m.progress("正在重建容器并保持停止")
 			args = append(args, "--no-start")
 		}
 		args = append(args, Service)
@@ -200,18 +205,23 @@ func (m *Manager) restoreTransaction(ctx context.Context, j journal) error {
 			if err != nil {
 				return err
 			}
+			m.progress("正在检查恢复后的容器是否稳定监听")
 			if err = m.healthCheck(ctx, nodePorts(s.Node), md.ImageID); err != nil {
 				return err
 			}
+			m.progress("容器已稳定监听")
 		}
 	} else if in != nil {
+		m.progress("中断前没有受管容器，正在删除当前容器")
 		if _, err = m.docker(ctx, "container", "rm", in.ID); err != nil {
 			return err
 		}
 	}
+	m.progress("正在清除恢复记录")
 	if err = os.Remove(m.paths.Journal()); err != nil && !os.IsNotExist(err) {
 		return err
 	}
+	m.progress("事务恢复完成")
 	return nil
 }
 func loadSnapshot(path string, v any) error {
@@ -242,13 +252,42 @@ func (m *Manager) recoverLocked(ctx context.Context) error {
 		return err
 	}
 	if j.Phase == "committed" {
-		return os.Remove(m.paths.Journal())
+		m.progress("事务已经完成，正在清除恢复记录")
+		if err = os.Remove(m.paths.Journal()); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		m.progress("恢复记录已清除")
+		return nil
 	}
+	m.progress("发现未完成的%s事务，正在继续恢复", transactionKindLabel(j.Kind))
 	if err = m.CheckReady(ctx); err != nil {
 		return err
 	}
 	return m.restoreTransaction(ctx, j)
 }
+func transactionKindLabel(kind string) string {
+	switch kind {
+	case "config":
+		return "配置"
+	case "upgrade":
+		return "升级"
+	case "prepare":
+		return "准备镜像"
+	default:
+		if kind == "" {
+			return ""
+		}
+		return kind
+	}
+}
 func (m *Manager) Recover(ctx context.Context) error {
-	return m.withLock(ctx, func() error { return m.recoverLocked(ctx) })
+	return m.withLock(ctx, func() error {
+		if _, err := os.Stat(m.paths.Journal()); os.IsNotExist(err) {
+			m.progress("没有未完成事务")
+			return nil
+		} else if err != nil {
+			return err
+		}
+		return m.recoverLocked(ctx)
+	})
 }

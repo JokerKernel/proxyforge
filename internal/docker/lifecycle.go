@@ -308,6 +308,7 @@ func (m *Manager) Remove(ctx context.Context) error {
 			return err
 		}
 		if in == nil {
+			m.progress("当前没有容器，配置和数据仍保留")
 			return nil
 		}
 		md, err := m.metadata()
@@ -317,6 +318,7 @@ func (m *Manager) Remove(ctx context.Context) error {
 		if err = m.checkCompose(md); err != nil {
 			return err
 		}
+		m.progress("正在停止并移除容器 %s", Container)
 		if _, err = m.compose(ctx, "down"); err != nil {
 			return err
 		}
@@ -327,6 +329,7 @@ func (m *Manager) Remove(ctx context.Context) error {
 		if in != nil {
 			return fmt.Errorf("移除后仍存在容器，数据已保留")
 		}
+		m.progress("正在记录已移除状态，配置和数据保留")
 		md.DesiredState = "stopped"
 		md.UpdatedAt = m.now().UTC()
 		if err = saveJSON(m.paths.Metadata(), md); err != nil {
@@ -431,6 +434,7 @@ func (l *CleanupLease) Cleanup() error {
 	return l.manager.cleanupLocked(l.ctx)
 }
 func (m *Manager) cleanupLocked(ctx context.Context) error {
+	m.progress("正在确认容器已移除，且没有未完成事务")
 	if err := m.CheckCleanup(ctx); err != nil {
 		return err
 	}
@@ -451,8 +455,10 @@ func (m *Manager) cleanupLocked(ctx context.Context) error {
 			return err
 		}
 	}
+	m.progress("正在永久删除配置、凭据、证书和备份")
 	var errs []error
 	for _, path := range []string{m.paths.Deploy(), m.paths.Data()} {
+		m.progress("正在删除 %s", path)
 		if err := os.RemoveAll(path); err != nil {
 			errs = append(errs, err)
 		}
