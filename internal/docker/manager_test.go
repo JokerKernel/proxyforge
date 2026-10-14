@@ -34,6 +34,9 @@ type simulatedDocker struct {
 	foreignProject   bool
 	unavailable      bool
 	healthFailures   int
+	latestVersion    string
+	latestImageID    string
+	versionOutput    string
 }
 
 func (f *simulatedDocker) RunStreaming(ctx context.Context, out, errOut io.Writer, name string, args ...string) error {
@@ -63,11 +66,20 @@ func (f *simulatedDocker) Run(_ context.Context, name string, args ...string) ([
 		if a[1] == "pull" {
 			tag := a[2]
 			version := strings.TrimPrefix(tag, Repository+":")
+			if version == "latest" {
+				version = f.latestVersion
+				if version == "" {
+					version = "26.4.1"
+				}
+			}
 			char := "a"
 			if version != "26.3.27" {
 				char = "b"
 			}
 			id := "sha256:" + strings.Repeat(char, 64)
+			if tag == Repository+":latest" && f.latestImageID != "" {
+				id = f.latestImageID
+			}
 			md := Metadata{ImageID: id, ImageRef: Repository + "@" + id, RequestedVersion: version}
 			f.selected = md
 			f.images[id] = md
@@ -133,6 +145,9 @@ func (f *simulatedDocker) Run(_ context.Context, name string, args ...string) ([
 		core := a[at+1:]
 		switch core[0] {
 		case "version":
+			if f.versionOutput != "" {
+				return []byte(f.versionOutput), nil
+			}
 			return []byte("Xray " + md.RequestedVersion + " (test build)\n"), nil
 		case "x25519":
 			key := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))

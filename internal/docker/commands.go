@@ -29,12 +29,12 @@ func (m *Manager) Command() *cobra.Command {
 			}
 			return m.Upgrade(cmd.Context(), version)
 		}}
-		sub.Flags().StringVar(&version, "version", "", "指定官方版本，缺省最新稳定版")
+		sub.Flags().StringVar(&version, "version", "", "stable（缺省最新稳定版）、latest（官方镜像标签）或具体版本号")
 		cmd.AddCommand(sub)
 	}
 	deploy := m.generateCommand("deploy", &yes)
 	var version string
-	deploy.Flags().StringVar(&version, "version", "", "首次部署的镜像版本，缺省最新稳定版")
+	deploy.Flags().StringVar(&version, "version", "", "首次部署镜像：stable（缺省）、latest 或具体版本号")
 	runGenerate := deploy.RunE
 	deploy.RunE = func(cmd *cobra.Command, args []string) error {
 		if _, err := m.metadata(); os.IsNotExist(err) {
@@ -48,12 +48,8 @@ func (m *Manager) Command() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			v, err := normalizeVersion(version)
-			if err != nil {
+			if err = checkPreparedVersion(md, version); err != nil {
 				return err
-			}
-			if v != md.RequestedVersion {
-				return fmt.Errorf("请先升级到选定镜像版本")
 			}
 		}
 		return runGenerate(cmd, args)

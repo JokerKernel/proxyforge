@@ -22,6 +22,30 @@ func normalizeVersion(version string) (string, error) {
 	}
 	return v, nil
 }
+
+func normalizeImageSelection(version string) (string, error) {
+	version = strings.TrimSpace(version)
+	switch version {
+	case "", "stable":
+		return "", nil
+	case "latest":
+		return version, nil
+	default:
+		return normalizeVersion(version)
+	}
+}
+
+func checkPreparedVersion(md Metadata, version string) error {
+	selection, err := normalizeImageSelection(version)
+	if err != nil {
+		return err
+	}
+	if selection == "" || selection == "latest" && md.Channel == "latest" || selection == md.RequestedVersion {
+		return nil
+	}
+	return fmt.Errorf("镜像已准备为 %s（%s），请先通过升级入口切换版本", md.RequestedVersion, md.Channel)
+}
+
 func (m *Manager) latestStable(ctx context.Context) (string, error) {
 	if m.stableVersion != nil {
 		return m.stableVersion(ctx)
@@ -58,18 +82,24 @@ func (m *Manager) latestStable(ctx context.Context) (string, error) {
 	return normalizeVersion(release.Tag)
 }
 func (m *Manager) prepareImage(ctx context.Context, version string) (Metadata, error) {
+	v, err := normalizeImageSelection(version)
+	if err != nil {
+		return Metadata{}, err
+	}
 	channel := "pinned"
-	if strings.TrimSpace(version) == "" {
+	switch v {
+	case "":
 		channel = "stable"
-		v, err := m.latestStable(ctx)
+		version, err := m.latestStable(ctx)
 		if err != nil {
 			return Metadata{}, err
 		}
-		version = v
-	}
-	v, err := normalizeVersion(version)
-	if err != nil {
-		return Metadata{}, err
+		v, err = normalizeVersion(version)
+		if err != nil {
+			return Metadata{}, err
+		}
+	case "latest":
+		channel = "latest"
 	}
 	tag := Repository + ":" + v
 	m.progress("拉取官方 Xray 镜像 %s", tag)
@@ -109,13 +139,20 @@ func (m *Manager) prepareImage(ctx context.Context, version string) (Metadata, e
 	}
 	line := strings.Split(strings.TrimSpace(string(output)), "\n")[0]
 	fields := strings.Fields(line)
-	if len(fields) < 2 || fields[0] != "Xray" || strings.TrimPrefix(fields[1], "v") != v {
+	if len(fields) < 2 || fields[0] != "Xray" {
+		return Metadata{}, fmt.Errorf("镜像实际版本输出无效")
+	}
+	actualVersion, err := normalizeVersion(fields[1])
+	if err != nil {
+		return Metadata{}, fmt.Errorf("镜像实际版本输出无效: %w", err)
+	}
+	if channel != "latest" && actualVersion != v {
 		return Metadata{}, fmt.Errorf("镜像实际版本与请求版本不一致")
 	}
 	if _, err = m.keyPair(ctx, image.ID); err != nil {
 		return Metadata{}, err
 	}
-	md := Metadata{SchemaVersion: 1, ManagedBy: "proxyforge", InstanceID: Instance, ImageRef: ref, ImageID: image.ID, Version: line, RequestedVersion: v, Channel: channel, DesiredState: "stopped", UpdatedAt: m.now().UTC()}
+	md := Metadata{SchemaVersion: 1, ManagedBy: "proxyforge", InstanceID: Instance, ImageRef: ref, ImageID: image.ID, Version: line, RequestedVersion: actualVersion, Channel: channel, DesiredState: "stopped", UpdatedAt: m.now().UTC()}
 	return md, nil
 }
 func parseKeyPair(b []byte) (model.KeyPair, error) {

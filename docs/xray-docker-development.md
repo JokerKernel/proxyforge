@@ -31,7 +31,7 @@ ProxyForge 在 Linux 宿主机运行，以独立模块维护一个自行创建�
 - 实例级数据隔离、配置备份、事务恢复、容器移除与残留清理。
 - 原生 Xray 和 sing-box 的现有功能保持兼容。
 
-首版不接管已有任意容器，不自动安装 Docker，不支持远程 daemon、rootless Docker、Docker Desktop、桥接网络、多实例和多文件合并配置。Docker 的稳定版和指定版本渠道独立保存；开发版渠道在确认官方镜像标签规则后另行扩展。原生渠道逻辑保持原样。
+首版不接管已有任意容器，不自动安装 Docker，不支持远程 daemon、rootless Docker、Docker Desktop、桥接网络、多实例和多文件合并配置。Docker 的稳定版、官方 `latest` 标签和指定版本渠道独立保存；开发版渠道在确认官方镜像标签规则后另行扩展。原生渠道逻辑保持原样。
 
 ## 2. 现有代码与接入边界
 
@@ -288,6 +288,8 @@ Docker 模块独立实现 StateStore、访问策略、线路和版本偏好的�
 
 示例中的占位符由程序写入真实值。容器 ID 属于运行时信息，不能充当稳定实例标识。`desired_state` 在成功操作后更新，实际状态以 Docker inspect 为准。
 
+`channel` 支持 `stable`、`latest`、`pinned`。选择 `latest` 时，直接拉取官方 `:latest` 并检测镜像实际内核版本；`requested_version` 保存检测到的具体版本，`version` 保存内核版本输出，Compose 仍固定为 digest。已准备的 latest 镜像可继续部署；只有主动升级重新拉取该标签。
+
 ## 6. Compose 模板
 
 以下为 Go 模板，模板输入字符串由程序解析版本并拉取后填入官方仓库 digest 引用。实际生成文件没有模板占位符；代码中的内嵌模板采用等价的 YAML 列表格式。
@@ -399,7 +401,7 @@ docker --host unix:///var/run/docker.sock compose
 「准备镜像」与「启动代理」分别定义，避免没有节点配置时启动空容器。
 
 1. 加实例锁，检查环境和同名资源。
-2. 稳定版解析为明确发行版本；指定版本规范化为镜像标签并检查存在性。不能未经确认直接假定 Release 标签和镜像标签一致。
+2. 稳定版解析为明确发行版本；`latest` 直接拉取官方同名镜像标签，不查询 GitHub Releases API；指定版本规范化为镜像标签并检查存在性。不能未经确认直接假定 Release 标签和镜像标签一致。所有渠道均检测实际内核版本并固定 digest；`latest` 不额外过滤发布类型。
 3. 拉取目标镜像，记录 repo digest、本机 image ID 和实际 Xray 版本。
 4. 使用临时容器执行 `version`、`x25519` 和当前项目配置能力校验。
 5. 创建目录、渲染 Compose、验证并原子保存部署元数据。

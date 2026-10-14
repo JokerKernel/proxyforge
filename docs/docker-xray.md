@@ -2,7 +2,7 @@
 
 ProxyForge 通过独立的 `internal/docker` 模块管理一个自行创建的 Xray Compose 实例。主界面第 3 项进入 Docker 管理，第 4 项为全局残留清理。原生 Xray 与 sing-box 的配置和命令入口保持独立。
 
-Docker 版不依赖宿主机安装的 Xray，也不要求存在 `xray.service`。使用官方镜像 `ghcr.io/xtls/xray-core`，具体版本拉取成功后固定为 digest；普通启动和配置修改不会自动更新镜像。
+Docker 版不依赖宿主机安装的 Xray，也不要求存在 `xray.service`。使用官方镜像 `ghcr.io/xtls/xray-core`，镜像拉取成功后固定为 digest；普通启动和配置修改不会自动更新镜像。
 
 ## 环境要求
 
@@ -12,7 +12,13 @@ Docker 版不依赖宿主机安装的 Xray，也不要求存在 `xray.service`�
 
 ProxyForge 只检测 Docker/Compose 是否可用，不会自动安装 Docker，也不会执行 Docker 安装脚本。Docker 版不使用原生 app/system/provider/domain 业务代码。
 
-首次准备、升级需要访问官方镜像仓库；选择最新稳定版还需要访问 GitHub API。提供 `--version` 可以直接选择具体版本，但首次仍需要拉取镜像。
+首次准备、升级需要访问官方镜像仓库；选择最新稳定版还需要访问 GitHub API。镜像版本支持三种选择：
+
+- `stable` 或省略 `--version`：查询 GitHub 最新正式稳定版，再拉取具体版本镜像。
+- `latest`：直接拉取官方 `ghcr.io/xtls/xray-core:latest`，不查询 GitHub Releases API。
+- 具体版本号：拉取对应官方镜像，核对实际内核版本。
+
+三种方式均记录实际内核版本并固定 digest。`latest` 按官方标签选择，不额外检查 GitHub 发布类型；只有再次主动升级才会拉取该标签的新镜像。
 
 ## 首次部署
 
@@ -30,6 +36,10 @@ sudo proxyforge docker deploy \
 
 # 指定官方镜像版本（VERSION 替换为实际发行版本号）
 sudo proxyforge docker deploy --version VERSION \
+  --security tls --server YOUR_SERVER_IP --port 8443
+
+# 使用官方 latest 镜像标签
+sudo proxyforge docker deploy --version latest \
   --security tls --server YOUR_SERVER_IP --port 8443
 ```
 
@@ -120,6 +130,7 @@ sudo proxyforge docker service logs
 sudo proxyforge docker service logs --follow
 
 sudo proxyforge docker upgrade --version VERSION
+sudo proxyforge docker upgrade --version latest
 sudo proxyforge docker recover
 ```
 

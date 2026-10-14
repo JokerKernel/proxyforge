@@ -177,7 +177,7 @@ func (m *Manager) Menu(ctx context.Context, input io.Reader) error {
 		switch choice {
 		case 1:
 			var version string
-			version, err = u.ask("镜像版本（stable 为最新稳定版）", "stable")
+			version, err = u.ask("镜像版本（stable 为最新稳定版，latest 为官方镜像标签，也可输入版本号）", "stable")
 			if err == nil {
 				if version == "stable" {
 					version = ""

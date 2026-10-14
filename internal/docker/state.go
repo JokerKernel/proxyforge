@@ -35,7 +35,7 @@ func (m *Manager) metadata() (Metadata, error) {
 	if err != nil {
 		return md, err
 	}
-	if md.SchemaVersion != 1 || md.ManagedBy != "proxyforge" || md.InstanceID != Instance || !validImageRef(md.ImageRef) || !validImageID(md.ImageID) || (md.DesiredState != "stopped" && md.DesiredState != "running") || (md.Channel != "stable" && md.Channel != "pinned") {
+	if md.SchemaVersion != 1 || md.ManagedBy != "proxyforge" || md.InstanceID != Instance || !validImageRef(md.ImageRef) || !validImageID(md.ImageID) || (md.DesiredState != "stopped" && md.DesiredState != "running") || (md.Channel != "stable" && md.Channel != "pinned" && md.Channel != "latest") {
 		return md, fmt.Errorf("Docker 部署记录标识或镜像无效")
 	}
 	return md, nil

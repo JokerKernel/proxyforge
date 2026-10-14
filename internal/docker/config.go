@@ -77,12 +77,8 @@ func (m *Manager) Deploy(ctx context.Context, version string, opts model.Generat
 		if err != nil {
 			return err
 		}
-		v, err := normalizeVersion(version)
-		if err != nil {
+		if err = checkPreparedVersion(md, version); err != nil {
 			return err
-		}
-		if v != md.RequestedVersion {
-			return fmt.Errorf("镜像已准备为 %s，请先通过升级入口切换版本", md.RequestedVersion)
 		}
 	}
 	return m.Generate(ctx, opts, true)
