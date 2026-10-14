@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -91,6 +93,46 @@ func TestFillResetDefaultsTargetToNewSNI(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "手动 SNI 检测结果") || !strings.Contains(out.String(), "确认采用这个手动 SNI") {
 		t.Fatalf("manual reset SNI was not checked: %q", out.String())
+	}
+}
+
+func TestFillResetStopsOnCanceledOrEndedInput(t *testing.T) {
+	for _, tt := range []struct {
+		name, input, sni string
+		wantErr          error
+	}{
+		{"SNI EOF", "", "", io.EOF},
+		{"SNI cancel", "q\n", "", errReturnToMenu},
+		{"target EOF", "yes\n", "new.example.com", io.EOF},
+		{"target cancel", "yes\nq\n", "new.example.com", errReturnToMenu},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			store := system.StateStore{Layout: system.Layout{Root: t.TempDir()}}
+			if err := store.Save(domain.NodeSpec{ManagedBy: "proxyforge", Core: domain.CoreXray, SNI: "old.example.com", Target: "old.example.com:443"}); err != nil {
+				t.Fatal(err)
+			}
+			probed := false
+			c := &commandSet{
+				app: &app.App{Store: store}, reader: bufio.NewReader(strings.NewReader(tt.input)), out: io.Discard,
+				probeSNI: func(_ context.Context, candidates []string, _ string, _ int) ([]app.SNICandidate, error) {
+					probed = true
+					if len(candidates) != 1 || candidates[0] != tt.sni {
+						t.Fatalf("unexpected SNI probe: %v", candidates)
+					}
+					return []app.SNICandidate{{Domain: tt.sni}}, nil
+				},
+			}
+			opts := domain.ResetOptions{SNI: tt.sni}
+			if err := c.fillReset(context.Background(), domain.CoreXray, &opts); !errors.Is(err, tt.wantErr) {
+				t.Fatalf("error = %v; want %v", err, tt.wantErr)
+			}
+			if tt.sni == "" && probed {
+				t.Fatal("SNI probing continued after input ended or was canceled")
+			}
+			if opts.Target != "" {
+				t.Fatalf("reset target filled after input ended or was canceled: %s", opts.Target)
+			}
+		})
 	}
 }
 

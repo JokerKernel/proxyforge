@@ -35,7 +35,7 @@ func (*Provider) OutboundIPStrategies() []string {
 }
 
 func (*Provider) CurrentOutboundIPStrategy(config []byte) (string, error) {
-	root, outbound, err := parseDirectOutbound(config, "读取")
+	root, outbound, err := parseDirectOutbound(config)
 	if err != nil {
 		return "", err
 	}
@@ -83,7 +83,7 @@ func (*Provider) PatchOutboundIPStrategy(config []byte, strategy string) ([]byte
 	if !slices.Contains(supportedOutboundIPStrategies, strategy) {
 		return nil, fmt.Errorf("sing-box 出站 IP 策略 %q 无效", strategy)
 	}
-	root, outbound, err := parseDirectOutbound(config, "修改")
+	root, outbound, err := parseDirectOutbound(config)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func (*Provider) PatchOutboundIPStrategy(config []byte, strategy string) ([]byte
 }
 
 func (*Provider) CurrentFallbackIPStrategy(config []byte) (string, error) {
-	_, outbound, err := parseFallbackDirectOutbound(config, "读取")
+	_, outbound, err := parseFallbackDirectOutbound(config)
 	if err != nil {
 		return "", err
 	}
@@ -135,7 +135,7 @@ func (*Provider) PatchFallbackIPStrategy(config []byte, strategy string) ([]byte
 	if !slices.Contains(supportedOutboundIPStrategies, strategy) {
 		return nil, fmt.Errorf("sing-box 回落 IP 策略 %q 无效", strategy)
 	}
-	root, _, err := parseFallbackDirectOutbound(config, "修改")
+	root, _, err := parseFallbackDirectOutbound(config)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +164,7 @@ func (*Provider) PatchFallbackIPStrategy(config []byte, strategy string) ([]byte
 	return marshalSingBox(root)
 }
 
-func parseFallbackDirectOutbound(config []byte, _ string) (map[string]any, map[string]any, error) {
+func parseFallbackDirectOutbound(config []byte) (map[string]any, map[string]any, error) {
 	root, err := parseDNSRoot(config)
 	if err != nil {
 		return nil, nil, err
@@ -205,7 +205,7 @@ func findTaggedOutbound(root map[string]any, tag string) (map[string]any, error)
 	return matches[0], nil
 }
 
-func parseDirectOutbound(config []byte, _ string) (map[string]any, map[string]any, error) {
+func parseDirectOutbound(config []byte) (map[string]any, map[string]any, error) {
 	root, err := parseDNSRoot(config)
 	if err != nil {
 		return nil, nil, err

@@ -12,6 +12,8 @@ import (
 	"proxyforge/internal/system"
 )
 
+// ResetCredentials atomically rotates every client credential, optionally
+// changing SNI and target while preserving the node's address and port.
 func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.ResetOptions) (domain.NodeSpec, error) {
 	a.progressf("开始重置 %s 节点凭据", core)
 	if err := a.RootCheck(); err != nil {

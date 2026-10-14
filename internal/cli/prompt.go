@@ -60,7 +60,7 @@ func (c *commandSet) chooseNumberInput(label string, min, max, def int, cancelab
 			return choice, nil
 		}
 		if c.interactiveUI() {
-			eraseChoiceRetry(c.out, false)
+			eraseChoiceRetry(c.out)
 		}
 		if pasted {
 			fmt.Fprintln(c.out, "检测到粘贴了多行内容，已忽略多余输入。")
@@ -79,28 +79,15 @@ func (c *commandSet) chooseNumberInput(label string, min, max, def int, cancelab
 	}
 }
 
-func eraseChoiceRetry(w io.Writer, invalidShown bool) {
-	erasePreviousLine := "\033[1A\r\033[2K"
-	fmt.Fprint(w, erasePreviousLine)
-	if invalidShown {
-		fmt.Fprint(w, erasePreviousLine)
-	}
+func eraseChoiceRetry(w io.Writer) {
+	fmt.Fprint(w, "\033[1A\r\033[2K")
 }
 
 func (c *commandSet) printMenuError(err error) {
 	fmt.Fprintf(c.errOut, "[错误] 操作失败：%v\n", err)
 }
 
-func (c *commandSet) askDefault(label, def string) string {
-	value, _ := c.askDefaultInput(label, def, false)
-	return value
-}
-
 func (c *commandSet) askDefaultCancelable(label, def string) (string, error) {
-	return c.askDefaultInput(label, def, true)
-}
-
-func (c *commandSet) askDefaultInput(label, def string, cancelable bool) (string, error) {
 	if def != "" {
 		fmt.Fprintf(c.out, "%s [%s]: ", label, def)
 	} else {
@@ -111,29 +98,26 @@ func (c *commandSet) askDefaultInput(label, def string, cancelable bool) (string
 	if err != nil && len(line) == 0 {
 		return "", err
 	}
-	if err == nil || len(line) > 0 {
-		v := strings.TrimSpace(line)
-		if cancelable && strings.EqualFold(v, "q") {
-			return "", errReturnToMenu
-		}
-		if v != "" {
-			return v, nil
-		}
+	v := strings.TrimSpace(line)
+	if strings.EqualFold(v, "q") {
+		return "", errReturnToMenu
+	}
+	if v != "" {
+		return v, nil
 	}
 	return def, nil
 }
 
 func (c *commandSet) confirm(message string) (bool, error) {
-	return c.confirmInput(message, false, false)
+	return c.confirmInput(message, false)
 }
 
 func (c *commandSet) confirmCancelable(message string) (bool, error) {
-	return c.confirmInput(message, true, false)
-
+	return c.confirmInput(message, false)
 }
 
 func (c *commandSet) confirmCancelableDefaultYes(message string) (bool, error) {
-	return c.confirmInput(message, true, true)
+	return c.confirmInput(message, true)
 }
 
 func (c *commandSet) printConfirmationPanel(title string, details []string, sections ...confirmationSection) {
@@ -154,7 +138,7 @@ func (c *commandSet) printConfirmationPanel(title string, details []string, sect
 	fmt.Fprintln(c.out, "----------------------------------------")
 }
 
-func (c *commandSet) confirmInput(message string, cancelable, defaultYes bool) (bool, error) {
+func (c *commandSet) confirmInput(message string, defaultYes bool) (bool, error) {
 	fmt.Fprintln(c.out, strings.TrimSpace(message))
 	invalidShown := false
 	for {
@@ -179,7 +163,7 @@ func (c *commandSet) confirmInput(message string, cancelable, defaultYes bool) (
 			return true, nil
 		}
 		if c.interactiveUI() {
-			eraseChoiceRetry(c.out, false)
+			eraseChoiceRetry(c.out)
 		}
 		if pasted {
 			fmt.Fprintln(c.out, "检测到粘贴了多行内容，已忽略多余输入。")

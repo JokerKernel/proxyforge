@@ -3,13 +3,13 @@ package app
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"proxyforge/internal/system"
 )
 
 type interfaceAddressCandidate struct {
@@ -114,15 +114,33 @@ func physicalInterfaceAddresses(candidates []interfaceAddressCandidate) []Public
 
 func PublicAddress(ctx context.Context) (string, error) {
 	// Keep discovery deliberately simple and HTTPS-only; interactive users can edit it.
-	req, _ := httpRequest(ctx, "https://api.ipify.org")
-	client := &netHTTPClient{timeout: 5 * time.Second}
-	b, err := client.do(req)
+	return discoverPublicAddress(ctx, &http.Client{Timeout: 5 * time.Second})
+}
+
+func discoverPublicAddress(ctx context.Context, client *http.Client) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.ipify.org", nil)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("创建公网地址探测请求: %w", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("探测公网地址: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("探测公网地址返回 %s", resp.Status)
+	}
+	const maxAddressSize = 128
+	b, err := io.ReadAll(io.LimitReader(resp.Body, maxAddressSize+1))
+	if err != nil {
+		return "", fmt.Errorf("读取公网地址响应: %w", err)
+	}
+	if len(b) > maxAddressSize {
+		return "", fmt.Errorf("公网地址响应超过 %d bytes", maxAddressSize)
 	}
 	address := strings.TrimSpace(string(b))
-	if err := system.ValidateServer(address); err != nil {
-		return "", err
+	if net.ParseIP(address) == nil {
+		return "", fmt.Errorf("公网地址响应不是有效 IP")
 	}
 	return address, nil
 }

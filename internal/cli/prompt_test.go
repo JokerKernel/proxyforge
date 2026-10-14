@@ -144,16 +144,12 @@ func TestChooseNumberRetriesInvalidInput(t *testing.T) {
 	}
 }
 
-func TestEraseChoiceRetryReplacesPromptAndPreviousError(t *testing.T) {
+func TestEraseChoiceRetryReplacesPrompt(t *testing.T) {
 	const eraseLine = "\x1b[1A\r\x1b[2K"
-	var first, retry bytes.Buffer
-	eraseChoiceRetry(&first, false)
-	eraseChoiceRetry(&retry, true)
-	if first.String() != eraseLine {
-		t.Fatalf("first invalid clear=%q", first.String())
-	}
-	if retry.String() != eraseLine+eraseLine {
-		t.Fatalf("repeated invalid clear=%q", retry.String())
+	var out bytes.Buffer
+	eraseChoiceRetry(&out)
+	if out.String() != eraseLine {
+		t.Fatalf("invalid prompt clear=%q", out.String())
 	}
 }
 

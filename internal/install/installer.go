@@ -193,7 +193,7 @@ func writePreparedScript(script DownloadedScript) (string, func(), error) {
 	}
 	path := f.Name()
 	cleanup := func() { _ = os.Remove(path) }
-	if err := f.Chmod(0700); err == nil {
+	if err = f.Chmod(0700); err == nil {
 		_, err = f.Write(script.Content)
 	}
 	if closeErr := f.Close(); err == nil {
@@ -204,10 +204,6 @@ func writePreparedScript(script DownloadedScript) (string, func(), error) {
 		return "", nil, err
 	}
 	return path, cleanup, nil
-}
-
-func (i Installer) executeScript(ctx context.Context, args []string) error {
-	return i.executeScriptWithPrefix(ctx, args, "[Bash] ")
 }
 
 func (i Installer) executeScriptWithPrefix(ctx context.Context, args []string, outputPrefix string) error {
@@ -473,10 +469,6 @@ func validShellShebang(line string) bool {
 		return true
 	}
 	return interpreter == "env" && len(fields) >= 2 && (fields[1] == "sh" || fields[1] == "bash")
-}
-
-func bashSyntax(ctx context.Context, b []byte) error {
-	return bashSyntaxLogged(ctx, b, nil)
 }
 
 func bashSyntaxLogged(ctx context.Context, b []byte, output io.Writer) error {

@@ -110,7 +110,10 @@ func (c *commandSet) fillReset(ctx context.Context, core string, opts *domain.Re
 	opts.SNI = strings.TrimSpace(opts.SNI)
 	manualSNI := opts.SNI != ""
 	if opts.SNI == "" {
-		opts.SNI = c.askDefault("新的 REALITY SNI（输入域名；直接回车自动测速候选）", "")
+		opts.SNI, err = c.askDefaultCancelable("新的 REALITY SNI（输入域名；直接回车自动测速候选）", "")
+		if err != nil {
+			return err
+		}
 		opts.SNI = strings.TrimSpace(opts.SNI)
 		manualSNI = opts.SNI != ""
 		if opts.SNI == "" {
@@ -136,7 +139,10 @@ func (c *commandSet) fillReset(ctx context.Context, core string, opts *domain.Re
 	}
 	if opts.Target == "" {
 		defaultTarget := netJoinHostPort(opts.SNI, "443")
-		opts.Target = c.askDefault("新的 REALITY target", defaultTarget)
+		opts.Target, err = c.askDefaultCancelable("新的 REALITY target", defaultTarget)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

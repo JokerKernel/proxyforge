@@ -318,14 +318,14 @@ func TestFormatSNILatenciesShowsBothFamilies(t *testing.T) {
 func TestPrintSNICandidateSummaryShowsFamilyLatencies(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{out: &out}
-	c.printSNICandidateSummary(1, app.SNICandidate{
+	c.printSNICandidateSummaryAligned(1, app.SNICandidate{
 		Domain:     "fast.example.com",
 		TLSVersion: "1.3",
 		ALPN:       "h2",
 		CDN:        "未发现明显特征",
 		IPv4:       app.FamilyLatency{Present: true, OK: true, Latency: 11 * time.Millisecond},
 		IPv6:       app.FamilyLatency{Present: true, OK: true, Latency: 22 * time.Millisecond},
-	}, "")
+	}, "", len("fast.example.com"))
 	got := out.String()
 	if !strings.Contains(got, "11ms") || !strings.Contains(got, "22ms") || strings.Contains(got, "\n    IPv4") {
 		t.Fatalf("summary=%q", got)

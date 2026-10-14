@@ -456,9 +456,6 @@ func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, co
 	return n, nil
 }
 
-// ResetCredentials atomically rotates every client credential, optionally
-// changing SNI and target while preserving the node's address and port.
-
 func optionsFallbackPort(o domain.GenerateOptions) int {
 	if o.SingBoxFallbackGuard {
 		return o.SingBoxFallbackPort

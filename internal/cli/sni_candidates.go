@@ -174,7 +174,7 @@ func (c *commandSet) askManualSNI(ctx context.Context, server string) (string, e
 			return domain, nil
 		}
 		if c.interactiveUI() {
-			eraseChoiceRetry(c.out, false)
+			eraseChoiceRetry(c.out)
 		}
 		if emptyShown {
 			continue
@@ -385,7 +385,7 @@ func (c *commandSet) readSNIPageChoice(total, page, pages int, opts sniPageChoic
 		value := strings.TrimSpace(line)
 		if value == "" {
 			if c.interactiveUI() {
-				eraseChoiceRetry(c.out, false)
+				eraseChoiceRetry(c.out)
 			}
 			if pasted && !invalidShown {
 				fmt.Fprintln(c.out, "检测到粘贴了多行内容，已忽略多余输入。")
@@ -398,7 +398,7 @@ func (c *commandSet) readSNIPageChoice(total, page, pages int, opts sniPageChoic
 			return action, index, nil
 		}
 		if c.interactiveUI() {
-			eraseChoiceRetry(c.out, false)
+			eraseChoiceRetry(c.out)
 		}
 		if pasted {
 			fmt.Fprintln(c.out, "检测到粘贴了多行内容，已忽略多余输入。")
@@ -535,10 +535,6 @@ func sniPageBounds(total, page, pageSize int) (start, end, pages int) {
 		end = total
 	}
 	return start, end, pages
-}
-
-func (c *commandSet) printSNICandidateSummary(index int, candidate app.SNICandidate, marker string) {
-	c.printSNICandidateSummaryAligned(index, candidate, marker, menuDisplayWidth(candidate.Domain))
 }
 
 func (c *commandSet) printSNICandidateSummaryAligned(index int, candidate app.SNICandidate, marker string, domainWidth int) {

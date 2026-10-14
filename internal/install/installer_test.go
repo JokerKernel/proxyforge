@@ -7,7 +7,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
+	"os/signal"
 	"strings"
+	"syscall"
 	"testing"
 
 	"proxyforge/internal/provider/singbox"
@@ -18,6 +21,36 @@ import (
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestWritePreparedScriptRejectsWriteFailure(t *testing.T) {
+	const helperEnv = "PROXYFORGE_SCRIPT_WRITE_FAILURE_TEST"
+	if os.Getenv(helperEnv) != "1" {
+		// Isolate the file-size limit from the rest of the test process.
+		cmd := exec.Command(os.Args[0], "-test.run=^TestWritePreparedScriptRejectsWriteFailure$")
+		cmd.Env = append(os.Environ(), helperEnv+"=1")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("write failure regression: %v\n%s", err, output)
+		}
+		return
+	}
+	dir := t.TempDir()
+	t.Setenv("TMPDIR", dir)
+	signal.Ignore(syscall.SIGXFSZ)
+	if err := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &syscall.Rlimit{Cur: 1, Max: 1}); err != nil {
+		t.Fatal(err)
+	}
+	path, cleanup, err := writePreparedScript(DownloadedScript{Content: []byte("#!/bin/bash\nexit 0\n")})
+	if cleanup != nil {
+		defer cleanup()
+	}
+	if err == nil || path != "" || cleanup != nil {
+		t.Fatalf("truncated script accepted: path=%q, error=%v", path, err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("failed script write left temporary files: %v, error=%v", entries, err)
+	}
+}
 
 type streamingRunnerStub struct {
 	streamErr       error
@@ -47,7 +80,7 @@ func TestValidateScript(t *testing.T) {
 	if err := validateScript(good); err != nil {
 		t.Fatal(err)
 	}
-	if err := bashSyntax(ctx, good); err != nil {
+	if err := bashSyntaxLogged(ctx, good, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := validateScript([]byte("#!/bin/sh\necho ok\n")); err != nil {
@@ -65,7 +98,7 @@ func TestValidateScript(t *testing.T) {
 			}
 		})
 	}
-	if err := bashSyntax(ctx, []byte("#!/bin/bash\nif then\n")); err == nil {
+	if err := bashSyntaxLogged(ctx, []byte("#!/bin/bash\nif then\n"), nil); err == nil {
 		t.Fatal("expected syntax error")
 	}
 }
@@ -138,12 +171,12 @@ func TestTrustPinning(t *testing.T) {
 	}
 }
 
-func TestExecuteScriptStreamsOutput(t *testing.T) {
+func TestExecutePreparedScriptStreamsOutput(t *testing.T) {
 	runner := &streamingRunnerStub{}
 	var output strings.Builder
 	i := Installer{Runner: runner, Output: &output}
 
-	if err := i.executeScript(context.Background(), []string{"/tmp/install.sh"}); err != nil {
+	if err := i.ExecutePreparedScript(context.Background(), DownloadedScript{Content: []byte("#!/bin/bash\nexit 0\n")}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !runner.streamingCalled || runner.bufferedCalled {
@@ -300,12 +333,12 @@ func TestUninstallRunsXrayOfficialRemoveAction(t *testing.T) {
 	}
 }
 
-func TestExecuteScriptFailureIncludesRecentOutput(t *testing.T) {
+func TestExecutePreparedScriptFailureIncludesRecentOutput(t *testing.T) {
 	runner := &streamingRunnerStub{streamErr: errors.New("exit status 1")}
 	var output strings.Builder
 	i := Installer{Runner: runner, Output: &output}
 
-	err := i.executeScript(context.Background(), []string{"/tmp/install.sh"})
+	err := i.ExecutePreparedScript(context.Background(), DownloadedScript{Content: []byte("#!/bin/bash\nexit 0\n")}, nil)
 	if err == nil {
 		t.Fatal("expected script failure")
 	}
