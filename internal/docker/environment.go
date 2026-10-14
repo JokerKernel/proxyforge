@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 )
+
+var composeVersionPattern = regexp.MustCompile(`^v?([0-9]+)\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$`)
 
 func (m *Manager) CheckReady(ctx context.Context) error {
 	if err := m.rootCheck(); err != nil {
@@ -22,8 +26,14 @@ func (m *Manager) CheckReady(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("Compose 不可用，请安装 Docker Compose 插件: %w", err)
 	}
-	if !strings.HasPrefix(strings.TrimSpace(string(version)), "2.") && !strings.HasPrefix(strings.TrimSpace(string(version)), "v2.") {
-		return fmt.Errorf("需要 Docker Compose v2，当前为 %s", strings.TrimSpace(string(version)))
+	currentVersion := strings.TrimSpace(string(version))
+	parts := composeVersionPattern.FindStringSubmatch(currentVersion)
+	if len(parts) == 0 {
+		return fmt.Errorf("无法识别 Docker Compose 版本: %q", currentVersion)
+	}
+	major, err := strconv.Atoi(parts[1])
+	if err != nil || major < 2 {
+		return fmt.Errorf("需要 Docker Compose v2 或更高版本的插件，当前为 %s", currentVersion)
 	}
 	b, err := m.docker(ctx, "info", "--format", "{{json .}}")
 	if err != nil {

@@ -23,7 +23,7 @@ ProxyForge 是面向 Linux 的代理管理工具，提供中文交互菜单和�
 | 系统 | Debian、Ubuntu、RHEL、CentOS、Rocky Linux、AlmaLinux、Fedora |
 | 架构 | amd64（x86_64）、arm64（aarch64） |
 | 原生服务管理 | systemd，PID 1 必须为 systemd |
-| Docker 部署（可选） | 本机 rootful Docker 与 Compose v2，需提前安装；Docker 入口不要求宿主机 Xray/systemd |
+| Docker 部署（可选） | 本机 rootful Docker 与 Compose v2 或更高版本插件（含 v5），需提前安装；Docker 入口不要求宿主机 Xray/systemd |
 | 权限 | 除 `--help` 和 `--version` 外，所有操作需要 root |
 
 ## 快速开始

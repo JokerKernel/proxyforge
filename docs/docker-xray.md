@@ -7,7 +7,7 @@ Docker 版不依赖宿主机安装的 Xray，也不要求存在 `xray.service`�
 ## 环境要求
 
 - Linux amd64 或 arm64，root 权限。
-- 本机 rootful Docker Engine 和 Docker Compose v2 插件，daemon 已运行。
+- 本机 rootful Docker Engine 和 Docker Compose v2 或更高版本插件（含 v5），daemon 已运行。
 - 首版不支持远程 Docker、rootless/userns-remap、Docker Desktop、桥接网络、多实例和接管任意已有容器。
 
 ProxyForge 只检测 Docker/Compose 是否可用，不会自动安装 Docker，也不会执行 Docker 安装脚本。Docker 版不使用原生 app/system/provider/domain 业务代码。

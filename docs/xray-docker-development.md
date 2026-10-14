@@ -195,7 +195,7 @@ func (m *Manager) Recover(context.Context) error
 
 ## 4. 运行环境与依赖检测
 
-首版支持项目已有的 Linux amd64/arm64 环境，在本机 rootful Docker 上运行，使用 Compose v2 的 `docker compose`。
+首版支持项目已有的 Linux amd64/arm64 环境，在本机 rootful Docker 上运行，使用 Compose v2 或更高版本插件（含 v5）的 `docker compose`。
 
 检测顺序：
 
