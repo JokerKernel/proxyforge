@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -63,6 +64,36 @@ func TestLandingPasteCleansAbandonedDirectoriesAndPreservesActiveSessions(t *tes
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("unrelated or active data removed: %s: %v", path, err)
 		}
+	}
+}
+
+func TestLandingPasteConcurrentCreationAndCleanupRemovesEmptyRoot(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	var workers sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for j := 0; j < 12; j++ {
+				w, err := newLandingPasteWorkspace(func(path string, err error) { t.Errorf("stale cleanup %s: %v", path, err) })
+				if err != nil {
+					t.Errorf("concurrent creation: %v", err)
+					return
+				}
+				if _, err := os.Stat(w.path()); err != nil {
+					t.Errorf("active paste file removed: %v", err)
+				}
+				if err := w.close(); err != nil {
+					t.Errorf("concurrent cleanup: %v", err)
+					return
+				}
+			}
+		}()
+	}
+	workers.Wait()
+	root := filepath.Join(os.TempDir(), fmt.Sprintf("proxyforge-landing-paste-%d", os.Geteuid()))
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("empty outer directory survived concurrent cleanup: %v", err)
 	}
 }
 
@@ -164,6 +195,9 @@ func TestPasteLandingBundleCleansDirectoryOnFailure(t *testing.T) {
 			}
 			if _, err := os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
 				t.Fatalf("temporary directory survived failed import: %v", err)
+			}
+			if _, err := os.Stat(filepath.Dir(filepath.Dir(path))); !os.IsNotExist(err) {
+				t.Fatalf("empty outer directory survived failed import: %v", err)
 			}
 		})
 	}

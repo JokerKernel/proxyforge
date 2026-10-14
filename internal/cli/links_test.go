@@ -77,6 +77,9 @@ func TestPasteLandingBundleUsesPrivateTemporaryFileAndDeletesIt(t *testing.T) {
 	if _, err := os.Stat(filepath.Dir(openedPath)); !os.IsNotExist(err) {
 		t.Fatalf("temporary directory still exists after import: %q, error=%v", openedPath, err)
 	}
+	if _, err := os.Stat(filepath.Dir(filepath.Dir(openedPath))); !os.IsNotExist(err) {
+		t.Fatalf("empty outer directory still exists after import: %v", err)
+	}
 	for _, want := range []string{"粘贴落地服务器生成的完整 JSON", "连接文本解析成功", "临时目录清理", "含编辑器备份和交换文件"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("output missing %q: %q", want, out.String())

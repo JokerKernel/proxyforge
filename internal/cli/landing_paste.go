@@ -21,13 +21,34 @@ func (w *landingPasteWorkspace) path() string {
 }
 
 func (w *landingPasteWorkspace) close() error {
-	removeErr := os.RemoveAll(w.dir)
-	var closeErr error
-	if w.lock != nil {
-		closeErr = w.lock.Close()
-		w.lock = nil
+	guard, err := lockLandingPasteRoot(filepath.Dir(w.dir), false)
+	if err != nil {
+		return errors.Join(err, w.release())
 	}
-	if err := errors.Join(removeErr, closeErr); err != nil {
+	if guard == nil {
+		return w.release()
+	}
+	defer guard.Close()
+	return w.closeLocked()
+}
+
+func (w *landingPasteWorkspace) release() error {
+	if w.lock == nil {
+		return nil
+	}
+	err := w.lock.Close()
+	w.lock = nil
+	return err
+}
+
+func (w *landingPasteWorkspace) closeLocked() error {
+	removeErr := os.RemoveAll(w.dir)
+	closeErr := w.release()
+	var rootErr error
+	if removeErr == nil {
+		rootErr = removeEmptyLandingPasteRoot(filepath.Dir(w.dir))
+	}
+	if err := errors.Join(removeErr, closeErr, rootErr); err != nil {
 		return fmt.Errorf("清理临时粘贴目录 %s: %w", w.dir, err)
 	}
 	return nil
@@ -35,26 +56,16 @@ func (w *landingPasteWorkspace) close() error {
 
 func newLandingPasteWorkspace(reportFailure func(string, error)) (_ *landingPasteWorkspace, err error) {
 	root := filepath.Join(os.TempDir(), fmt.Sprintf("proxyforge-landing-paste-%d", os.Geteuid()))
-	if err := os.Mkdir(root, 0700); err != nil && !os.IsExist(err) {
-		return nil, fmt.Errorf("创建临时粘贴目录: %w", err)
-	}
-	info, err := os.Lstat(root)
-	if err != nil {
-		return nil, err
-	}
-	if !privatePasteDirectory(info) {
-		return nil, fmt.Errorf("临时粘贴目录不是当前用户的 0700 私有目录: %s", root)
-	}
-	guard, err := os.Open(root)
+	guard, err := lockLandingPasteRoot(root, true)
 	if err != nil {
 		return nil, err
 	}
 	defer guard.Close()
-	// Serialize session creation and stale cleanup, including recovery from a
-	// crash between creating a session directory and acquiring its lease.
-	if err := syscall.Flock(int(guard.Fd()), syscall.LOCK_EX); err != nil {
-		return nil, fmt.Errorf("锁定临时粘贴目录: %w", err)
-	}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, removeEmptyLandingPasteRoot(root))
+		}
+	}()
 	cleanupLandingPasteSessions(root, reportFailure)
 	dir, err := os.MkdirTemp(root, landingPasteSessionPrefix)
 	if err != nil {
@@ -63,7 +74,7 @@ func newLandingPasteWorkspace(reportFailure func(string, error)) (_ *landingPast
 	w := &landingPasteWorkspace{dir: dir}
 	defer func() {
 		if err != nil {
-			err = errors.Join(err, w.close())
+			err = errors.Join(err, w.closeLocked())
 		}
 	}()
 	w.lock, err = os.Open(dir)
@@ -83,6 +94,70 @@ func newLandingPasteWorkspace(reportFailure func(string, error)) (_ *landingPast
 		return nil, err
 	}
 	return w, nil
+}
+
+// Serialize creation, stale cleanup and removal of an empty outer directory.
+// A waiter may have opened a directory that another session has since removed;
+// retry against the current path instead of using that unlinked directory lock.
+func lockLandingPasteRoot(root string, create bool) (*os.File, error) {
+	for {
+		if create {
+			if err := os.Mkdir(root, 0700); err != nil && !os.IsExist(err) {
+				return nil, fmt.Errorf("创建临时粘贴目录: %w", err)
+			}
+		}
+		info, err := os.Lstat(root)
+		if os.IsNotExist(err) {
+			if create {
+				continue
+			}
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		if !privatePasteDirectory(info) {
+			return nil, fmt.Errorf("临时粘贴目录不是当前用户的 0700 私有目录: %s", root)
+		}
+		guard, err := os.Open(root)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if err := syscall.Flock(int(guard.Fd()), syscall.LOCK_EX); err != nil {
+			_ = guard.Close()
+			return nil, fmt.Errorf("锁定临时粘贴目录: %w", err)
+		}
+		locked, err := guard.Stat()
+		if err != nil {
+			_ = guard.Close()
+			return nil, err
+		}
+		current, err := os.Lstat(root)
+		if os.IsNotExist(err) || (err == nil && !os.SameFile(locked, current)) {
+			_ = guard.Close()
+			continue
+		}
+		if err != nil {
+			_ = guard.Close()
+			return nil, err
+		}
+		if !privatePasteDirectory(current) {
+			_ = guard.Close()
+			return nil, fmt.Errorf("临时粘贴目录不是当前用户的 0700 私有目录: %s", root)
+		}
+		return guard, nil
+	}
+}
+
+func removeEmptyLandingPasteRoot(root string) error {
+	err := os.Remove(root)
+	if os.IsNotExist(err) || errors.Is(err, syscall.ENOTEMPTY) || errors.Is(err, syscall.EEXIST) {
+		return nil
+	}
+	return err
 }
 
 func privatePasteDirectory(info os.FileInfo) bool {
