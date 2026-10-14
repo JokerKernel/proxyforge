@@ -458,7 +458,7 @@ func (m *Manager) Reset(ctx context.Context, opts model.ResetOptions) error {
 		}
 		old := s.Node
 		n := old
-		rotateCredentials := opts.Credentials || !opts.RotateCertificate
+		rotateCredentials := !opts.PreserveCredentials && (opts.Credentials || !opts.RotateCertificate)
 		if rotateCredentials {
 			n.UUID, err = newUUID()
 			if err != nil {

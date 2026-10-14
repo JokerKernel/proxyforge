@@ -11,6 +11,7 @@ import (
 )
 
 var errCancelled = errors.New("用户取消")
+var errBack = errors.New("返回菜单")
 
 type ui struct {
 	reader      *bufio.Reader

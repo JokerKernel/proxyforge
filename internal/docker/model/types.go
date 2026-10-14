@@ -150,6 +150,8 @@ type ResetOptions struct {
 	// Credentials rotates UUID and, for REALITY, its key material and short ID.
 	// Zero value preserves the historical credential-reset behavior.
 	Credentials bool
+	// PreserveCredentials updates SNI or target without rotating UUID or keys.
+	PreserveCredentials bool
 }
 
 type KeyPair struct {

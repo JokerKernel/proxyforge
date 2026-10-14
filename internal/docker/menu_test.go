@@ -51,26 +51,71 @@ func TestDockerMenusReplacePreviousScreen(t *testing.T) {
 	m, _ := testManager(t)
 	var out dockerTerminalOutput
 	m.out, m.errOut = &out, &out
-	in := &dockerTerminalInput{answers: []string{"2\n", "0\n", "4\n", "0\n", "0\n"}, output: &out}
+	in := &dockerTerminalInput{answers: []string{"2\n", "6\n", "0\n", "0\n", "0\n"}, output: &out}
 	if err := m.Menu(context.Background(), in); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"╭─ 当前实例", "›  服务端配置", "╭─ 当前实例", "›  服务管理", "╭─ 当前实例"}
-	if len(in.screens) != len(want) {
+	if len(in.screens) != 5 {
 		t.Fatalf("unexpected prompts: %d", len(in.screens))
 	}
+	root := func(screen string) bool {
+		return strings.Contains(screen, "部署/升级") && !strings.Contains(screen, "生成/更新配置") && !strings.Contains(screen, "实时日志")
+	}
+	config := func(screen string) bool {
+		return strings.Contains(screen, "生成/更新配置") && !strings.Contains(screen, "实时日志") && !strings.Contains(screen, "部署/升级")
+	}
+	service := func(screen string) bool {
+		return strings.Contains(screen, "实时日志") && !strings.Contains(screen, "生成/更新配置") && strings.Contains(screen, "›  服务端配置  ›  服务管理")
+	}
+	checks := []func(string) bool{root, config, service, config, root}
 	for i, screen := range in.screens {
-		if !strings.Contains(screen, want[i]) {
-			t.Fatalf("prompt %d missing current menu %q: %s", i, want[i], screen)
-		}
-		for _, other := range []string{"╭─ 当前实例", "›  服务端配置", "›  服务管理"} {
-			if other != want[i] && strings.Contains(screen, other) {
-				t.Fatalf("prompt %d retained previous menu %q: %s", i, other, screen)
-			}
+		if !checks[i](screen) {
+			t.Fatalf("prompt %d showed the wrong menu: %s", i, screen)
 		}
 	}
 	if strings.Contains(out.String(), "按 Enter") {
 		t.Fatal("submenu navigation should return directly without a pause")
+	}
+	rootScreen := in.screens[0]
+	for _, want := range []string{"准备镜像或升级版本", "生成、修改、查看与服务管理", "4   移除容器", "5   清理卸载残留", "6   恢复未完成事务"} {
+		if !strings.Contains(rootScreen, want) {
+			t.Fatalf("root menu missing %q: %s", want, rootScreen)
+		}
+	}
+	if strings.Contains(rootScreen, "4   服务管理") || strings.Contains(rootScreen, "专用运行用户") {
+		t.Fatalf("root menu kept a native-only or old item: %s", rootScreen)
+	}
+	configScreen := in.screens[1]
+	for _, want := range []string{"重置节点与 SNI 检测", "6   服务管理", "7   中转与落地配置"} {
+		if !strings.Contains(configScreen, want) {
+			t.Fatalf("server menu missing %q: %s", want, configScreen)
+		}
+	}
+	if strings.Contains(configScreen, "校验配置") || strings.Contains(configScreen, "专用运行用户") {
+		t.Fatalf("server menu kept an item that is not in the Xray-core list: %s", configScreen)
+	}
+}
+
+func TestDockerModifyMenuMatchesXrayCore(t *testing.T) {
+	t.Setenv("TERM", "xterm")
+	m, _ := deployed(t)
+	var out dockerTerminalOutput
+	m.out, m.errOut = &out, &out
+	in := &dockerTerminalInput{answers: []string{"2\n", "3\n", "0\n", "0\n", "0\n"}, output: &out}
+	if err := m.Menu(context.Background(), in); err != nil {
+		t.Fatal(err)
+	}
+	if len(in.screens) < 3 {
+		t.Fatalf("modify menu was not shown: %d prompts", len(in.screens))
+	}
+	screen := in.screens[2]
+	for _, want := range []string{"2   重置节点凭证", "3   重置 SNI/target", "4   出站 IP", "REALITY SNI 候选检测"} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("modify menu missing %q: %s", want, screen)
+		}
+	}
+	if strings.Contains(screen, "专用运行用户") {
+		t.Fatalf("modify menu included the native service user item: %s", screen)
 	}
 }
 
