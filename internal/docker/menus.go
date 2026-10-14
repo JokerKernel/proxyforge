@@ -161,12 +161,12 @@ func (m *Manager) deployCardRows(selection string) [][2]string {
 			version = "无法读取"
 		}
 	}
-	target := "稳定版（最新正式版）"
+	target := "稳定版（latest）"
 	switch selection {
-	case "latest":
-		target = "latest（官方镜像标签）"
+	case "pre-release", "prerelease":
+		target = "pre-release"
 	default:
-		if selection != "" {
+		if selection != "" && selection != "stable" && selection != "latest" {
 			target = "指定版本 " + selection
 		}
 	}
@@ -176,11 +176,11 @@ func (m *Manager) deployCardRows(selection string) [][2]string {
 func (m *Manager) chooseDeployChannel(u *ui, selection string) (string, error) {
 	u.clearScreen()
 	u.pageHeader("Xray（Docker）", "部署/升级", "选择版本")
-	u.menuChoice("1", "稳定版")
-	u.menuChoice("2", "latest（官方镜像标签）")
+	u.menuChoice("1", "稳定版（latest）")
+	u.menuChoice("2", "pre-release")
 	u.menuChoice("0/q", "返回")
 	def := 1
-	if selection == "latest" {
+	if selection == "pre-release" || selection == "prerelease" {
 		def = 2
 	}
 	choice, err := u.chooseNumberCancelable("请选择版本渠道", 1, 2, def)
@@ -188,9 +188,9 @@ func (m *Manager) chooseDeployChannel(u *ui, selection string) (string, error) {
 		return "", err
 	}
 	if choice == 2 {
-		return "latest", nil
+		return "pre-release", nil
 	}
-	return "", nil
+	return "latest", nil
 }
 
 func (m *Manager) askDeployVersion(u *ui) (string, error) {
@@ -249,11 +249,11 @@ func (m *Manager) confirmDeploy(ctx context.Context, u *ui, version string) erro
 }
 
 func shownVersion(version string) string {
-	switch version {
-	case "", "stable":
-		return "最新稳定版"
-	case "latest":
-		return "官方镜像标签 latest"
+	switch strings.ToLower(strings.TrimSpace(version)) {
+	case "", "stable", "latest":
+		return "稳定版（latest）"
+	case "pre-release", "prerelease":
+		return "pre-release"
 	default:
 		return "指定版本 " + version
 	}

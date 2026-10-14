@@ -13,10 +13,6 @@ import (
 
 func TestLatestPreparePinsDigestAndRecordsActualVersion(t *testing.T) {
 	m, fake := testManager(t)
-	m.stableVersion = func(context.Context) (string, error) {
-		t.Fatal("latest must not query GitHub releases")
-		return "", nil
-	}
 	if err := m.Prepare(context.Background(), " latest "); err != nil {
 		t.Fatal(err)
 	}
@@ -157,12 +153,57 @@ func TestImageVersionValidation(t *testing.T) {
 }
 
 func TestLatestDeployRequiresLatestPreparedChannel(t *testing.T) {
-	m, fake := prepared(t)
-	fake.calls = nil
-	if err := m.Deploy(context.Background(), "latest", model.GenerateOptions{}); err == nil || !strings.Contains(err.Error(), "升级入口") {
-		t.Fatalf("latest deployment reused a pinned version: %v", err)
+	for _, selection := range []string{"latest", "stable", "pre-release"} {
+		t.Run(selection, func(t *testing.T) {
+			m, fake := prepared(t)
+			fake.calls = nil
+			if err := m.Deploy(context.Background(), selection, model.GenerateOptions{}); err == nil || !strings.Contains(err.Error(), "升级入口") {
+				t.Fatalf("%s deployment reused a pinned version: %v", selection, err)
+			}
+			if len(fake.calls) != 0 {
+				t.Fatal("version selection mismatch mutated deployment")
+			}
+		})
 	}
-	if len(fake.calls) != 0 {
-		t.Fatal("version selection mismatch mutated deployment")
+}
+
+func TestStableAndPrereleaseUseOfficialTags(t *testing.T) {
+	for _, tc := range []struct {
+		selection, tag, channel, version string
+	}{
+		{"stable", Repository + ":latest", "latest", "26.4.1"},
+		{"", Repository + ":latest", "latest", "26.4.1"},
+		{"pre-release", Repository + ":pre-release", "prerelease", "26.10.10"},
+		{"prerelease", Repository + ":pre-release", "prerelease", "26.10.10"},
+	} {
+		t.Run(tc.selection+"/"+tc.tag, func(t *testing.T) {
+			m, fake := testManager(t)
+			if err := m.Prepare(context.Background(), tc.selection); err != nil {
+				t.Fatal(err)
+			}
+			md, err := m.metadata()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if md.Channel != tc.channel || md.RequestedVersion != tc.version {
+				t.Fatalf("channel or version: %+v", md)
+			}
+			compose := readFile(t, m.paths.Compose())
+			if bytes.Contains(compose, []byte(tc.tag)) || !bytes.Contains(compose, []byte(md.ImageRef)) {
+				t.Fatalf("compose did not pin digest: %s", compose)
+			}
+			pulled := false
+			for _, call := range fake.calls {
+				if len(call) == 3 && call[0] == "image" && call[1] == "pull" {
+					pulled = true
+					if call[2] != tc.tag {
+						t.Fatalf("wrong pull: %v", call)
+					}
+				}
+			}
+			if !pulled {
+				t.Fatal("official tag was not pulled")
+			}
+		})
 	}
 }

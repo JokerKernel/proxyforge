@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"regexp"
 	"runtime"
 	"strings"
@@ -24,12 +22,11 @@ func normalizeVersion(version string) (string, error) {
 }
 
 func normalizeImageSelection(version string) (string, error) {
-	version = strings.TrimSpace(version)
-	switch version {
-	case "", "stable":
-		return "", nil
-	case "latest":
-		return version, nil
+	switch strings.ToLower(strings.TrimSpace(version)) {
+	case "", "stable", "latest":
+		return "latest", nil
+	case "pre-release", "prerelease":
+		return "pre-release", nil
 	default:
 		return normalizeVersion(version)
 	}
@@ -40,47 +37,21 @@ func checkPreparedVersion(md Metadata, version string) error {
 	if err != nil {
 		return err
 	}
-	if selection == "" || selection == "latest" && md.Channel == "latest" || selection == md.RequestedVersion {
+	matched := false
+	switch selection {
+	case "latest":
+		matched = md.Channel == "latest"
+	case "pre-release":
+		matched = md.Channel == "prerelease"
+	default:
+		matched = selection == md.RequestedVersion
+	}
+	if matched {
 		return nil
 	}
 	return fmt.Errorf("镜像已准备为 %s（%s），请先通过升级入口切换版本", md.RequestedVersion, md.Channel)
 }
 
-func (m *Manager) latestStable(ctx context.Context) (string, error) {
-	if m.stableVersion != nil {
-		return m.stableVersion(ctx)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/repos/XTLS/Xray-core/releases/latest", nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "ProxyForge-Docker")
-	res, err := m.http.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("查询稳定版失败: %w", err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("稳定版查询返回 HTTP %d；可显式提供 --version", res.StatusCode)
-	}
-	var release struct {
-		Tag        string `json:"tag_name"`
-		Prerelease bool   `json:"prerelease"`
-		Draft      bool   `json:"draft"`
-	}
-	b, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-	if err != nil {
-		return "", err
-	}
-	if err = json.Unmarshal(b, &release); err != nil {
-		return "", err
-	}
-	if release.Prerelease || release.Draft {
-		return "", fmt.Errorf("稳定版查询返回非正式版本")
-	}
-	return normalizeVersion(release.Tag)
-}
 func (m *Manager) prepareImage(ctx context.Context, version string) (Metadata, error) {
 	v, err := normalizeImageSelection(version)
 	if err != nil {
@@ -88,18 +59,10 @@ func (m *Manager) prepareImage(ctx context.Context, version string) (Metadata, e
 	}
 	channel := "pinned"
 	switch v {
-	case "":
-		channel = "stable"
-		version, err := m.latestStable(ctx)
-		if err != nil {
-			return Metadata{}, err
-		}
-		v, err = normalizeVersion(version)
-		if err != nil {
-			return Metadata{}, err
-		}
 	case "latest":
 		channel = "latest"
+	case "pre-release":
+		channel = "prerelease"
 	}
 	tag := Repository + ":" + v
 	m.progress("拉取官方 Xray 镜像 %s", tag)
@@ -146,7 +109,7 @@ func (m *Manager) prepareImage(ctx context.Context, version string) (Metadata, e
 	if err != nil {
 		return Metadata{}, fmt.Errorf("镜像实际版本输出无效: %w", err)
 	}
-	if channel != "latest" && actualVersion != v {
+	if channel == "pinned" && actualVersion != v {
 		return Metadata{}, fmt.Errorf("镜像实际版本与请求版本不一致")
 	}
 	if _, err = m.keyPair(ctx, image.ID); err != nil {

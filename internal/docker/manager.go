@@ -29,32 +29,30 @@ type Options struct {
 	Out, ErrOut io.Writer
 	Now         func() time.Time
 	// Injectable infrastructure for isolated tests. Production uses local checks.
-	RootCheck     func() error
-	LookPath      func(string) (string, error)
-	TargetCheck   func(context.Context, string, string, string) error
-	HealthCheck   func(context.Context, []int, string) error
-	PortFree      func(int) error
-	HTTPClient    *http.Client
-	StableVersion func(context.Context) (string, error)
+	RootCheck   func() error
+	LookPath    func(string) (string, error)
+	TargetCheck func(context.Context, string, string, string) error
+	HealthCheck func(context.Context, []int, string) error
+	PortFree    func(int) error
+	HTTPClient  *http.Client
 }
 
 type Manager struct {
-	paths         Paths
-	runner        Runner
-	out, errOut   io.Writer
-	now           func() time.Time
-	rootCheck     func() error
-	lookPath      func(string) (string, error)
-	targetCheck   func(context.Context, string, string, string) error
-	healthCheck   func(context.Context, []int, string) error
-	portFree      func(int) error
-	http          *http.Client
-	stableVersion func(context.Context) (string, error)
-	codec         *xray.Codec
-	stateWrite    func(string, []byte, os.FileMode) error
-	physicalIPs   func() ([]publicAddress, error)
-	externalIP    func(context.Context) (string, error)
-	probeSNI      func(context.Context, []string, string, int) ([]sniCandidate, error)
+	paths       Paths
+	runner      Runner
+	out, errOut io.Writer
+	now         func() time.Time
+	rootCheck   func() error
+	lookPath    func(string) (string, error)
+	targetCheck func(context.Context, string, string, string) error
+	healthCheck func(context.Context, []int, string) error
+	portFree    func(int) error
+	http        *http.Client
+	codec       *xray.Codec
+	stateWrite  func(string, []byte, os.FileMode) error
+	physicalIPs func() ([]publicAddress, error)
+	externalIP  func(context.Context) (string, error)
+	probeSNI    func(context.Context, []string, string, int) ([]sniCandidate, error)
 }
 
 func New(opts Options) *Manager {
@@ -82,7 +80,7 @@ func New(opts Options) *Manager {
 	if opts.HTTPClient == nil {
 		opts.HTTPClient = &http.Client{Timeout: 30 * time.Second}
 	}
-	m := &Manager{paths: Paths{Root: opts.Root}, runner: opts.Runner, out: opts.Out, errOut: opts.ErrOut, now: opts.Now, rootCheck: opts.RootCheck, lookPath: opts.LookPath, targetCheck: opts.TargetCheck, healthCheck: opts.HealthCheck, portFree: opts.PortFree, http: opts.HTTPClient, stableVersion: opts.StableVersion, codec: xray.New()}
+	m := &Manager{paths: Paths{Root: opts.Root}, runner: opts.Runner, out: opts.Out, errOut: opts.ErrOut, now: opts.Now, rootCheck: opts.RootCheck, lookPath: opts.LookPath, targetCheck: opts.TargetCheck, healthCheck: opts.HealthCheck, portFree: opts.PortFree, http: opts.HTTPClient, codec: xray.New()}
 	if m.portFree == nil {
 		m.portFree = checkPortFree
 	}

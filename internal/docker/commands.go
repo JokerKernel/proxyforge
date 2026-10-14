@@ -29,12 +29,12 @@ func (m *Manager) Command() *cobra.Command {
 			}
 			return m.Upgrade(cmd.Context(), version)
 		}}
-		sub.Flags().StringVar(&version, "version", "", "stable（缺省最新稳定版）、latest（官方镜像标签）或具体版本号")
+		sub.Flags().StringVar(&version, "version", "", "stable 或 latest（缺省，官方 latest 标签）、pre-release 或具体版本号")
 		cmd.AddCommand(sub)
 	}
 	deploy := m.generateCommand("deploy", &yes)
 	var version string
-	deploy.Flags().StringVar(&version, "version", "", "首次部署镜像：stable（缺省）、latest 或具体版本号")
+	deploy.Flags().StringVar(&version, "version", "", "首次部署镜像：stable 或 latest（缺省）、pre-release 或具体版本号")
 	runGenerate := deploy.RunE
 	deploy.RunE = func(cmd *cobra.Command, args []string) error {
 		if _, err := m.metadata(); os.IsNotExist(err) {

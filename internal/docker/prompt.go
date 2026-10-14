@@ -323,10 +323,10 @@ func isWideRune(r rune) bool {
 
 func channelLabel(channel string) string {
 	switch channel {
-	case "stable":
+	case "stable", "latest":
 		return "稳定版"
-	case "latest":
-		return "latest"
+	case "prerelease":
+		return "pre-release"
 	case "pinned":
 		return "指定版本"
 	default:

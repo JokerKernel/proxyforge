@@ -23,20 +23,22 @@ import (
 )
 
 type simulatedDocker struct {
-	t                *testing.T
-	manager          *Manager
-	calls            [][]string
-	container        *inspection
-	images           map[string]Metadata
-	selected         Metadata
-	rejectValidation bool
-	failRestart      int
-	foreignProject   bool
-	unavailable      bool
-	healthFailures   int
-	latestVersion    string
-	latestImageID    string
-	versionOutput    string
+	t                 *testing.T
+	manager           *Manager
+	calls             [][]string
+	container         *inspection
+	images            map[string]Metadata
+	selected          Metadata
+	rejectValidation  bool
+	failRestart       int
+	foreignProject    bool
+	unavailable       bool
+	healthFailures    int
+	latestVersion     string
+	latestImageID     string
+	prereleaseVersion string
+	prereleaseImageID string
+	versionOutput     string
 }
 
 func (f *simulatedDocker) RunStreaming(ctx context.Context, out, errOut io.Writer, name string, args ...string) error {
@@ -72,6 +74,12 @@ func (f *simulatedDocker) Run(_ context.Context, name string, args ...string) ([
 					version = "26.4.1"
 				}
 			}
+			if version == "pre-release" {
+				version = f.prereleaseVersion
+				if version == "" {
+					version = "26.10.10"
+				}
+			}
 			char := "a"
 			if version != "26.3.27" {
 				char = "b"
@@ -79,6 +87,12 @@ func (f *simulatedDocker) Run(_ context.Context, name string, args ...string) ([
 			id := "sha256:" + strings.Repeat(char, 64)
 			if tag == Repository+":latest" && f.latestImageID != "" {
 				id = f.latestImageID
+			}
+			if tag == Repository+":pre-release" {
+				id = "sha256:" + strings.Repeat("d", 64)
+				if f.prereleaseImageID != "" {
+					id = f.prereleaseImageID
+				}
 			}
 			md := Metadata{ImageID: id, ImageRef: Repository + "@" + id, RequestedVersion: version}
 			f.selected = md
@@ -255,7 +269,7 @@ func (f *simulatedDocker) newContainer(image string) {
 func testManager(t *testing.T) (*Manager, *simulatedDocker) {
 	t.Helper()
 	f := &simulatedDocker{t: t, images: map[string]Metadata{}}
-	m := New(Options{Root: t.TempDir(), Runner: f, RootCheck: func() error { return nil }, LookPath: func(string) (string, error) { return "/test/docker", nil }, TargetCheck: func(context.Context, string, string, string) error { return nil }, PortFree: func(int) error { return nil }, StableVersion: func(context.Context) (string, error) { return "26.3.27", nil }, HealthCheck: func(_ context.Context, _ []int, image string) error {
+	m := New(Options{Root: t.TempDir(), Runner: f, RootCheck: func() error { return nil }, LookPath: func(string) (string, error) { return "/test/docker", nil }, TargetCheck: func(context.Context, string, string, string) error { return nil }, PortFree: func(int) error { return nil }, HealthCheck: func(_ context.Context, _ []int, image string) error {
 		if f.healthFailures > 0 {
 			f.healthFailures--
 			return errors.New("health failed")

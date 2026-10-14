@@ -96,6 +96,29 @@ func TestDockerMenusReplacePreviousScreen(t *testing.T) {
 	}
 }
 
+func TestDockerVersionMenuUsesLatestAndPrerelease(t *testing.T) {
+	t.Setenv("TERM", "xterm")
+	m, _ := testManager(t)
+	var out dockerTerminalOutput
+	m.out, m.errOut = &out, &out
+	in := &dockerTerminalInput{answers: []string{"1\n", "2\n", "0\n", "0\n"}, output: &out}
+	if err := m.Menu(context.Background(), in); err != nil {
+		t.Fatal(err)
+	}
+	if len(in.screens) < 3 {
+		t.Fatalf("version menu was not shown: %d prompts", len(in.screens))
+	}
+	screen := in.screens[2]
+	for _, want := range []string{"稳定版", "-- latest", "2   pre-release"} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("version menu missing %q: %s", want, screen)
+		}
+	}
+	if strings.Contains(screen, "官方镜像标签") || strings.Contains(screen, "2   latest") {
+		t.Fatalf("version menu still lists latest separately: %s", screen)
+	}
+}
+
 func TestDockerModifyMenuMatchesXrayCore(t *testing.T) {
 	t.Setenv("TERM", "xterm")
 	m, _ := deployed(t)
