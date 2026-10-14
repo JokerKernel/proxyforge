@@ -133,9 +133,12 @@ type GenerateOptions struct {
 	XrayFallbackPort        int
 	XrayFallbackHTTPDomain  bool
 	XrayFallbackExactDomain bool
-	RotateCredentials       bool
-	NonInteractive          bool
-	DropLinks               bool
+	// ApplyFallbackPolicy writes the two domain flags even when they are false.
+	// The interactive menu sets it. CLI flags leave it unset and can only turn a flag on.
+	ApplyFallbackPolicy bool
+	RotateCredentials   bool
+	NonInteractive      bool
+	DropLinks           bool
 }
 
 func DefaultInboundTag(core string) string { return "docker-one" }

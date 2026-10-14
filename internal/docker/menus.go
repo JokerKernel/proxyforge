@@ -16,114 +16,7 @@ import (
 )
 
 func (m *Manager) askGenerate(input io.Reader, opts model.GenerateOptions) (model.GenerateOptions, error) {
-	return m.askGenerateUI(newUI(input, m.out), opts)
-}
-
-func (m *Manager) askGenerateUI(u *ui, opts model.GenerateOptions) (model.GenerateOptions, error) {
-	current, _ := m.LoadState()
-	n := current.Node
-	opened := false
-	open := func() {
-		if opened {
-			return
-		}
-		opened = true
-		u.clearScreen()
-		u.pageHeader("Xray（Docker）", "生成服务端配置")
-		fmt.Fprintln(u.out, "提示：输入 q 或 0 可取消并返回上级菜单。")
-	}
-	if !opts.DropLinks && (len(n.RelayLinks) > 0 || len(n.LandingAccesses) > 0) {
-		open()
-		fmt.Fprintf(u.out, "\n检测到 %d 条中转线路和 %d 个落地接入。\n", len(n.RelayLinks), len(n.LandingAccesses))
-		u.menuChoice("1", "保留并重新应用这些线路（默认）")
-		u.menuChoice("2", "清除全部中转线路和落地接入")
-		choice, err := u.chooseNumberCancelable("请选择线路处理方式", 1, 2, 1)
-		if err != nil {
-			return opts, err
-		}
-		opts.DropLinks = choice == 2
-	}
-	if opts.Security == "" {
-		open()
-		defaultChoice := 1
-		if n.IsTLS() {
-			defaultChoice = 2
-		}
-		fmt.Fprintln(u.out, "\n主节点协议")
-		u.menuChoice("1", "VLESS + RAW + REALITY + Vision")
-		u.menuChoice("2", "VLESS + RAW + TLS + Vision（自动生成自签证书）")
-		choice, err := u.chooseNumberCancelable("请选择主节点协议", 1, 2, defaultChoice)
-		if err != nil {
-			return opts, err
-		}
-		opts.Security = model.LandingSecurityReality
-		if choice == 2 {
-			opts.Security = model.LandingSecurityTLS
-		}
-		if n.Server != "" && model.NormalizeLandingSecurity(n.Security) != model.NormalizeLandingSecurity(opts.Security) {
-			fmt.Fprintln(u.out, "[提示] 切换协议将自动更换主节点 UUID，需要重新导出客户端配置。")
-		}
-	}
-	if model.NormalizeLandingSecurity(opts.Security) != model.LandingSecurityTLS && !opts.StandardConfig && !opts.XrayFallbackGuard {
-		open()
-		fmt.Fprintln(u.out, "\n配置模式")
-		u.menuChoice("1", "回落防护（默认；tunnel 仅放行与 SNI 一致的 TLS 流量）")
-		u.menuChoice("2", "标准模式（REALITY 未认证流量直接转发到 target）")
-		defaultChoice := 1
-		if n.Server != "" && !n.XrayFallbackGuard && !n.IsTLS() {
-			defaultChoice = 2
-		}
-		choice, err := u.chooseNumberCancelable("请选择配置模式", 1, 2, defaultChoice)
-		if err != nil {
-			return opts, err
-		}
-		opts.XrayFallbackGuard = choice == 1
-		opts.StandardConfig = choice == 2
-	}
-	var err error
-	if opts.Server == "" {
-		open()
-		opts.Server, err = u.ask("公网 IP 或域名", n.Server)
-		if err != nil {
-			return opts, err
-		}
-	}
-	if opts.Port == 0 {
-		open()
-		def := n.Port
-		if def == 0 {
-			def = 443
-		}
-		value, askErr := u.ask("监听端口", strconv.Itoa(def))
-		if askErr != nil {
-			return opts, askErr
-		}
-		opts.Port, err = strconv.Atoi(value)
-		if err != nil || opts.Port < 1 || opts.Port > 65535 {
-			return opts, fmt.Errorf("端口无效")
-		}
-	}
-	if model.NormalizeLandingSecurity(opts.Security) != model.LandingSecurityTLS {
-		if opts.SNI == "" {
-			open()
-			opts.SNI, err = u.ask("REALITY SNI", n.SNI)
-			if err != nil {
-				return opts, err
-			}
-		}
-		if opts.Target == "" {
-			open()
-			def := n.Target
-			if def == "" && opts.SNI != "" {
-				def = opts.SNI + ":443"
-			}
-			opts.Target, err = u.ask("REALITY target", def)
-			if err != nil {
-				return opts, err
-			}
-		}
-	}
-	return opts, nil
+	return m.askGenerateUI(context.Background(), newUI(input, m.out), opts)
 }
 
 func (m *Manager) Menu(ctx context.Context, input io.Reader) error {
@@ -222,7 +115,7 @@ func (m *Manager) deployInteractive(ctx context.Context, u *ui) error {
 		}
 		if _, stateErr := m.LoadState(); os.IsNotExist(stateErr) {
 			var opts model.GenerateOptions
-			opts, err = m.askGenerateUI(u, opts)
+			opts, err = m.askGenerateUI(ctx, u, opts)
 			if err != nil {
 				return err
 			}
@@ -240,7 +133,7 @@ func (m *Manager) deployInteractive(ctx context.Context, u *ui) error {
 		return err
 	}
 	var opts model.GenerateOptions
-	opts, err = m.askGenerateUI(u, opts)
+	opts, err = m.askGenerateUI(ctx, u, opts)
 	if err != nil {
 		return err
 	}
@@ -365,7 +258,7 @@ func (m *Manager) generateInteractive(ctx context.Context, u *ui, deploy bool) e
 			return err
 		}
 	}
-	opts, err := m.askGenerateUI(u, model.GenerateOptions{})
+	opts, err := m.askGenerateUI(ctx, u, model.GenerateOptions{})
 	if err != nil {
 		return err
 	}

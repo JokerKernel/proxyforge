@@ -186,10 +186,22 @@ func (u *ui) ask(label, def string) (string, error) {
 }
 
 func (u *ui) confirm(message string) error {
+	return u.confirmChoice(message, false)
+}
+
+func (u *ui) confirmDefaultYes(message string) error {
+	return u.confirmChoice(message, true)
+}
+
+func (u *ui) confirmChoice(message string, defaultYes bool) error {
 	fmt.Fprintln(u.out, strings.TrimSpace(message))
 	invalidShown := false
 	for {
-		fmt.Fprint(u.out, "确认操作？[Y/1=确认，Q/0=返回]： ")
+		if defaultYes {
+			fmt.Fprint(u.out, "确认操作？[Y/1=确认，Q/0=返回，回车=确认]： ")
+		} else {
+			fmt.Fprint(u.out, "确认操作？[Y/1=确认，Q/0=返回]： ")
+		}
 		line, err := u.reader.ReadString('\n')
 		if err != nil && len(line) == 0 {
 			return err
@@ -198,6 +210,9 @@ func (u *ui) confirm(message string) error {
 		value := strings.TrimSpace(line)
 		if strings.EqualFold(value, "q") || value == "0" {
 			return errCancelled
+		}
+		if defaultYes && value == "" {
+			return nil
 		}
 		if strings.EqualFold(value, "yes") || strings.EqualFold(value, "y") || value == "1" {
 			return nil

@@ -52,6 +52,9 @@ type Manager struct {
 	stableVersion func(context.Context) (string, error)
 	codec         *xray.Codec
 	stateWrite    func(string, []byte, os.FileMode) error
+	physicalIPs   func() ([]publicAddress, error)
+	externalIP    func(context.Context) (string, error)
+	probeSNI      func(context.Context, []string, string, int) ([]sniCandidate, error)
 }
 
 func New(opts Options) *Manager {

@@ -152,6 +152,8 @@ func (m *Manager) Generate(ctx context.Context, opts model.GenerateOptions, star
 			n.Target = ""
 			n.XrayFallbackGuard = false
 			n.XrayFallbackPort = 0
+			n.XrayFallbackHTTPDomain = false
+			n.XrayFallbackExactDomain = false
 			if n.TLSCertificate == nil || opts.RotateCertificate || !oldState.Node.IsTLS() {
 				suffix, err := randomHex(10)
 				if err != nil {
@@ -192,11 +194,22 @@ func (m *Manager) Generate(ctx context.Context, opts model.GenerateOptions, star
 			} else {
 				n.XrayFallbackPort = 0
 			}
-			if opts.XrayFallbackHTTPDomain {
-				n.XrayFallbackHTTPDomain = true
+			if !n.XrayFallbackGuard {
+				n.XrayFallbackHTTPDomain = false
+				n.XrayFallbackExactDomain = false
+			} else if opts.ApplyFallbackPolicy {
+				n.XrayFallbackHTTPDomain = opts.XrayFallbackHTTPDomain
+				n.XrayFallbackExactDomain = opts.XrayFallbackExactDomain
+			} else {
+				if opts.XrayFallbackHTTPDomain {
+					n.XrayFallbackHTTPDomain = true
+				}
+				if opts.XrayFallbackExactDomain {
+					n.XrayFallbackExactDomain = true
+				}
 			}
-			if opts.XrayFallbackExactDomain {
-				n.XrayFallbackExactDomain = true
+			if n.XrayFallbackGuard && n.InboundTag == "fallback-in" {
+				return fmt.Errorf("入站标签 %q 已由 Xray 回落防偷跑入站使用，请选择其他标签", n.InboundTag)
 			}
 			if err = m.targetCheck(ctx, n.Target, n.SNI, n.Server); err != nil {
 				return err
