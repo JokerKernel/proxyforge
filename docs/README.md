@@ -10,8 +10,6 @@
 | [文件与安全边界](security.md) | 查阅受管文件路径、访问权限、备份和回滚机制 |
 | [REALITY SNI 检测指南](reality-sni-check.md) | 使用独立黑盒检测脚本，判读结果并排查回落防护问题 |
 | [构建、测试与发布](development.md) | 本地构建、运行集成测试，了解 CI 和 Release 流程 |
-| [Xray Docker 使用指南](docker-xray.md) | 自建 Compose 实例的部署、配置、升级、导出与清理 |
-| [Xray Docker 独立模块开发设计](xray-docker-development.md) | 查阅完全独立 Docker 模块的 Compose、存储、事务与验收标准 |
 
 ## 命令帮助
 

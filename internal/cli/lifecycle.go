@@ -84,7 +84,7 @@ func (c *commandSet) cleanupCommand() *cobra.Command {
 					return fmt.Errorf("用户取消清理")
 				}
 			}
-			return c.cleanupTarget(cmd.Context(), args[0])
+			return c.app.Cleanup(cmd.Context(), args[0])
 		},
 	}
 }
@@ -306,8 +306,8 @@ func (c *commandSet) confirmCleanup(target string) (bool, error) {
 	}
 	prerequisite := "目标内核的二进制、服务及开机启动必须已清除"
 	if target == "all" {
-		permanentDeletes = append(permanentDeletes, "原生管理数据，包括其中的自定义文件和目录；Docker 自有目录由 Docker 模块清理")
-		prerequisite = "Xray 和 sing-box 两个内核均须已卸载，Docker 实例及临时容器须已移除；任一仍存在时拒绝清理"
+		permanentDeletes = append(permanentDeletes, "原生管理数据，包括其中的自定义文件和目录；保留历史 Docker 数据，由 ProxyDock 单独管理")
+		prerequisite = "Xray 和 sing-box 两个内核均须已卸载；任一仍存在时拒绝清理"
 	}
 	c.printConfirmationPanel(
 		"危险操作确认：清理卸载残留",

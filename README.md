@@ -1,6 +1,8 @@
 # ProxyForge
 
-ProxyForge 是面向 Linux 的代理管理工具，提供中文交互菜单和命令行，支持原生 systemd 部署以及独立的 Xray Docker Compose 实例，包含版本更新、配置管理和日常维护。
+ProxyForge 是面向 Linux 的代理管理工具，提供中文交互菜单和命令行，通过 systemd 独立管理原生 Xray-core 和 sing-box，包含版本更新、配置管理和日常维护。
+
+Docker 代理管理已分离为独立项目 **ProxyDock**，使用 `proxydock` 命令。原有 `proxyforge docker …` 改为 `proxydock …`；现有容器、配置和数据路径保持兼容。ProxyForge 的原生清理保留历史 Docker 数据，由 ProxyDock 单独管理。
 
 使用 Go 编写，单二进制部署；使用预编译版本无需安装 Go。
 
@@ -23,7 +25,6 @@ ProxyForge 是面向 Linux 的代理管理工具，提供中文交互菜单和�
 | 系统 | Debian、Ubuntu、RHEL、CentOS、Rocky Linux、AlmaLinux、Fedora |
 | 架构 | amd64（x86_64）、arm64（aarch64） |
 | 原生服务管理 | systemd，PID 1 必须为 systemd |
-| Docker 部署（可选） | 本机 rootful Docker 与 Compose v2 或更高版本插件（含 v5），需提前安装；Docker 入口不要求宿主机 Xray/systemd |
 | 权限 | 除 `--help` 和 `--version` 外，所有操作需要 root |
 
 ## 快速开始
@@ -73,7 +74,6 @@ sudo proxyforge
 | [使用指南](docs/configuration.md) | 配置管理、客户端导出与服务操作 |
 | [文件与权限](docs/security.md) | 数据目录、权限、备份与安全边界 |
 | [开发指南](docs/development.md) | 构建、测试、CI 与发布流程 |
-| [Xray Docker](docs/docker-xray.md) | 自建 Compose 实例的部署、配置管理、升级回滚与清理 |
 
 更多专题说明见[文档目录](docs/README.md)。
 

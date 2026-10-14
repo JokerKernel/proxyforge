@@ -19,7 +19,7 @@
 
 ## 配置事务
 
-Docker 版自有文件、权限、状态、备份和事务位于独立目录，不调用原生存储与 systemd 代码。详见 [Xray Docker 使用指南](docker-xray.md)。原生全局清理保留 `/var/lib/proxyforge/docker/`，由入口层完成全部预检查后交给 Docker 模块清理；Docker daemon 不可达且无法核验时拒绝删除数据。
+Docker 管理已移至独立项目 ProxyDock。原生全局清理始终保留历史 `/var/lib/proxyforge/docker/`，不检查 Docker daemon，也不删除或协调 Docker 实例；该目录由 `proxydock cleanup` 单独核验和清理。
 
 配置更新先写入临时文件，运行 `sing-box check` 或 `xray run -test`，再原子替换目标文件。ProxyForge 只重启目标服务，并确认其 active 状态和监听端口。
 

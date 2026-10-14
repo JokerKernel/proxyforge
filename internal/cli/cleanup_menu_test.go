@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"proxyforge/internal/app"
-	dockerfeature "proxyforge/internal/docker"
 	"proxyforge/internal/domain"
 	"proxyforge/internal/provider"
 	"proxyforge/internal/provider/singbox"
@@ -51,12 +50,12 @@ func TestMainMenuCleanupAllConfirmationAndInstalledCoreProtection(t *testing.T) 
 		name, sequence, remainingCore string
 		cleaned                       bool
 	}{
-		{name: "cancel-zero", sequence: "4\n0\n2\n"},
-		{name: "cancel-q", sequence: "4\nq\n2\n"},
-		{name: "cancel-Q", sequence: "4\nQ\n2\n"},
-		{name: "confirmed", sequence: "4\n1\n\n2\n", cleaned: true},
-		{name: "xray-still-installed", sequence: "4\n1\n\n2\n", remainingCore: domain.CoreXray},
-		{name: "singbox-still-installed", sequence: "4\n1\n\n2\n", remainingCore: domain.CoreSingBox},
+		{name: "cancel-zero", sequence: "3\n0\n2\n"},
+		{name: "cancel-q", sequence: "3\nq\n2\n"},
+		{name: "cancel-Q", sequence: "3\nQ\n2\n"},
+		{name: "confirmed", sequence: "3\n1\n\n2\n", cleaned: true},
+		{name: "xray-still-installed", sequence: "3\n1\n\n2\n", remainingCore: domain.CoreXray},
+		{name: "singbox-still-installed", sequence: "3\n1\n\n2\n", remainingCore: domain.CoreSingBox},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			layout := system.Layout{Root: t.TempDir()}
@@ -81,7 +80,6 @@ func TestMainMenuCleanupAllConfirmationAndInstalledCoreProtection(t *testing.T) 
 			}
 			c := &commandSet{
 				app: a, in: input, out: &out, errOut: &out,
-				docker: dockerfeature.New(dockerfeature.Options{Root: layout.Root, RootCheck: func() error { return nil }, LookPath: func(string) (string, error) { return "", exec.ErrNotFound }}),
 				reader: bufio.NewReader(menuByteReader{strings.NewReader(test.sequence)}),
 			}
 			if !c.interactiveUI() {

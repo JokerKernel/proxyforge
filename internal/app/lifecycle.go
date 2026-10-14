@@ -361,8 +361,7 @@ func (a *App) Cleanup(ctx context.Context, target string) error {
 	return nil
 }
 
-// CheckCleanup is read-only, so the entry layer can check every independent
-// module before any of them deletes data. It does not depend on Docker.
+// CheckCleanup verifies native uninstall prerequisites without changing files.
 func (a *App) CheckCleanup(ctx context.Context, target string) error {
 	if err := a.RootCheck(); err != nil {
 		return err
@@ -396,8 +395,8 @@ func removeNativeDataRoot(path string) error {
 		return err
 	}
 	for _, entry := range entries {
-		// The entire reserved namespace belongs to independent modules. Keep it
-		// even when empty or when called directly without CLI coordination.
+		// ProxyDock owns this historical namespace after repository separation.
+		// Keep it even when empty; native cleanup must not delete its records.
 		if entry.Name() == "docker" {
 			continue
 		}
