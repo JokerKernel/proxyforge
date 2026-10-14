@@ -1,91 +1,15 @@
 package singbox
 
-import (
-	"bytes"
-	"encoding/json"
-	"sort"
-
-	"proxyforge/internal/provider/jsonutil"
-)
+import "proxyforge/internal/provider/jsonutil"
 
 // marshalSingBox follows the field order used by the official sing-box
 // configuration documentation. Unknown manual fields are retained and sorted
 // after documented fields.
 func marshalSingBox(value any) ([]byte, error) {
-	return jsonutil.Marshal(orderSingBoxValue(value))
+	return jsonutil.MarshalOrdered(value, singBoxFieldOrder)
 }
 
-type orderedSingBoxObject map[string]any
-
-func orderSingBoxValue(value any) any {
-	switch typed := value.(type) {
-	case map[string]any:
-		return orderedSingBoxObject(typed)
-	case []any:
-		ordered := make([]any, len(typed))
-		for index, item := range typed {
-			ordered[index] = orderSingBoxValue(item)
-		}
-		return ordered
-	default:
-		return value
-	}
-}
-
-func (object orderedSingBoxObject) MarshalJSON() ([]byte, error) {
-	keys := make([]string, 0, len(object))
-	for key := range object {
-		keys = append(keys, key)
-	}
-	priority := singBoxFieldPriority(object)
-	sort.Slice(keys, func(i, j int) bool {
-		left, leftOK := priority[keys[i]]
-		right, rightOK := priority[keys[j]]
-		switch {
-		case leftOK && rightOK:
-			return left < right
-		case leftOK:
-			return true
-		case rightOK:
-			return false
-		default:
-			return keys[i] < keys[j]
-		}
-	})
-
-	var output bytes.Buffer
-	output.WriteByte('{')
-	for index, key := range keys {
-		if index > 0 {
-			output.WriteByte(',')
-		}
-		encodedKey, err := marshalSingBoxJSONValue(key)
-		if err != nil {
-			return nil, err
-		}
-		encodedValue, err := marshalSingBoxJSONValue(orderSingBoxValue(object[key]))
-		if err != nil {
-			return nil, err
-		}
-		output.Write(encodedKey)
-		output.WriteByte(':')
-		output.Write(encodedValue)
-	}
-	output.WriteByte('}')
-	return output.Bytes(), nil
-}
-
-func marshalSingBoxJSONValue(value any) ([]byte, error) {
-	var output bytes.Buffer
-	encoder := json.NewEncoder(&output)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(value); err != nil {
-		return nil, err
-	}
-	return bytes.TrimSuffix(output.Bytes(), []byte{'\n'}), nil
-}
-
-func singBoxFieldPriority(object map[string]any) map[string]int {
+func singBoxFieldOrder(object map[string]any) []string {
 	order := []string(nil)
 	typeName, _ := object["type"].(string)
 	switch {
@@ -149,11 +73,7 @@ func singBoxFieldPriority(object map[string]any) map[string]int {
 	case hasSingBoxKeys(object, "server") && hasAnySingBoxKey(object, "strategy", "rewrite_ttl", "client_subnet") && !hasAnySingBoxKey(object, "server_port", "type"):
 		order = []string{"server", "strategy", "rewrite_ttl", "client_subnet"}
 	}
-	priority := make(map[string]int, len(order))
-	for index, key := range order {
-		priority[key] = index
-	}
-	return priority
+	return order
 }
 
 func singBoxListenFieldOrder() []string {

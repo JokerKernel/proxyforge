@@ -108,26 +108,15 @@ func validateRendered(ctx context.Context, p provider.CoreProvider, runner provi
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(dir, ".proxyforge-validate-*.json")
-	if err != nil {
-		return err
-	}
-	path := f.Name()
-	defer os.Remove(path)
-	if err := f.Chmod(0600); err == nil {
-		_, err = f.Write(b)
-	}
-	if closeErr := f.Close(); err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return err
-	}
-	return p.ValidateConfig(ctx, runner, path)
+	return validateConfigBytes(ctx, p, runner, dir, ".proxyforge-validate-*.json", b)
 }
 
 func validateTemporary(ctx context.Context, p provider.CoreProvider, runner provider.Runner, b []byte) error {
-	f, err := os.CreateTemp("", "proxyforge-capability-*.json")
+	return validateConfigBytes(ctx, p, runner, "", "proxyforge-capability-*.json", b)
+}
+
+func validateConfigBytes(ctx context.Context, p provider.CoreProvider, runner provider.Runner, dir, pattern string, b []byte) error {
+	f, err := os.CreateTemp(dir, pattern)
 	if err != nil {
 		return err
 	}

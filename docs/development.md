@@ -42,6 +42,15 @@ Golden、安全和事务回滚测试：
 go test ./...
 ```
 
+配置序列化的性能基准：
+
+```bash
+go test ./internal/provider/xray ./internal/provider/singbox \
+  -run '^$' -bench '^BenchmarkMarshal' -benchmem
+```
+
+Xray 和 sing-box 各自维护字段排序规则，通过 `jsonutil.MarshalOrdered` 复用序列化机制。未列入排序规则的手工字段仍会保留；新增配置字段无需修改共享序列化代码。
+
 提供官方二进制后，可以运行 REALITY、TLS、客户端和中转配置的原生验收：
 
 ```bash
