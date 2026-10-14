@@ -1,5 +1,7 @@
 # 构建、测试与发布
 
+Xray Docker 功能的待实现方案见 [Xray Docker 独立模块开发设计](xray-docker-development.md)。该文档定义完全独立的 `internal/docker` 模块，不依赖原生 app/system/provider/domain 业务；涵盖自建 Compose 实例、配置、存储、事务、菜单和验收要求，不代表当前版本已经支持 Docker。
+
 ## 构建
 
 ```bash
