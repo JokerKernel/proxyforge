@@ -41,11 +41,13 @@ if [[ ${1:-} == x509 ]]; then
   for ((index = 1; index <= $#; index++)); do
     if [[ ${!index} == -checkhost ]]; then
       host_index=$((index + 1))
-      [[ ${!host_index} == "${allowed}" || ${!host_index} == "www.${allowed}" ]]
+      [[ ${MOCK_CERT_MATCHES:-1} == 1 && (${!host_index} == "${allowed}" || ${!host_index} == "www.${allowed}") ]]
       exit
     fi
   done
-  if [[ ${allowed} == se-edge.itunes.apple.com ]]; then
+  if [[ ${MOCK_CHILD_SANS:-0} == 1 ]]; then
+    printf '%s\n' 'X509v3 Subject Alternative Name:' "    DNS:${allowed}, DNS:assets.${allowed}, DNS:cdn.${allowed}"
+  elif [[ ${allowed} == se-edge.itunes.apple.com ]]; then
     printf '%s\n' \
       'subject=CN=mock.example' \
       'issuer=CN=Mock CA' \
@@ -66,6 +68,53 @@ EOF
 
 cat >"${test_tmp}/bin/curl" <<'EOF'
 #!/usr/bin/env bash
+set -euo pipefail
+header_host=''
+url=''
+while (($# > 0)); do
+  case $1 in
+    -H)
+      header_host=${2#Host: }
+      shift 2
+      ;;
+    http://*|https://*) url=$1; shift ;;
+    *) shift ;;
+  esac
+done
+if [[ ${url} == http://* && -n ${header_host} ]]; then
+  allowed=${MOCK_ALLOWED_NAME:-se-edge.itunes.apple.com}
+  mode=${MOCK_HTTP_HOST_MODE:-unrestricted}
+  if [[ ${header_host,,} == "${allowed,,}" ]]; then
+    if [[ ${mode} == baseline-fails ]]; then
+      printf '000'
+      exit 52
+    fi
+  else
+    case ${mode} in
+      restricted) exit 52 ;;
+      restricted-reset) exit 56 ;;
+      subdomains)
+        [[ ${header_host,,} == *."${allowed,,}" ]] || exit 52
+        ;;
+      timeout) exit 28 ;;
+      refused) exit 7 ;;
+      mixed)
+        [[ ${header_host} == www.cloudflare.com ]] || exit 52
+        ;;
+      strict-child-leak)
+        [[ ${header_host} == "www.${allowed}" ]] || exit 52
+        ;;
+      mixed-timeout)
+        [[ ${header_host} != www.cloudflare.com ]] || exit 28
+        exit 52
+        ;;
+      partial-response)
+        printf '403'
+        exit 56
+        ;;
+    esac
+  fi
+fi
 if [[ ${MOCK_HTTP_RESPONDS:-1} != 1 ]]; then
   printf '%s\n' 'curl: (52) Empty reply from server' >&2
   exit 52
@@ -91,6 +140,7 @@ run_probe() {
   local subdomain_sni_responds=$6
   local output_file=$7
   local allowed_name=${8:-se-edge.itunes.apple.com}
+  local http_host_mode=${9:-unrestricted}
   set +e
   MOCK_BAD_SNI_RESPONDS=${bad_sni_responds} \
     MOCK_ALLOWED_SNI_RESPONDS=${allowed_sni_responds} \
@@ -99,6 +149,7 @@ run_probe() {
     MOCK_BAD_SNI_ALERTS=${bad_sni_alerts} \
     MOCK_SUBDOMAIN_SNI_RESPONDS=${subdomain_sni_responds} \
     MOCK_ALLOWED_NAME=${allowed_name} \
+    MOCK_HTTP_HOST_MODE=${http_host_mode} \
     PATH="${test_tmp}/bin:${PATH}" \
     "${probe_script}" \
       --host 192.0.2.10 \
@@ -120,7 +171,20 @@ grep -Fq 'HTTPS Host 探测' "${success_output}"
 grep -Fq '允许项的子域' "${success_output}"
 grep -Fq '1 个错误 SNI 均未获得证书' "${success_output}"
 grep -Fq '子域名严格匹配：已开启' "${success_output}"
-grep -Fq '✓ 子域名严格匹配已开启' "${success_output}"
+grep -Fq '严格模式  已开启  -- 仅允许完整 SNI 域名' "${success_output}"
+grep -Fq 'SNI 防护  已开启  -- 按 SNI 域名规则限制回落' "${success_output}"
+grep -Fq 'HTTP Host 未开启  -- 非匹配 Host 仍收到 HTTP 响应' "${success_output}"
+grep -Fxq '╭─ 结论' "${success_output}"
+grep -Fxq '│ SNI 防护  已开启  -- 按 SNI 域名规则限制回落' "${success_output}"
+grep -Fxq '│ 严格模式  已开启  -- 仅允许完整 SNI 域名' "${success_output}"
+grep -Fxq '│ HTTP Host 未开启  -- 非匹配 Host 仍收到 HTTP 响应' "${success_output}"
+grep -Fxq '╰──────────────────────────────────────────────' "${success_output}"
+for closed_border in ╮ ╯ ┌ ┐ └ ┘; do
+  if grep -Fq "${closed_border}" "${success_output}"; then
+    printf 'information cards must use the native CLI open-edge style\n' >&2
+    exit 1
+  fi
+done
 grep -Fq '允许项的子域 www.se-edge.itunes.apple.com 未获得证书' "${success_output}"
 grep -Fq '收到 TLS 数据但未获得证书' "${success_output}"
 grep -Fq '无 SNI 探测仍获得了证书' "${success_output}"
@@ -150,8 +214,8 @@ awk '
 [[ $(grep -Fc 'HTTP Host 伪装测试（证书 SAN）' "${success_output}") -eq 2 ]]
 [[ $(grep -Fc 'HTTPS Host 访问（证书 SAN）' "${success_output}") -eq 2 ]]
 grep -Fq '证书 SAN 探测均未获得证书' "${success_output}"
-grep -Fq 'HTTP 附加探测中有 7 个请求收到了响应' "${success_output}"
-grep -Fq 'HTTPS Host 附加探测中有 6 个请求收到了响应' "${success_output}"
+grep -Fq 'HTTP 附加探测中有 8 个请求收到了响应' "${success_output}"
+grep -Fq 'HTTPS Host 附加探测中有 7 个请求收到了响应' "${success_output}"
 
 color_output="${test_tmp}/color.log"
 PROXYFORGE_COLOR=always \
@@ -162,6 +226,25 @@ PROXYFORGE_COLOR=always \
   --bad-sni www.cloudflare.com >"${color_output}" 2>&1
 grep -Fq $'\033[1;38;5;208m证书 SAN\033[0m' "${color_output}"
 grep -Fq $'\033[1;38;5;208m（证书 SAN）\033[0m' "${color_output}"
+grep -Fq $'\033[1;38;5;208m╭─ ProxyForge\033[0m' "${color_output}"
+grep -Fq $'\033[1;38;5;208m╰──────────────────────────────────────────────\033[0m' "${color_output}"
+grep -Fq $'\033[38;5;208m│\033[0m SNI 防护  \033[38;5;208m已开启\033[0m  \033[90m-- 按 SNI 域名规则限制回落\033[0m' "${color_output}"
+grep -Fq $'\033[38;5;208m│\033[0m 严格模式  \033[38;5;208m已开启\033[0m  \033[90m-- 仅允许完整 SNI 域名\033[0m' "${color_output}"
+grep -Fq $'\033[38;5;208m│\033[0m HTTP Host \033[90m未开启\033[0m  \033[90m-- 非匹配 Host 仍收到 HTTP 响应\033[0m' "${color_output}"
+grep -Fq $'\033[38;5;208m│\033[0m 检测结果  \033[1;32m✓ SNI 过滤生效\033[0m' "${color_output}"
+
+plain_output="${test_tmp}/plain-color.log"
+NO_COLOR=1 PROXYFORGE_COLOR=never \
+  MOCK_BAD_SNI_RESPONDS=0 MOCK_ALLOWED_SNI_RESPONDS=1 MOCK_NO_SNI_RESPONDS=1 \
+  MOCK_HTTP_RESPONDS=1 MOCK_BAD_SNI_ALERTS=1 MOCK_SUBDOMAIN_SNI_RESPONDS=0 \
+  PATH="${test_tmp}/bin:${PATH}" \
+  "${probe_script}" --host 192.0.2.10 --port 443 --sni se-edge.itunes.apple.com \
+  --bad-sni www.cloudflare.com >"${plain_output}" 2>&1
+if grep -Fq $'\033[' "${plain_output}"; then
+  printf 'PROXYFORGE_COLOR=never must disable information card colors\n' >&2
+  exit 1
+fi
+grep -Fxq '│ SNI 防护  已开启  -- 按 SNI 域名规则限制回落' "${plain_output}"
 
 failure_output="${test_tmp}/failure.log"
 run_probe 1 1 1 1 0 0 "${failure_output}"
@@ -176,7 +259,7 @@ grep -Fq '允许项的子域' "${subdomain_loose_output}"
 grep -Fq '✓ SNI 过滤生效' "${subdomain_loose_output}"
 grep -Fq '1 个错误 SNI 均未获得证书' "${subdomain_loose_output}"
 grep -Fq '子域名严格匹配：未开启' "${subdomain_loose_output}"
-grep -Fq '△ 子域名严格匹配未开启' "${subdomain_loose_output}"
+grep -Fq '严格模式  未开启' "${subdomain_loose_output}"
 grep -Fq '允许项的子域 www.se-edge.itunes.apple.com 获得了证书' "${subdomain_loose_output}"
 grep -Fq '该结果不改变 TLS SNI 判定' "${subdomain_loose_output}"
 if grep -Fq '✗ SNI 过滤未生效' "${subdomain_loose_output}"; then
@@ -190,13 +273,14 @@ run_probe 0 0 1 1 1 0 "${mismatch_output}"
 grep -Fq '△ 检测到 SNI 过滤行为' "${mismatch_output}"
 grep -Fq '填写的 SNI 不是当前允许回落域名' "${mismatch_output}"
 grep -Fq '子域名严格匹配：无法确认' "${mismatch_output}"
-grep -Fq '? 子域名严格匹配无法确认' "${mismatch_output}"
+grep -Fq '严格模式  无法确认' "${mismatch_output}"
 
 enhanced_output="${test_tmp}/enhanced.log"
 run_probe 0 1 0 0 1 0 "${enhanced_output}"
 [[ ${probe_status} -eq 0 ]]
 grep -Fq '✓ 增强 SNI 过滤生效' "${enhanced_output}"
-grep -Fq '✓ 子域名严格匹配已开启' "${enhanced_output}"
+grep -Fq '严格模式  已开启' "${enhanced_output}"
+grep -Fq 'HTTP Host 无法确认  -- 允许 Host 未收到 HTTP 响应' "${enhanced_output}"
 grep -Fq '子域名严格匹配：已开启' "${enhanced_output}"
 grep -Fq '无 SNI 访问已被增强过滤拒绝' "${enhanced_output}"
 grep -Fq 'curl退出码=52' "${enhanced_output}"
@@ -208,7 +292,8 @@ run_probe 0 0 0 0 0 0 "${unreachable_output}"
 grep -Fq '? 未获得任何 TLS 证书' "${unreachable_output}"
 grep -Fq '节点端口可能无法访问' "${unreachable_output}"
 grep -Fq '子域名严格匹配：无法确认' "${unreachable_output}"
-grep -Fq '? 子域名严格匹配无法确认' "${unreachable_output}"
+grep -Fq '严格模式  无法确认' "${unreachable_output}"
+grep -Fq 'HTTP Host 无法确认  -- 允许 Host 未收到 HTTP 响应' "${unreachable_output}"
 
 cloudflare_filtered_output="${test_tmp}/cloudflare-filtered.log"
 run_probe 0 1 1 1 1 0 "${cloudflare_filtered_output}" speed.cloudflare.com
@@ -243,5 +328,49 @@ run_probe 0 1 1 1 1 0 "${alicdn_output}" img.alicdn.com
 grep -Fq 'CDN：阿里云 CDN' "${alicdn_output}"
 grep -Fq '△ 当前有 CDN 风险（阿里云 CDN）' "${alicdn_output}"
 grep -Fq '当前有 CDN 风险：允许 SNI 检测到 阿里云 CDN' "${alicdn_output}"
+
+for http_mode in restricted restricted-reset mixed strict-child-leak partial-response baseline-fails timeout refused mixed-timeout; do
+  http_output="${test_tmp}/http-${http_mode}.log"
+  run_probe 0 1 1 1 0 0 "${http_output}" se-edge.itunes.apple.com "${http_mode}"
+  # Host findings remain independent of the successful TLS exit status.
+  [[ ${probe_status} -eq 0 ]]
+  [[ $(grep -Fc '│ SNI 防护' "${http_output}") -eq 1 ]]
+  [[ $(grep -Fc '│ 严格模式' "${http_output}") -eq 1 ]]
+  [[ $(grep -Fc '│ HTTP Host' "${http_output}") -eq 1 ]]
+  case ${http_mode} in
+    restricted|restricted-reset)
+      grep -Fq 'HTTP Host 已开启  -- 按 SNI 域名规则检查明文 Host' "${http_output}"
+      grep -Fq 'HTTP Host：已开启（允许 Host 有响应，非匹配 Host 均被断开）' "${http_output}"
+      # HTTPS succeeds for unrelated hosts in this mock; it cannot override
+      # the independently measured plaintext Host result.
+      grep -Fq 'HTTPS Host 附加探测中有 7 个请求收到了响应' "${http_output}"
+      ;;
+    mixed|strict-child-leak|partial-response)
+      grep -Fq 'HTTP Host 未开启  -- 非匹配 Host 仍收到 HTTP 响应' "${http_output}"
+      ;;
+    baseline-fails)
+      grep -Fq 'HTTP Host 无法确认  -- 允许 Host 未收到 HTTP 响应' "${http_output}"
+      ;;
+    timeout|refused|mixed-timeout)
+      grep -Fq 'HTTP Host 无法确认  -- 非匹配 Host 探测超时或出错' "${http_output}"
+      ;;
+  esac
+done
+
+child_sans_output="${test_tmp}/http-child-sans.log"
+MOCK_CHILD_SANS=1 run_probe 0 1 1 1 0 1 "${child_sans_output}" se-edge.itunes.apple.com subdomains
+[[ ${probe_status} -eq 0 ]]
+grep -Fq '严格模式  未开启' "${child_sans_output}"
+grep -Fq 'HTTP Host 已开启' "${child_sans_output}"
+grep -Fq 'Host: assets.se-edge.itunes.apple.com' "${child_sans_output}"
+grep -Fq 'Host: cdn.se-edge.itunes.apple.com' "${child_sans_output}"
+grep -Fq 'HTTP 附加探测中有 5 个请求收到了响应' "${child_sans_output}"
+
+certificate_mismatch_output="${test_tmp}/certificate-mismatch.log"
+MOCK_CERT_MATCHES=0 run_probe 0 1 1 1 0 0 "${certificate_mismatch_output}" se-edge.itunes.apple.com restricted
+[[ ${probe_status} -eq 2 ]]
+grep -Fq 'SNI 防护  无法确认' "${certificate_mismatch_output}"
+grep -Fq '严格模式  无法确认' "${certificate_mismatch_output}"
+grep -Fq 'HTTP Host 已开启' "${certificate_mismatch_output}"
 
 printf 'test-reality-sni: ok\n'

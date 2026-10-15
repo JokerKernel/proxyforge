@@ -8,18 +8,19 @@ usage() {
 
 选项：
   --bad-sni <域名>  要拒绝的 SNI，可重复指定；默认测试常见外部域名
-  --timeout <秒>    每次 TLS 探测的超时时间，默认 8 秒
-  --verbose         显示每次 openssl 的原始输出
+  --timeout <秒>    每次探测的超时时间，默认 8 秒
+  --verbose         显示 TLS 探测的原始输出
   -h, --help        显示帮助
 
 脚本会自动探测 www.<允许的SNI> 作为允许项的子域，并从允许项证书 SAN 中选取域名做 TLS 探测；这些结果只作附加报告，不纳入 SNI 拦截判定。
+结论分别显示 SNI 防护、严格模式和明文 HTTP Host 防护；HTTP Host 通过允许项与非匹配域名的响应差异判断，不改变 TLS SNI 退出码。
 允许 SNI 若识别为 Cloudflare，SNI 过滤未生效时会提示严重错误（流量可能被刷）；过滤已生效时仍提示当前有 CDN 风险。
 
 示例：
   ./scripts/test-reality-sni.sh \
     --host 203.0.113.10 --port 443 --sni speed.cloudflare.com
 
-请在节点服务器之外的机器运行。脚本只发起未认证 TLS 连接，不读取或修改服务端配置。
+请在节点服务器之外的机器运行。脚本发起未认证 TLS、HTTP 和 HTTPS 探测，不读取或修改服务端配置。
 EOF
 }
 
@@ -103,11 +104,30 @@ color_green=''
 color_yellow=''
 color_orange=''
 color_bold_orange=''
+color_bold_green=''
+color_bold_yellow=''
+color_bold_red=''
+color_bright_black=''
 color_red=''
 color_dim=''
 color_enabled=false
-if [[ -t 1 && ${NO_COLOR:-} != 1 && ${NO_COLOR:-} != true && ${PROXYFORGE_COLOR:-auto} != never ]] || [[ ${PROXYFORGE_COLOR:-auto} == always ]]; then
-  color_enabled=true
+# Same switch as the installer and the CLI color writer: always wins over
+# NO_COLOR, never/dumb/NO_COLOR disable, otherwise only a real terminal.
+proxyforge_color_mode=${PROXYFORGE_COLOR:-auto}
+proxyforge_color_mode=${proxyforge_color_mode,,}
+case ${proxyforge_color_mode} in
+  always | 1 | true | yes)
+    color_enabled=true
+    ;;
+  never | 0 | false | no)
+    ;;
+  *)
+    if [[ -z ${NO_COLOR+x} && ${TERM:-} != dumb && -t 1 ]]; then
+      color_enabled=true
+    fi
+    ;;
+esac
+if ${color_enabled}; then
   color_reset=$'\033[0m'
   color_bold=$'\033[1m'
   color_cyan=$'\033[36m'
@@ -116,22 +136,32 @@ if [[ -t 1 && ${NO_COLOR:-} != 1 && ${NO_COLOR:-} != true && ${PROXYFORGE_COLOR:
   color_yellow=$'\033[33m'
   color_orange=$'\033[38;5;208m'
   color_bold_orange=$'\033[1;38;5;208m'
+  color_bold_green=$'\033[1;32m'
+  color_bold_yellow=$'\033[1;33m'
+  color_bold_red=$'\033[1;31m'
+  color_bright_black=$'\033[90m'
   color_red=$'\033[31m'
   color_dim=$'\033[2m'
 fi
 
+print_card_header() {
+  printf '%s╭─ %s%s\n' "${color_bold_orange}" "$1" "${color_reset}"
+}
+
+print_card_footer() {
+  printf '%s╰──────────────────────────────────────────────%s\n' "${color_bold_orange}" "${color_reset}"
+}
+
 print_header() {
-  printf '%s╭────────────────────────────────────────────╮%s\n' "${color_cyan}" "${color_reset}"
-  printf '%s│%s  %sProxyForge REALITY SNI 检测器%s            %s│%s\n' \
-    "${color_cyan}" "${color_reset}" "${color_bold}" "${color_reset}" "${color_cyan}" "${color_reset}"
-  printf '%s╰────────────────────────────────────────────╯%s\n' "${color_cyan}" "${color_reset}"
+  print_card_header 'ProxyForge'
+  printf '%s│ REALITY SNI 检测器%s\n' "${color_orange}" "${color_reset}"
+  print_card_footer
 }
 
 print_section() {
-  printf '\n%s┌─ %s ────────────────────────────────────────┐%s\n' \
-    "${color_cyan}" "$1" "${color_reset}"
-  printf '%s└──────────────────────────────────────────────┘%s\n' \
-    "${color_cyan}" "${color_reset}"
+  printf '\n'
+  print_card_header "$1"
+  print_card_footer
 }
 
 format_probe_title() {
@@ -264,42 +294,70 @@ print_allowed_cdn_finding() {
   fi
 }
 
-conclusion_display_width() {
+card_display_width() {
   local s=$1
+  local LC_ALL=C
   local width=0
   local i char
+  # Match the standalone installer's width handling without requiring a locale.
   for ((i = 0; i < ${#s}; i++)); do
     char=${s:i:1}
-    case ${char} in
-      [[:ascii:]]) width=$((width + 1)) ;;
-      '△' | '✓' | '✗' | '?') width=$((width + 1)) ;;
-      *) width=$((width + 2)) ;;
-    esac
+    if [[ ${char} < $'\200' ]]; then
+      width=$((width + 1))
+    elif [[ ${char} > $'\277' ]]; then
+      width=$((width + 2))
+    fi
   done
   printf '%s' "${width}"
 }
 
-print_conclusion_box_line() {
-  local color=$1
-  local body=$2
-  local inner=42
-  local width padding
-  width=$(conclusion_display_width "${body}")
-  padding=$((inner - width))
-  if ((padding < 1)); then
-    padding=1
-  fi
-  printf '%s│%s%s%*s%s│%s\n' \
-    "${color}" "${body}" "${color_reset}" "${padding}" '' "${color}" "${color_reset}"
+# Status words follow decorateConfigCardValue in internal/system/color.go.
+card_status_color() {
+  case $1 in
+    运行中 | 已开启 | 已启用) printf '%s' "${color_orange}" ;;
+    已停止) printf '%s' "${color_bold_yellow}" ;;
+    已失败 | 无法读取) printf '%s' "${color_bold_red}" ;;
+    未开启 | 未生成 | 不限制 | 未使用 | 已停用) printf '%s' "${color_bright_black}" ;;
+  esac
 }
 
-print_conclusion_cdn_box_line() {
-  [[ -n ${detected_cdn} ]] || return 0
-  if [[ ${detected_cdn} == Cloudflare ]] && ((rejected_sni_certificate_count > 0)); then
-    print_conclusion_box_line "${color_red}" '  ✗ Cloudflare 严重错误：流量可能被刷'
+# Match the CLI's printLabeledCard: a 10-column label, an open right edge,
+# an orange bar, and a dim "--" description.
+print_card_row() {
+  local label=$1
+  local value=$2
+  local value_color=${3-}
+  local width padding status extra status_color
+  width=$(card_display_width "${label}")
+  padding=$((10 - width))
+  ((padding >= 1)) || padding=1
+  if [[ ${value} == *'  -- '* ]]; then
+    status=${value%%  -- *}
+    extra=${value#*  -- }
+    status_color=$(card_status_color "${status}")
+    printf '%s│%s %s%*s%s%s%s  %s-- %s%s\n' \
+      "${color_orange}" "${color_reset}" "${label}" "${padding}" '' \
+      "${status_color}" "${status}" "${color_reset}" \
+      "${color_bright_black}" "${extra}" "${color_reset}"
     return
   fi
-  print_conclusion_box_line "${color_yellow}" "  △ 当前有 CDN 风险（${detected_cdn}）"
+  if [[ -n ${value_color} ]]; then
+    printf '%s│%s %s%*s%s%s%s\n' \
+      "${color_orange}" "${color_reset}" "${label}" "${padding}" '' \
+      "${value_color}" "${value}" "${color_reset}"
+    return
+  fi
+  printf '%s│%s %s%*s%s\n' \
+    "${color_orange}" "${color_reset}" "${label}" "${padding}" '' "${value}"
+}
+
+print_conclusion_cdn_row() {
+  [[ -n ${detected_cdn} ]] || return 0
+  if [[ ${detected_cdn} == Cloudflare ]] && ((rejected_sni_certificate_count > 0)); then
+    print_card_row 'CDN' '✗ Cloudflare 严重错误：流量可能被刷' "${color_bold_red}"
+    return
+  fi
+  print_card_row 'CDN' "△ 当前有 CDN 风险（${detected_cdn}）" "${color_bold_yellow}"
 }
 
 print_cdn_summary() {
@@ -362,6 +420,10 @@ declare -a http_host_candidate_sources=(
   '内置域名'
   '内置域名'
 )
+if ${probe_allowed_subdomain}; then
+  http_host_candidates+=("${allowed_subdomain}")
+  http_host_candidate_sources+=('允许项的子域')
+fi
 declare -a http_host_probes=()
 declare -a http_host_sources=()
 declare -a tls_extra_snis=()
@@ -607,6 +669,8 @@ run_http_host_probe() {
   http_exit=$?
   set -e
   http_code=$(sed -n 's/.*\([1-5][0-9][0-9]\)$/\1/p' "${output_file}" | tail -n 1)
+  http_host_probe_code=${http_code}
+  http_host_probe_exit=${http_exit}
   if [[ ${http_exit} -eq 0 && ${http_code} =~ ^[1-5][0-9][0-9]$ ]]; then
     print_http_result "${http_code}"
     return 0
@@ -647,28 +711,73 @@ run_https_host_probe() {
   fi
 }
 
-print_conclusion_strict_box_line() {
-  if ! ${probe_allowed_subdomain}; then
-    printf '%s│  ? 子域名严格匹配未检测%s                   %s│%s\n' \
-      "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
-  elif ! ${allowed_has_certificate}; then
-    printf '%s│  ? 子域名严格匹配无法确认%s                 %s│%s\n' \
-      "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
-  elif ${allowed_subdomain_has_certificate}; then
-    printf '%s│  △ 子域名严格匹配未开启%s                   %s│%s\n' \
-      "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
+print_conclusion_features() {
+  if ((rejected_sni_certificate_count > 0)); then
+    print_card_row 'SNI 防护' '未开启  -- 错误 SNI 仍获得证书'
+  elif ${allowed_has_certificate} && ${allowed_certificate_matches_sni}; then
+    print_card_row 'SNI 防护' '已开启  -- 按 SNI 域名规则限制回落'
   else
-    printf '%s│  ✓ 子域名严格匹配已开启%s                   %s│%s\n' \
-      "${color_green}" "${color_reset}" "${color_green}" "${color_reset}"
+    print_card_row 'SNI 防护' '无法确认  -- 允许 SNI 未取得匹配证书'
   fi
-  print_conclusion_cdn_box_line
+  if ! ${probe_allowed_subdomain}; then
+    print_card_row '严格模式' '未检测  -- 允许 SNI 过长，无法构造子域'
+  elif ! ${allowed_has_certificate} || ! ${allowed_certificate_matches_sni} || ((rejected_sni_certificate_count > 0)); then
+    print_card_row '严格模式' '无法确认  -- 尚未确认有效的 SNI 防护'
+  elif ${allowed_subdomain_has_certificate}; then
+    print_card_row '严格模式' '未开启  -- 允许 SNI 域名的子域仍获得证书'
+  else
+    print_card_row '严格模式' '已开启  -- 仅允许完整 SNI 域名'
+  fi
+  if [[ ${http_host_status} == 已开启 ]]; then
+    print_card_row 'HTTP Host' "${http_host_status}  -- 按 SNI 域名规则检查明文 Host"
+  elif [[ ${http_host_status} == 未开启 ]]; then
+    print_card_row 'HTTP Host' "${http_host_status}  -- 非匹配 Host 仍收到 HTTP 响应"
+  else
+    print_card_row 'HTTP Host' "${http_host_status}  -- ${http_host_reason}"
+  fi
+  print_conclusion_cdn_row
+}
+
+record_http_host_result() {
+  local host=$1
+  if [[ ${host,,} == "${allowed_sni,,}" ]]; then
+    if [[ ${http_host_probe_code} =~ ^[1-5][0-9][0-9]$ ]]; then
+      http_host_allowed_response=true
+    fi
+  elif ${http_host_strict} || ! domain_has_suffix "${host}" "${allowed_sni}"; then
+    # Confirmed strict SNI matching also requires plaintext subdomains to close.
+    if [[ ${http_host_probe_code} =~ ^[1-5][0-9][0-9]$ ]]; then
+      http_host_rejected_responses=$((http_host_rejected_responses + 1))
+    elif [[ ${http_host_probe_exit} == 52 || ${http_host_probe_exit} == 56 ]]; then
+      http_host_rejected_closed=$((http_host_rejected_closed + 1))
+    else
+      http_host_rejected_uncertain=$((http_host_rejected_uncertain + 1))
+    fi
+  fi
+}
+
+classify_http_host() {
+  http_host_status='无法确认'
+  if ! ${http_host_allowed_response}; then
+    http_host_reason='允许 Host 未收到 HTTP 响应'
+  elif ((http_host_rejected_responses > 0)); then
+    http_host_status='未开启'
+    http_host_reason='非匹配 Host 仍收到 HTTP 响应'
+  elif ((http_host_rejected_uncertain > 0)); then
+    http_host_reason='非匹配 Host 探测超时或出错'
+  elif ((http_host_rejected_closed > 0)); then
+    http_host_status='已开启'
+    http_host_reason='允许 Host 有响应，非匹配 Host 均被断开'
+  else
+    http_host_reason='缺少非匹配 Host 探测结果'
+  fi
 }
 
 print_strict_match_summary() {
   if ! ${probe_allowed_subdomain}; then
     printf '子域名严格匹配：未检测（允许 SNI 过长，无法构造子域）\n'
-  elif ! ${allowed_has_certificate}; then
-    printf '子域名严格匹配：无法确认（允许项未获得证书，子域探测不足以下结论）\n'
+  elif ! ${allowed_has_certificate} || ! ${allowed_certificate_matches_sni} || ((rejected_sni_certificate_count > 0)); then
+    printf '子域名严格匹配：无法确认（尚未确认有效的 SNI 防护）\n'
   elif ${allowed_subdomain_has_certificate}; then
     printf '%s子域名严格匹配：未开启%s（允许项的子域 %s 获得了证书）；该结果不改变 TLS SNI 判定。\n' \
       "${color_yellow}" "${color_reset}" "${allowed_subdomain}"
@@ -728,6 +837,7 @@ print_extra_tls_summary() {
 }
 
 print_http_summary() {
+  printf 'HTTP Host：%s（%s）；这是明文探测的黑盒判断，不改变 TLS SNI 判定。\n' "${http_host_status}" "${http_host_reason}"
   if ((http_response_count > 0)); then
     printf '%sHTTP 附加探测中有 %d 个请求收到了响应；该结果不改变 TLS SNI 判定。%s\n' \
       "${color_yellow}" "${http_response_count}" "${color_reset}"
@@ -848,6 +958,15 @@ done
 
 http_response_count=0
 https_response_count=0
+http_host_allowed_response=false
+http_host_rejected_responses=0
+http_host_rejected_closed=0
+http_host_rejected_uncertain=0
+http_host_strict=false
+if ${probe_allowed_subdomain} && ${allowed_has_certificate} && ${allowed_certificate_matches_sni} &&
+  ((rejected_sni_certificate_count == 0)) && ! ${allowed_subdomain_has_certificate}; then
+  http_host_strict=true
+fi
 print_section 'HTTP 明文与 Host 探测'
 run_http_probe
 if ${http_received}; then
@@ -859,7 +978,9 @@ for http_host_index in "${!http_host_probes[@]}"; do
   if run_http_host_probe "${http_host_probes[http_host_index]}" "${http_host_sources[http_host_index]}"; then
     http_response_count=$((http_response_count + 1))
   fi
+  record_http_host_result "${http_host_probes[http_host_index]}"
 done
+classify_http_host
 print_section 'HTTPS Host 探测'
 for http_host_index in "${!http_host_probes[@]}"; do
   run_https_host_probe "${http_host_probes[http_host_index]}" "${http_host_sources[http_host_index]}"
@@ -879,10 +1000,11 @@ tls_certificate_count=$((tls_certificate_count + tls_extra_certificate_count))
 
 printf '\n'
 if ((tls_certificate_count == 0)); then
-  printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_yellow}" "${color_reset}"
-  printf '%s│  ? 未获得任何 TLS 证书%s                   %s│%s\n' "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
-  print_conclusion_strict_box_line
-  printf '%s╰────────────────────────────────────────────╯%s\n' "${color_yellow}" "${color_reset}"
+  printf '\n'
+  print_card_header '结论'
+  print_card_row '检测结果' '? 未获得任何 TLS 证书' "${color_bold_yellow}"
+  print_conclusion_features
+  print_card_footer
   printf '允许 SNI、错误 SNI 和无 SNI 探测均未获得证书。\n'
   if ${tls_connection_seen} || ((http_response_count > 0)); then
     printf '节点端口存在连接或响应，更可能是所有 TLS 探测均被拒绝，或填写的 SNI 与当前配置不一致。\n'
@@ -898,10 +1020,11 @@ if ((tls_certificate_count == 0)); then
 fi
 
 if ((rejected_sni_certificate_count > 0)); then
-  printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_red}" "${color_reset}"
-  printf '%s│  ✗ SNI 过滤未生效%s                         %s│%s\n' "${color_red}" "${color_reset}" "${color_red}" "${color_reset}"
-  print_conclusion_strict_box_line
-  printf '%s╰────────────────────────────────────────────╯%s\n' "${color_red}" "${color_reset}"
+  printf '\n'
+  print_card_header '结论'
+  print_card_row '检测结果' '✗ SNI 过滤未生效' "${color_bold_red}"
+  print_conclusion_features
+  print_card_footer
   printf '检测到 %d 个错误 SNI 获得了 TLS 证书。\n' "${rejected_sni_certificate_count}"
   print_strict_match_summary
   print_extra_tls_summary
@@ -912,17 +1035,19 @@ fi
 
 if ! ${allowed_has_certificate}; then
   if ${no_sni_has_certificate}; then
-    printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_yellow}" "${color_reset}"
-    printf '%s│  △ 检测到 SNI 过滤行为%s                   %s│%s\n' "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
-    print_conclusion_strict_box_line
-    printf '%s╰────────────────────────────────────────────╯%s\n' "${color_yellow}" "${color_reset}"
+    printf '\n'
+    print_card_header '结论'
+    print_card_row '检测结果' '△ 检测到 SNI 过滤行为' "${color_bold_yellow}"
+    print_conclusion_features
+    print_card_footer
     printf '带 SNI 的允许项和错误项均未获得证书，但无 SNI 探测获得了证书。\n'
     printf '这与 SNI 过滤已经启用、但填写的 SNI 不是当前允许回落域名的情况一致。\n'
   else
-    printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_yellow}" "${color_reset}"
-    printf '%s│  ? 无法确认 SNI 过滤状态%s                 %s│%s\n' "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
-    print_conclusion_strict_box_line
-    printf '%s╰────────────────────────────────────────────╯%s\n' "${color_yellow}" "${color_reset}"
+    printf '\n'
+    print_card_header '结论'
+    print_card_row '检测结果' '? 无法确认 SNI 过滤状态' "${color_bold_yellow}"
+    print_conclusion_features
+    print_card_footer
     printf '允许 SNI 和错误 SNI 均未获得证书。\n'
   fi
   print_strict_match_summary
@@ -933,10 +1058,11 @@ if ! ${allowed_has_certificate}; then
 fi
 
 if ! ${allowed_certificate_matches_sni}; then
-  printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_yellow}" "${color_reset}"
-  printf '%s│  ? 无法确认 SNI 过滤状态%s                 %s│%s\n' "${color_yellow}" "${color_reset}" "${color_yellow}" "${color_reset}"
-  print_conclusion_strict_box_line
-  printf '%s╰────────────────────────────────────────────╯%s\n' "${color_yellow}" "${color_reset}"
+  printf '\n'
+  print_card_header '结论'
+  print_card_row '检测结果' '? 无法确认 SNI 过滤状态' "${color_bold_yellow}"
+  print_conclusion_features
+  print_card_footer
   printf '允许 SNI 收到了证书，但证书 SAN 不包含该 SNI。请确认 target 是否允许 SNI 与证书域名不同。\n'
   print_strict_match_summary
   print_extra_tls_summary
@@ -944,14 +1070,15 @@ if ! ${allowed_certificate_matches_sni}; then
   exit 2
 fi
 
-printf '\n%s╭─ 结论 ─────────────────────────────────────╮%s\n' "${color_green}" "${color_reset}"
+printf '\n'
+print_card_header '结论'
 if ${no_sni_has_certificate}; then
-  printf '%s│  ✓ SNI 过滤生效%s                           %s│%s\n' "${color_green}" "${color_reset}" "${color_green}" "${color_reset}"
+  print_card_row '检测结果' '✓ SNI 过滤生效' "${color_bold_green}"
 else
-  printf '%s│  ✓ 增强 SNI 过滤生效%s                      %s│%s\n' "${color_green}" "${color_reset}" "${color_green}" "${color_reset}"
+  print_card_row '检测结果' '✓ 增强 SNI 过滤生效' "${color_bold_green}"
 fi
-print_conclusion_strict_box_line
-printf '%s╰────────────────────────────────────────────╯%s\n' "${color_green}" "${color_reset}"
+print_conclusion_features
+print_card_footer
 printf '允许 SNI 收到匹配证书，%d 个错误 SNI 均未获得证书。\n' "${rejected_sni_probe_count}"
 if ${no_sni_has_certificate}; then
   printf '%s无 SNI 探测仍获得了证书，说明无 SNI 回落链路保持开放。%s\n' "${color_yellow}" "${color_reset}"
