@@ -1,54 +1,47 @@
 # 安装、升级与卸载
 
-Docker 代理管理已移至独立项目 ProxyDock，命令为 `proxydock`。ProxyForge 只管理原生内核；原生卸载与清理保留历史 Docker 数据。
-
-ProxyForge 支持 Debian/Ubuntu 与 RHEL/CentOS/Rocky/AlmaLinux/Fedora 系发行版的 amd64、arm64。除 `--help` 和 `--version` 外，所有操作都必须由 root 执行；PID 1 不是 systemd 时会拒绝安装。
+运行环境要求见[项目首页](../README.md#运行环境)。除帮助和版本查询外，操作需要 root；安装代理内核需要 systemd。
 
 ## 安装 ProxyForge
 
-安装脚本会自动识别架构，优先按当前代理环境通过 GitHub Releases API 获取最新正式版本；请求失败或响应无效时会忽略代理直连重试，直连仍失败才回退到 Release 的 `version` 文件。随后检查 `/usr/local/sbin/proxyforge`：未安装时执行安装，当前版本与目标版本相同时直接退出，当前版本较低时执行升级，当前版本较高时跳过以避免自动降级。需要安装或升级时，脚本会校验 `SHA256SUMS`，并原子写入 `/usr/local/sbin/proxyforge`：
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | sudo bash
-sudo /usr/local/sbin/proxyforge
+sudo proxyforge
 ```
 
-安装固定版本：
+安装脚本自动选择架构、校验 `SHA256SUMS`，将程序原子安装到 `/usr/local/sbin/proxyforge`。已有相同版本时退出，已有版本较新时跳过，避免自动降级。脚本只管理 ProxyForge 程序，不修改代理内核或节点配置。
+
+安装指定版本时设置 `PROXYFORGE_VERSION`，将示例版本替换为所需 Release 标签：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | \
   sudo PROXYFORGE_VERSION=v0.0.4 bash
 ```
 
-若希望先审阅脚本，请下载 `scripts/install.sh` 后运行 `sudo bash scripts/install.sh`。该脚本只替换 ProxyForge 二进制，不会安装或修改 sing-box、Xray、节点配置和 systemd 服务。
+需要先审阅时，下载 `scripts/install.sh`，再运行 `sudo bash scripts/install.sh`。
 
 ## 安装或升级代理内核
-
-`install` 同时用于首次安装和后续升级；`upgrade` 保留为兼容别名：
 
 ```bash
 sudo proxyforge install sing-box
 sudo proxyforge install xray
-sudo proxyforge install sing-box --beta
 sudo proxyforge install xray --beta
 sudo proxyforge install xray --version VERSION
 ```
 
-两个内核的主菜单信息卡会显示「更新渠道」，读取对应内核已保存的渠道；没有记录时显示稳定版，记录无法读取时显示「无法读取」。交互「安装/升级」入口会打开安装/更新页，上方信息卡显示内核、已安装版本号和本次安装渠道；下方提供「1 安装/更新」「2 选择版本」「3 指定版本」。首次默认选择最新稳定版，后续进入页面会恢复该内核上次成功安装的渠道。「选择版本」可切换到开发版（最新预发布），「指定版本」可输入官方 GitHub 版本号。选择后先返回页面更新信息卡，再选择「安装/更新」并确认执行；在确认页返回会保留已选版本。
+`install` 用于安装和升级，`upgrade` 为兼容别名；两个内核均支持 `--beta` 和 `--version`，两者不能同时使用。
 
-信息卡只读取本地内核版本号，不查询 GitHub，也不判断已安装的是稳定版还是开发版。尚未安装时显示「尚未安装」，内核存在但版本号无法读取时显示「无法读取」。成功安装并通过能力和服务状态检查后，会把渠道保存到 `/var/lib/proxyforge/preferences/sing-box.json` 或 `xray.json`，两个内核独立保存，程序重启后仍然生效。仅改变选择、取消或安装失败不会覆盖记录；指定版本只对本次生效，不改变已保存的渠道。卸载并清理对应内核时会删除其偏好记录。
+- 交互安装默认稳定版，可选择开发版或指定版本。各内核只保存成功安装的稳定版/开发版渠道；取消、安装失败或指定版本安装不会覆盖渠道记录。
+- 在终端中未指定版本参数时，会恢复已保存的渠道；非交互安装不读取偏好，未指定参数时使用稳定版。
+- 显示的渠道来自保存的选择，不根据已安装版本推断。
 
-命令行在终端中运行且未指定 `--version` / `--beta` 时同样打开此页面并恢复保存的渠道；显式指定参数时按参数执行。非交互命令不自动读取偏好，未指定 `--beta` / `--version` 时仍安装最新稳定版。`--beta` 对应官方安装脚本的预发布安装（sing-box 与 Xray 都支持），不能与 `--version` 同时使用。继续更新开发版可使用 `proxyforge install sing-box --beta` 或 `proxyforge install xray --beta`。
-
-首次交互安装会展示来源、最终重定向地址、大小、风险摘要和 SHA-256，只有输入 `yes`、`y` 或 `Y` 才执行。脚本发生变化后必须重新确认信任。
-
-非交互安装必须显式固定脚本哈希，`--yes` 不能跳过该要求：
+首次执行官方内核脚本或脚本变化后，需要确认来源和 SHA-256。非交互安装必须显式固定脚本哈希，`--yes` 不能绕过此要求；将 `SHA256_HASH` 替换为确认过的 64 位哈希：
 
 ```bash
-sudo proxyforge install sing-box --yes --trust-script-sha256 <64位哈希>
+sudo proxyforge install sing-box --yes --trust-script-sha256 SHA256_HASH
 ```
 
-安装 Xray 时会读取 `HTTPS_PROXY`、`HTTP_PROXY` 和 `NO_PROXY`，并把代理设置传递给官方管理脚本。通过 `sudo` 运行时，应按本机 sudo 策略保留这些变量，例如使用允许的 `sudo -E`。日志只显示代理协议、主机和端口，不显示用户名、密码、路径和查询参数。
+安装 Xray 时使用 `HTTPS_PROXY`、`HTTP_PROXY` 和 `NO_PROXY`。通过 sudo 执行时，需按本机策略保留这些变量，例如使用允许的 `sudo -E`；日志会隐藏代理凭据。
 
 ## 更新 ProxyForge
 
@@ -57,59 +50,38 @@ sudo proxyforge update
 sudo proxyforge update --yes
 ```
 
-`proxyforge update` 本身只从仓库 `main` 分支安全下载并检查当前安装脚本，然后把脚本进程的输入、输出和错误流直接连接到当前终端后启动，不再传递专用更新参数。这样脚本可以正常识别 TTY，并保持与直接执行安装脚本一致的颜色和下载进度。脚本会自动判断当前状态：未安装时安装、版本相同时退出、版本较低时升级、版本较高时跳过以避免降级。脚本优先读取 GitHub Releases API 的 `tag_name`，失败后读取 Release 的 `version` 文件；Release 文件选择、`SHA256SUMS` 核验和 `/usr/local/sbin/proxyforge` 的原子替换也全部由安装脚本完成。
+程序下载并检查仓库当前安装脚本，再交由脚本判断版本、校验和替换程序。版本发现优先使用 GitHub Releases API，失败时直连重试，仍失败则回退到 Release 的 `version` 文件。下载继承标准代理环境。
 
-`update` 只更新 ProxyForge，不修改代理内核、节点配置或 systemd 服务。版本检查和下载会继承当前进程的标准代理环境。
+该命令只更新 ProxyForge；更新内核仍使用 `proxyforge install <内核>`。
 
-## 卸载 ProxyForge 自身
+## 卸载
 
-主程序会安全下载并检查仓库安装脚本，然后调用其 `uninstall` 参数。该操作只删除 `/usr/local/sbin/proxyforge`，不会卸载 sing-box、Xray，也不会删除节点配置、ProxyForge 状态、信任记录、安装偏好或备份：
+| 命令 | 删除范围 |
+| --- | --- |
+| `sudo proxyforge uninstall` | 仅删除 ProxyForge 程序，保留内核、配置和管理数据 |
+| `sudo proxyforge uninstall sing-box` | 卸载 sing-box，核验成功后清理其配置和运行数据 |
+| `sudo proxyforge uninstall xray` | 卸载 Xray，核验成功后清理其配置和运行数据 |
 
-```bash
-sudo proxyforge uninstall
-```
+也可运行 `sudo bash scripts/install.sh uninstall` 卸载主程序。
 
-也可以直接运行已下载的安装脚本，同时兼容 `--uninstall` 写法：
+卸载内核前会备份配置。只有确认二进制、systemd unit、运行状态和开机启用状态均已清除后，才删除该内核的配置、日志文件、状态、信任记录、安装偏好、证书和备份；核验失败会保留数据。
 
-```bash
-sudo bash scripts/install.sh uninstall
-```
-
-通过在线脚本卸载时，将参数传递给 `bash`：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | \
-  sudo bash -s -- uninstall
-```
-
-## 卸载代理内核
-
-卸载必须交互确认；自动化时必须指定 `--yes`：
+卸载需要交互确认，自动化使用 `--yes`；Xray 非交互卸载还需固定官方脚本哈希：
 
 ```bash
 sudo proxyforge uninstall sing-box --yes
-sudo proxyforge uninstall xray --yes --trust-script-sha256 <64位哈希>
+sudo proxyforge uninstall xray --yes --trust-script-sha256 SHA256_HASH
 ```
 
-卸载前会临时备份服务端配置。官方卸载完成后，ProxyForge 会核验二进制、systemd unit、服务状态和开机启用状态；仅在核验通过后清理配置目录、运行数据、文件日志、状态、信任记录和历史备份。Debian 系的 sing-box 使用软件包 purge，Xray 使用官方 `remove --purge`，并额外清理 geodata、主/模板 unit 与 drop-in 等已知残留。失败时不会自动清理。
-
-如果“专用运行用户”功能新建了 `xray` 系统用户和组，ProxyForge 会记录当时的 UID/GID，并在卸载 Xray 时核验身份后删除。预先存在的账号、旧版本未记录所有权的账号，以及身份后来发生变化的账号都不会被盲目删除。
-
-Xray 非交互卸载通常还需提供当前官方脚本哈希。若内核已经完全不存在，则跳过重复卸载并直接清理残留。
+ProxyForge 创建的 `xray` 专用账号仅在所有权和 UID/GID 核验通过时删除；已有账号或缺少所有权记录的账号会保留。
 
 ## 清理卸载残留
-
-最外层交互菜单的「3 清理全部卸载残留」对应 `cleanup all`。执行前会确认删除范围，仅在 Xray 和 sing-box 均已卸载后清理；任一内核仍存在时拒绝操作。它会删除整个 `/var/lib/proxyforge/`，包括其中的自定义文件和目录。确认页输入 `0` 或 `q` 直接返回菜单。
-
-命令行也可以清理单个内核或全部残留：
 
 ```bash
 sudo proxyforge cleanup sing-box
 sudo proxyforge cleanup all --yes
 ```
 
-只有确认目标内核的二进制、systemd unit、运行状态和开机启用状态均已清除后，命令才会删除残留数据，并在删除 unit 兜底文件后再次刷新 systemd。它不会删除 systemd journal，也不会处理此前导出到用户指定位置的客户端配置。
+仅在目标内核完全卸载后执行；`all` 要求两个内核都已卸载，并会删除 `/var/lib/proxyforge/` 内的原生管理数据及自定义内容，但保留历史 `docker/` 目录，该目录由独立项目 ProxyDock 管理。单内核清理只删除对应内核的残留。清理不删除 systemd journal 或用户自行导出的客户端文件。
 
-## 安装脚本安全检查
-
-ProxyForge 将下载内容写入受限临时文件，不使用内部 `curl | sh`，并检查 HTTPS 主机白名单、重定向、HTTP 状态、大小、shebang、NUL/文本格式和 `bash -n`。执行官方脚本时会实时转发输出，并保留最近 64 KiB 用于失败诊断。
+下载与脚本执行的检查范围见[文件与安全边界](security.md#下载与执行边界)。

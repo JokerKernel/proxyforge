@@ -3,51 +3,44 @@
 ## 受管文件
 
 | 用途 | sing-box | Xray |
-|---|---|---|
+| --- | --- | --- |
 | 服务端配置 | `/etc/sing-box/config.json` | `/usr/local/etc/xray/config.json` |
 | 状态 | `/var/lib/proxyforge/state/sing-box.json` | `/var/lib/proxyforge/state/xray.json` |
-| 访问控制配置 | `/var/lib/proxyforge/access/sing-box.json` | `/var/lib/proxyforge/access/xray.json` |
-| 落地接入配置 | `/var/lib/proxyforge/landings/sing-box.json` | `/var/lib/proxyforge/landings/xray.json` |
-| 中转线路配置 | `/var/lib/proxyforge/relays/sing-box.json` | `/var/lib/proxyforge/relays/xray.json` |
-| 安装渠道偏好 | `/var/lib/proxyforge/preferences/sing-box.json` | `/var/lib/proxyforge/preferences/xray.json` |
-| 自动 TLS 证书 | `/var/lib/proxyforge/tls/sing-box/<接入名或主证书名>/` | `/var/lib/proxyforge/tls/xray/<接入名或主证书名>/` |
-| systemd unit | `sing-box.service` | `xray.service` |
+| 访问控制 | `/var/lib/proxyforge/access/sing-box.json` | `/var/lib/proxyforge/access/xray.json` |
+| 落地接入 | `/var/lib/proxyforge/landings/sing-box.json` | `/var/lib/proxyforge/landings/xray.json` |
+| 中转线路 | `/var/lib/proxyforge/relays/sing-box.json` | `/var/lib/proxyforge/relays/xray.json` |
+| 安装渠道 | `/var/lib/proxyforge/preferences/sing-box.json` | `/var/lib/proxyforge/preferences/xray.json` |
+| TLS 证书 | `/var/lib/proxyforge/tls/sing-box/<名称>/` | `/var/lib/proxyforge/tls/xray/<名称>/` |
+| systemd 服务 | `sing-box.service` | `xray.service` |
 
-信任记录位于 `/var/lib/proxyforge/trust/`，备份位于 `/var/lib/proxyforge/backups/<core>/<timestamp>/`。每个内核只保留最近 3 份 ProxyForge 时间戳备份。
+信任记录位于 `/var/lib/proxyforge/trust/`；备份位于 `/var/lib/proxyforge/backups/<内核>/<时间戳>/`，每个内核保留最近 3 份时间戳备份。
 
-状态、访问控制配置、落地与中转配置、信任、安装渠道偏好和备份都是 root-only。服务配置与自动 TLS 证书会根据 systemd unit 的实际 `User=` 设置为 root 私有，或 root 所有且仅允许服务组读取，不会设为世界可读。主节点证书目录名为 `main-<随机十六进制>`。自签证书的信任依赖首次安全传递客户端配置或连接文本；普通客户端与中转配置固定校验证书或公钥 SHA-256，并保持 `allowInsecure`/`insecure=false`。
+状态、名单、线路、安装偏好、信任及备份仅允许 root 访问。配置和 TLS 私钥由 root 所有，根据服务用户设置为 root 私有或允许服务组读取，不设为世界可读。
+
+名单和线路通过独立 JSON 文件保存，旧状态文件中的内嵌记录不自动读取或迁移。手动修改文件前应保留备份；字段、规则或权限无效时会拒绝应用。
 
 ## 配置事务
 
-Docker 管理已移至独立项目 ProxyDock。原生全局清理始终保留历史 `/var/lib/proxyforge/docker/`，不检查 Docker daemon，也不删除或协调 Docker 实例；该目录由 `proxydock cleanup` 单独核验和清理。
+配置变更先生成临时文件，执行 `sing-box check` 或 `xray run -test`，再原子替换目标文件。完整生成会启动并检查目标服务及监听端口；DNS、IP 策略和日志设置仅在服务已运行时重启。
 
-配置更新先写入临时文件，运行 `sing-box check` 或 `xray run -test`，再原子替换目标文件。ProxyForge 只重启目标服务，并确认其 active 状态和监听端口。
+应用失败时尝试恢复原配置和相关状态；恢复失败会报告错误，不能将失败提示视为恢复成功。配置文件恢复失败时不继续重启服务。单文件原子替换不等于多文件更新具有断电恢复保证。
 
-新生成的主节点证书在配置与状态成功应用后才成为受管证书，应用失败时清理本次生成的证书。证书轮换保留旧文件，保证配置备份引用仍可用。
+新证书在配置和状态应用成功后成为受管证书；失败时清理本次生成的文件。主节点证书轮换保留旧文件供备份引用。
 
-任一步失败都会恢复该内核的旧配置和状态，并重启旧服务，不触碰另一个内核。
+卸载及清理范围见[安装指南](installation.md#清理卸载残留)。历史 `/var/lib/proxyforge/docker/` 由 ProxyDock 管理，原生清理不会删除它。
 
 ## 网络目标校验
 
-ProxyForge 会验证 REALITY target 的 DNS、TCP/TLS、证书名称和地址属性，拒绝本机、私网及保留地址。使用 CDN 目标可能把未认证回落流量转发到第三方基础设施，需要自行评估。
+REALITY target 会检查 DNS、TCP/TLS、证书名称和地址属性，拒绝本机、私网及保留地址。使用 CDN 目标可能将未认证回落流量转发到第三方，SNI 检测结果不能替代对目标的评估。
 
-未明确添加访问白名单例外时，生成的服务端和客户端配置会拒绝访问 IPv4/IPv6 私网、本机、链路本地、CGNAT、云元数据、基准测试、多播和保留地址。域名目标会先解析为 IP 再匹配黑洞规则；Xray Freedom 出站固定使用 IP 解析策略。
+生成配置默认拦截私网、本机、链路本地、CGNAT、云元数据、多播及其他保留目标；明确的访问白名单可放行对应目标。sing-box 简化模式的解析限制见[配置模式](configuration.md#配置模式)。
 
-访问控制启用后，白名单优先于黑名单和上述默认拦截；明确允许的私网地址或网段可以访问。匹配针对代理请求的实际目标，不将任意 HTTP Host/TLS SNI 当作访问许可。白名单只控制代理流量，REALITY 未认证回落仍由原来的专用规则限制。
+白名单匹配代理请求的实际目标，伪造 HTTP Host/TLS SNI 不会获得域名许可。访问控制只控制代理流量，REALITY 回落由独立规则限制。ProxyForge 不修改主机防火墙或云安全组。
 
-ProxyForge 只提示 ufw/firewalld 所需的 TCP 端口，不会自行修改防火墙。
+自签 TLS 使用证书或公钥 SHA-256 固定验证，信任依赖首次安全传递的客户端配置或连接文本，不能改为跳过证书验证。
 
 ## 下载与执行边界
 
-安装和更新流程会验证 HTTPS 来源、重定向、HTTP 状态、文件大小、文本格式、shebang、Bash 语法和 SHA-256。首次执行或脚本内容发生变化时需要重新确认信任。更完整的操作说明见[安装、升级与卸载](installation.md)。
+程序下载管理脚本时校验 HTTPS 主机白名单、重定向、HTTP 状态、大小、文本格式、shebang、Bash 语法和 SHA-256，再写入受限临时文件执行。内核官方脚本首次执行或内容变化后需重新确认信任，非交互操作必须固定哈希，详见[安装指南](installation.md#安装或升级代理内核)。
 
-## 官方参考
-
-- [sing-box 安装](https://sing-box.sagernet.org/installation/package-manager/)
-- [sing-box VLESS](https://sing-box.sagernet.org/configuration/inbound/vless/)
-- [sing-box REALITY TLS](https://sing-box.sagernet.org/configuration/shared/tls/)
-- [Xray TLS 与证书固定](https://xtls.github.io/en/config/transports/tls.html)
-- [Xray-install](https://github.com/XTLS/Xray-install)
-- [Xray VLESS](https://xtls.github.io/en/config/inbounds/vless.html)
-- [Mihomo TLS 与证书固定](https://wiki.metacubex.one/config/proxies/tls/)
-- [XTLS REALITY](https://github.com/XTLS/REALITY/blob/main/README.en.md)
+官方脚本输出实时转发，保留最近 64 KiB 用于失败诊断；ProxyForge 命令日志隐藏代理凭据，不记录密钥生成结果。

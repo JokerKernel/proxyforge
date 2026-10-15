@@ -43,7 +43,14 @@ curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts
 sudo proxyforge
 ```
 
-首次使用时，在菜单中选择组件，依次完成安装、服务配置和客户端配置导出。固定版本安装和其他安装方式见[安装指南](docs/installation.md)。
+首次使用可按以下顺序操作：
+
+1. 选择 Xray-core 或 sing-box。
+2. 进入「安装/升级」，确认安装渠道后执行安装。
+3. 进入「服务端配置 → 生成/更新配置」，设置公网地址、监听端口和节点协议；REALITY 模式还需选择 SNI。
+4. 进入「客户端配置」，导出原生 JSON 或 Mihomo/Clash Meta YAML 配置。
+
+ProxyForge 会提示需要放行的 TCP 端口，防火墙和云安全组需自行配置。固定版本安装和其他安装方式见[安装指南](docs/installation.md)。
 
 ## 版本与更新
 
@@ -69,10 +76,10 @@ sudo proxyforge
 
 | 文档 | 内容 |
 | --- | --- |
-| [快速上手](docs/overview.md) | 完整功能介绍与首次使用流程 |
 | [安装指南](docs/installation.md) | 安装、升级、版本选择、卸载与清理 |
 | [使用指南](docs/configuration.md) | 配置管理、客户端导出与服务操作 |
 | [文件与权限](docs/security.md) | 数据目录、权限、备份与安全边界 |
+| [REALITY SNI 检测](docs/reality-sni-check.md) | 黑盒检测脚本、结果判读与排障 |
 | [开发指南](docs/development.md) | 构建、测试、CI 与发布流程 |
 
 更多专题说明见[文档目录](docs/README.md)。
