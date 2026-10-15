@@ -166,10 +166,10 @@ func TestAccessBatchKeepsDisabledSwitchAndRuntimeConfig(t *testing.T) {
 		t.Run(core, func(t *testing.T) {
 			c, _, _ := prepareAccessBatch(t, core)
 			ctx := context.Background()
-			if err := c.app.SetAccessEnabled(ctx, core, false); err != nil {
-				t.Fatal(err)
-			}
-			if err := c.app.SetAccessMode(ctx, core, domain.AccessModeWhitelist); err != nil {
+			initial := switchPolicy()
+			initial.Disabled = true
+			initial.Mode = domain.AccessModeWhitelist
+			if err := c.app.SetAccessPolicy(ctx, core, initial); err != nil {
 				t.Fatal(err)
 			}
 			p, _ := c.app.Registry.Get(core)

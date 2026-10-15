@@ -62,7 +62,8 @@ func TestAccessSwitchPersistsThroughEditsAndRegeneration(t *testing.T) {
 				before[i] = b
 			}
 			runner.failRestart = true
-			if err := a.SetAccessEnabled(ctx, core, false); err == nil {
+			policy.Disabled = true
+			if err := a.SetAccessPolicy(ctx, core, policy); err == nil {
 				t.Fatal("injected restart failure did not stop disable")
 			}
 			for i, path := range paths {
@@ -72,19 +73,17 @@ func TestAccessSwitchPersistsThroughEditsAndRegeneration(t *testing.T) {
 				}
 			}
 			runner.failRestart = false
-			if err := a.SetAccessEnabled(ctx, core, false); err != nil {
+			if err := a.SetAccessPolicy(ctx, core, policy); err != nil {
 				t.Fatal(err)
 			}
 			assertBaseline(baseline)
-			policy.Disabled = true
 			got, err := a.AccessPolicy(core)
 			if err != nil || !reflect.DeepEqual(got, policy) {
 				t.Fatalf("disabled switch did not retain policy: %#v, err=%v", got, err)
 			}
-			if err := a.SetAccessMode(ctx, core, domain.AccessModeDefault); err != nil {
-				t.Fatal(err)
-			}
-			if err := a.AddAccessEntry(ctx, core, "white", "192.168.1.0/24", false); err != nil {
+			policy.Mode = domain.AccessModeDefault
+			policy.Whitelist = append(policy.Whitelist, domain.AccessEntry{Type: domain.AccessEntryCIDR, Value: "192.168.1.0/24"})
+			if err := a.SetAccessPolicy(ctx, core, policy); err != nil {
 				t.Fatal(err)
 			}
 			assertBaseline(baseline)
@@ -100,7 +99,8 @@ func TestAccessSwitchPersistsThroughEditsAndRegeneration(t *testing.T) {
 				t.Fatal("regeneration enabled a disabled policy")
 			}
 			baseline = readConfig()
-			if err := a.SetAccessEnabled(ctx, core, true); err != nil {
+			policy.Disabled = false
+			if err := a.SetAccessPolicy(ctx, core, policy); err != nil {
 				t.Fatal(err)
 			}
 			if err := json.Unmarshal(readConfig(), &root); err != nil {
@@ -109,7 +109,8 @@ func TestAccessSwitchPersistsThroughEditsAndRegeneration(t *testing.T) {
 			if !accesspolicy.HasComponents(root, core) {
 				t.Fatal("reenabling did not apply saved rules")
 			}
-			if err := a.SetAccessEnabled(ctx, core, false); err != nil {
+			policy.Disabled = true
+			if err := a.SetAccessPolicy(ctx, core, policy); err != nil {
 				t.Fatal(err)
 			}
 			assertBaseline(baseline)

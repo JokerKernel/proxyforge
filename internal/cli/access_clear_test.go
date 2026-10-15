@@ -100,7 +100,7 @@ func TestClearEmptyWhitelistExitsWhitelistMode(t *testing.T) {
 	for _, core := range []string{domain.CoreXray, domain.CoreSingBox} {
 		t.Run(core, func(t *testing.T) {
 			c, _ := accessCLI(t, core)
-			if err := c.app.SetAccessMode(context.Background(), core, domain.AccessModeWhitelist); err != nil {
+			if err := c.app.SetAccessPolicy(context.Background(), core, domain.AccessPolicy{Mode: domain.AccessModeWhitelist}); err != nil {
 				t.Fatal(err)
 			}
 			c.reader = bufio.NewReader(strings.NewReader("2\n3\n1\n0\n0\n"))
@@ -117,7 +117,9 @@ func TestClearEmptyWhitelistExitsWhitelistMode(t *testing.T) {
 
 func TestAccessClearCommandRequiresConfirmation(t *testing.T) {
 	c, _ := accessCLI(t, domain.CoreXray)
-	if err := c.app.AddAccessEntry(context.Background(), domain.CoreXray, "white", "allowed.com", false); err != nil {
+	if err := c.app.SetAccessPolicy(context.Background(), domain.CoreXray, domain.AccessPolicy{
+		Whitelist: []domain.AccessEntry{{Type: domain.AccessEntryDomain, Value: "allowed.com", IncludeSubdomains: true}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	path := c.app.Layout.AccessPolicyPath(domain.CoreXray)

@@ -130,7 +130,6 @@ func (c *commandSet) accessCommand() *cobra.Command {
 		return nil
 	}})
 	for _, operation := range []string{"enable", "disable"} {
-		operation := operation
 		cmd.AddCommand(&cobra.Command{Use: operation + " <sing-box|xray>", Short: map[string]string{"enable": "启用访问控制，应用保存的模式和名单", "disable": "关闭访问控制，保留模式和名单"}[operation], Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 			policy, err := c.app.AccessPolicy(args[0])
 			if err != nil {
@@ -151,7 +150,6 @@ func (c *commandSet) accessCommand() *cobra.Command {
 		}})
 	}
 	for _, operation := range []string{"add", "remove"} {
-		operation := operation
 		var exact bool
 		use := operation + " <sing-box|xray> <white|black> <域名|IP|CIDR>"
 		validateArgs := cobra.ExactArgs(3)

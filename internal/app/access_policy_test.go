@@ -30,7 +30,9 @@ func TestDefaultBlacklistOnlyAppliesAndRestoresConfig(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := a.AddAccessEntry(ctx, core, "black", "denied.com", false); err != nil {
+			if err := a.SetAccessPolicy(ctx, core, domain.AccessPolicy{
+				Blacklist: []domain.AccessEntry{{Type: domain.AccessEntryDomain, Value: "denied.com", IncludeSubdomains: true}},
+			}); err != nil {
 				t.Fatal(err)
 			}
 			current, err := a.Store.Load(core)
@@ -51,7 +53,7 @@ func TestDefaultBlacklistOnlyAppliesAndRestoresConfig(t *testing.T) {
 			if core == domain.CoreXray && len(current.AccessPolicySniffing) == 0 {
 				t.Fatal("default blacklist activation did not capture original sniffing")
 			}
-			if err := a.RemoveAccessEntry(ctx, core, "black", "denied.com", false); err != nil {
+			if err := a.SetAccessPolicy(ctx, core, domain.AccessPolicy{}); err != nil {
 				t.Fatal(err)
 			}
 			config, err = os.ReadFile(path)
@@ -83,16 +85,14 @@ func TestAccessPolicyLifecyclePersistsAcrossNodeAndLinkChanges(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := a.AddAccessEntry(ctx, core, "white", "192.168.1.10", false); err != nil {
-				t.Fatal(err)
-			}
-			if err := a.AddAccessEntry(ctx, core, "white", "Allowed.COM.", false); err != nil {
-				t.Fatal(err)
-			}
-			if err := a.AddAccessEntry(ctx, core, "white", "allowed.com", false); err != nil {
-				t.Fatal(err)
-			}
-			if err := a.AddAccessEntry(ctx, core, "black", "denied.com", false); err != nil {
+			if err := a.SetAccessPolicy(ctx, core, domain.AccessPolicy{
+				Whitelist: []domain.AccessEntry{
+					{Type: domain.AccessEntryIP, Value: "192.168.1.10"},
+					{Type: domain.AccessEntryDomain, Value: "Allowed.COM.", IncludeSubdomains: true},
+					{Type: domain.AccessEntryDomain, Value: "allowed.com", IncludeSubdomains: true},
+				},
+				Blacklist: []domain.AccessEntry{{Type: domain.AccessEntryDomain, Value: "denied.com", IncludeSubdomains: true}},
+			}); err != nil {
 				t.Fatal(err)
 			}
 			policy, err := a.AccessPolicy(core)
@@ -136,7 +136,8 @@ func TestAccessPolicyLifecyclePersistsAcrossNodeAndLinkChanges(t *testing.T) {
 			if _, err := a.AddRelayLink(ctx, core, "relay", peer, RelayAddOptions{}); err != nil {
 				t.Fatal(err)
 			}
-			if err := a.SetAccessMode(ctx, core, domain.AccessModeWhitelist); err != nil {
+			policy.Mode = domain.AccessModeWhitelist
+			if err := a.SetAccessPolicy(ctx, core, policy); err != nil {
 				t.Fatal(err)
 			}
 			p, _ := a.Registry.Get(core)
@@ -194,7 +195,9 @@ func TestAccessPolicyRollbackAndManualConfigPreservation(t *testing.T) {
 			if err := system.AtomicWrite(path, manual, 0600); err != nil {
 				t.Fatal(err)
 			}
-			if err := a.AddAccessEntry(ctx, core, "white", "192.168.1.0/24", false); err != nil {
+			if err := a.SetAccessPolicy(ctx, core, domain.AccessPolicy{
+				Whitelist: []domain.AccessEntry{{Type: domain.AccessEntryCIDR, Value: "192.168.1.0/24"}},
+			}); err != nil {
 				t.Fatal(err)
 			}
 			old, err := a.Store.Load(core)
@@ -207,7 +210,9 @@ func TestAccessPolicyRollbackAndManualConfigPreservation(t *testing.T) {
 				t.Fatal(err)
 			}
 			runner.failRestart = true
-			if err := a.SetAccessMode(ctx, core, domain.AccessModeWhitelist); err == nil {
+			next := old.AccessPolicy
+			next.Mode = domain.AccessModeWhitelist
+			if err := a.SetAccessPolicy(ctx, core, next); err == nil {
 				t.Fatal("expected injected restart failure")
 			}
 			afterState, err := a.Store.Load(core)
@@ -219,7 +224,7 @@ func TestAccessPolicyRollbackAndManualConfigPreservation(t *testing.T) {
 			if err != nil || !bytes.Equal(beforePolicy, afterPolicy) || !bytes.Equal(before, after) || !reflect.DeepEqual(old, afterState) {
 				t.Fatal("policy failure changed prior config/state")
 			}
-			if err := a.RemoveAccessEntry(ctx, core, "white", "192.168.1.0/24", false); err != nil {
+			if err := a.SetAccessPolicy(ctx, core, domain.AccessPolicy{}); err != nil {
 				t.Fatal(err)
 			}
 			after, _ = os.ReadFile(path)
@@ -234,14 +239,16 @@ func TestAccessPolicyRollbackAndManualConfigPreservation(t *testing.T) {
 				t.Fatal("disabling empty policy left generated components")
 			}
 			for _, mode := range []string{"whitelist", "default"} {
-				if err := a.SetAccessMode(ctx, core, mode); err != nil {
+				if err := a.SetAccessPolicy(ctx, core, domain.AccessPolicy{Mode: mode}); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if err := a.AddAccessEntry(ctx, core, "white", "https://example.com", false); err == nil {
+			if err := a.SetAccessPolicy(ctx, core, domain.AccessPolicy{
+				Whitelist: []domain.AccessEntry{{Type: domain.AccessEntryDomain, Value: "https://example.com", IncludeSubdomains: true}},
+			}); err == nil {
 				t.Fatal("accepted URL")
 			}
-			if err := a.SetAccessMode(ctx, core, "other"); err == nil {
+			if err := a.SetAccessPolicy(ctx, core, domain.AccessPolicy{Mode: "other"}); err == nil {
 				t.Fatal("accepted unknown mode")
 			}
 		})
@@ -301,10 +308,12 @@ func TestAccessPolicyRestoresOriginalXraySniffing(t *testing.T) {
 	if !strings.Contains(string(before), `"routeOnly": true`) {
 		t.Fatal("fixture did not enable sniffing")
 	}
-	if err := a.AddAccessEntry(ctx, domain.CoreXray, "white", "allowed.com", false); err != nil {
+	if err := a.SetAccessPolicy(ctx, domain.CoreXray, domain.AccessPolicy{
+		Whitelist: []domain.AccessEntry{{Type: domain.AccessEntryDomain, Value: "allowed.com", IncludeSubdomains: true}},
+	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.RemoveAccessEntry(ctx, domain.CoreXray, "white", "allowed.com", false); err != nil {
+	if err := a.SetAccessPolicy(ctx, domain.CoreXray, domain.AccessPolicy{}); err != nil {
 		t.Fatal(err)
 	}
 	after, _ := os.ReadFile(path)

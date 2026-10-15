@@ -59,10 +59,6 @@ func (a *App) RelayLinks(core string) ([]domain.RelayLink, error) {
 	return append([]domain.RelayLink(nil), n.RelayLinks...), nil
 }
 
-func (a *App) AddLandingAccess(ctx context.Context, core, name string) (domain.LandingAccess, error) {
-	return a.AddLandingAccessWithOptions(ctx, core, name, LandingAddOptions{Security: domain.LandingSecurityCurrent})
-}
-
 func (a *App) AddLandingAccessWithOptions(ctx context.Context, core, name string, opts LandingAddOptions) (domain.LandingAccess, error) {
 	if err := validateLinkName(name); err != nil {
 		return domain.LandingAccess{}, err

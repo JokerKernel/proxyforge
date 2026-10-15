@@ -34,7 +34,7 @@ func TestLandingAndRelayLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	access, err := a.AddLandingAccess(context.Background(), domain.CoreXray, "from-la")
+	access, err := a.AddLandingAccessWithOptions(context.Background(), domain.CoreXray, "from-la", LandingAddOptions{Security: domain.LandingSecurityCurrent})
 	if err != nil {
 		t.Fatal(err)
 	}

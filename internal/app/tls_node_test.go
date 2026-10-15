@@ -58,7 +58,7 @@ func TestTLSNodeLifecycle(t *testing.T) {
 			if second.UUID != first.UUID || !reflect.DeepEqual(second.TLSCertificate, first.TLSCertificate) {
 				t.Fatal("regeneration rotated identity")
 			}
-			access, err := a.AddLandingAccess(ctx, core, "shared")
+			access, err := a.AddLandingAccessWithOptions(ctx, core, "shared", LandingAddOptions{Security: domain.LandingSecurityCurrent})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -219,7 +219,7 @@ func TestTLSNodeProtocolSwitchAndLegacyState(t *testing.T) {
 			if err := a.Store.Save(first); err != nil {
 				t.Fatal(err)
 			}
-			access, err := a.AddLandingAccess(ctx, core, "shared")
+			access, err := a.AddLandingAccessWithOptions(ctx, core, "shared", LandingAddOptions{Security: domain.LandingSecurityCurrent})
 			if err != nil {
 				t.Fatal(err)
 			}
