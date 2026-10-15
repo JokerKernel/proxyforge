@@ -143,19 +143,6 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 			o.SingBoxFallbackHTTPDomain = false
 			o.SingBoxFallbackExactDomain = false
 		} else {
-			fmt.Fprintln(c.out, "\nHTTP 回落域名限制")
-			c.printMenuChoice("1", "不限制 Host（默认）")
-			c.printMenuChoice("2", "限制 Host（明文 HTTP 仅放行当前 SNI）")
-			defaultHTTPChoice := 1
-			if o.SingBoxFallbackHTTPDomain {
-				defaultHTTPChoice = 2
-			}
-			choice, err := c.chooseNumberCancelable("请选择 HTTP 回落策略", 1, 2, defaultHTTPChoice)
-			if err != nil {
-				return err
-			}
-			o.SingBoxFallbackHTTPDomain = choice == 2
-
 			fmt.Fprintln(c.out, "\n严格匹配回落域名")
 			c.printMenuChoice("1", "允许子域名（默认）")
 			c.printMenuChoice("2", "严格匹配（仅放行完整域名）")
@@ -163,11 +150,24 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 			if o.SingBoxFallbackExactDomain {
 				defaultDomainChoice = 2
 			}
-			choice, err = c.chooseNumberCancelable("请选择回落域名匹配", 1, 2, defaultDomainChoice)
+			choice, err := c.chooseNumberCancelable("请选择回落域名匹配", 1, 2, defaultDomainChoice)
 			if err != nil {
 				return err
 			}
 			o.SingBoxFallbackExactDomain = choice == 2
+
+			fmt.Fprintln(c.out, "\nHTTP 回落域名限制")
+			c.printMenuChoice("1", "不限制 Host（默认）")
+			c.printMenuChoice("2", "限制 Host（明文 HTTP 仅放行当前 SNI）")
+			defaultHTTPChoice := 1
+			if o.SingBoxFallbackHTTPDomain {
+				defaultHTTPChoice = 2
+			}
+			choice, err = c.chooseNumberCancelable("请选择 HTTP 回落策略", 1, 2, defaultHTTPChoice)
+			if err != nil {
+				return err
+			}
+			o.SingBoxFallbackHTTPDomain = choice == 2
 		}
 	} else if !tlsMode && core == domain.CoreXray {
 		fmt.Fprintln(c.out, "\n配置模式")
@@ -188,19 +188,6 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 			o.XrayFallbackHTTPDomain = false
 			o.XrayFallbackExactDomain = false
 		} else {
-			fmt.Fprintln(c.out, "\nHTTP 回落域名限制")
-			c.printMenuChoice("1", "不限制 Host（默认）")
-			c.printMenuChoice("2", "限制 Host（明文 HTTP 仅放行当前 SNI）")
-			defaultHTTPChoice := 1
-			if o.XrayFallbackHTTPDomain {
-				defaultHTTPChoice = 2
-			}
-			choice, err := c.chooseNumberCancelable("请选择 HTTP 回落策略", 1, 2, defaultHTTPChoice)
-			if err != nil {
-				return err
-			}
-			o.XrayFallbackHTTPDomain = choice == 2
-
 			fmt.Fprintln(c.out, "\n严格匹配回落域名")
 			c.printMenuChoice("1", "允许子域名（默认）")
 			c.printMenuChoice("2", "严格匹配（仅放行完整域名）")
@@ -208,11 +195,24 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 			if o.XrayFallbackExactDomain {
 				defaultDomainChoice = 2
 			}
-			choice, err = c.chooseNumberCancelable("请选择回落域名匹配", 1, 2, defaultDomainChoice)
+			choice, err := c.chooseNumberCancelable("请选择回落域名匹配", 1, 2, defaultDomainChoice)
 			if err != nil {
 				return err
 			}
 			o.XrayFallbackExactDomain = choice == 2
+
+			fmt.Fprintln(c.out, "\nHTTP 回落域名限制")
+			c.printMenuChoice("1", "不限制 Host（默认）")
+			c.printMenuChoice("2", "限制 Host（明文 HTTP 仅放行当前 SNI）")
+			defaultHTTPChoice := 1
+			if o.XrayFallbackHTTPDomain {
+				defaultHTTPChoice = 2
+			}
+			choice, err = c.chooseNumberCancelable("请选择 HTTP 回落策略", 1, 2, defaultHTTPChoice)
+			if err != nil {
+				return err
+			}
+			o.XrayFallbackHTTPDomain = choice == 2
 		}
 	}
 	if o.Server == "" {
