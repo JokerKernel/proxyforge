@@ -92,29 +92,24 @@ func (a *App) Install(ctx context.Context, core string, opts install.Options) er
 	if err := a.rememberInstallChannel(core, opts); err != nil {
 		return fmt.Errorf("内核安装完成，但保存版本渠道失败: %w", err)
 	}
-	if running {
-		printInstallSuccess(a.Out, core, previousVersion, version, true)
-		return nil
-	}
-	printInstallSuccess(a.Out, core, previousVersion, version, false)
-	system.WriteDetail(a.Out, "操作提示", "%s", "服务当前为 inactive；这是尚未生成服务端配置时的正常状态。请继续选择“生成服务端配置”，配置成功后服务会自动启动。")
+	printInstallSuccess(a.Out, core, previousVersion, version, running)
 	return nil
 }
 
 func printInstallSuccess(w io.Writer, core, previousVersion, version string, running bool) {
-	const border = "========================================================"
-	serviceStatus := "inactive（尚未运行）"
-	if running {
-		serviceStatus = "active（运行中）"
-	}
 	title, versionLine := installResultSummary(previousVersion, version)
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, border)
-	system.WriteDetail(w, "操作结果", "%s %s", core, title)
-	fmt.Fprintln(w, border)
-	system.WriteDetail(w, "版本信息", "%s", versionLine)
-	system.WriteDetail(w, "服务状态", "%s", serviceStatus)
-	fmt.Fprintln(w, border)
+	serviceStatus := "未运行  -- inactive"
+	if running {
+		serviceStatus = "运行中  -- active"
+	}
+	rows := [][2]string{
+		{"内核版本", versionLine},
+		{"服务状态", serviceStatus},
+	}
+	if !running {
+		rows = append(rows, [2]string{"说明", "尚未生成服务端配置时服务不运行，生成配置后会自动启动。"})
+	}
+	system.WriteLabeledCard(w, core+" "+title, rows)
 }
 
 func installResultSummary(previous, current string) (string, string) {
@@ -122,11 +117,11 @@ func installResultSummary(previous, current string) (string, string) {
 	current = strings.TrimSpace(current)
 	switch {
 	case previous == "":
-		return "安装成功", "版本：" + current
+		return "安装成功", current
 	case previous == current:
-		return "版本未变化", "版本：" + current + "（与安装前相同）"
+		return "版本未变化", current + "  -- 与安装前相同"
 	default:
-		return "升级成功", "版本：" + previous + "  ->  " + current
+		return "升级成功", previous + "  ->  " + current
 	}
 }
 

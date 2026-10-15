@@ -369,17 +369,7 @@ func (c *commandSet) printModifyConfigCard(ctx context.Context, core string) {
 }
 
 func (c *commandSet) printLabeledCard(title string, rows [][2]string) {
-	const labelWidth = 10
-	fmt.Fprintf(c.out, "╭─ %s\n", title)
-	for _, row := range rows {
-		padding := labelWidth - menuDisplayWidth(row[0])
-		if padding < 1 {
-			padding = 1
-		}
-		fmt.Fprintf(c.out, "│ %s%s%s\n", row[0], strings.Repeat(" ", padding), row[1])
-	}
-	fmt.Fprintln(c.out, proxyForgeHeaderRule)
-	fmt.Fprintln(c.out)
+	system.WriteLabeledCard(c.out, title, rows)
 }
 
 func modifyConfigValue(hasConfig bool, raw string, display func() string) string {
