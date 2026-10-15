@@ -338,8 +338,8 @@ func (a *App) Cleanup(ctx context.Context, target string) error {
 	}
 	if target == "all" {
 		path := a.Layout.Resolve("/var/lib/proxyforge")
-		a.progressf("清理管理数据", "%s；保留独立模块的数据目录", path)
-		if err := removeNativeDataRoot(path); err != nil {
+		a.progressf("清理管理数据", "%s", path)
+		if err := removeCleanupPath(path); err != nil {
 			cleanupErrors = append(cleanupErrors, fmt.Errorf("删除 %s: %w", path, err))
 		}
 	} else if err := a.removeEmptyProxyForgeRoot(); err != nil {
@@ -379,27 +379,6 @@ func (a *App) CheckCleanup(ctx context.Context, target string) error {
 		}
 	}
 	return nil
-}
-
-func removeNativeDataRoot(path string) error {
-	entries, err := os.ReadDir(path)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		// ProxyDock owns this historical namespace after repository separation.
-		// Keep it even when empty; native cleanup must not delete its records.
-		if entry.Name() == "docker" {
-			continue
-		}
-		if err := removeCleanupPath(filepath.Join(path, entry.Name())); err != nil {
-			return err
-		}
-	}
-	return removeEmptyCleanupDirectory(path)
 }
 
 func (a *App) removeEmptyProxyForgeRoot() error {

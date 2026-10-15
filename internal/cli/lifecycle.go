@@ -306,7 +306,7 @@ func (c *commandSet) confirmCleanup(target string) (bool, error) {
 	}
 	prerequisite := "目标内核的二进制、服务及开机启动必须已清除"
 	if target == "all" {
-		permanentDeletes = append(permanentDeletes, "原生管理数据，包括其中的自定义文件和目录；保留历史 Docker 数据，由 ProxyDock 单独管理")
+		permanentDeletes = append(permanentDeletes, "整个 /var/lib/proxyforge/ 目录，包括其中的自定义文件和目录")
 		prerequisite = "Xray 和 sing-box 两个内核均须已卸载；任一仍存在时拒绝清理"
 	}
 	c.printConfirmationPanel(

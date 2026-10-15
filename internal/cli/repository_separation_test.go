@@ -21,7 +21,7 @@ func TestNativeCommandTreeRejectsDocker(t *testing.T) {
 	}
 }
 
-func TestNativeCleanupPreservesProxyDockDataWithoutDocker(t *testing.T) {
+func TestNativeCleanupRemovesDataRootWithoutCallingDocker(t *testing.T) {
 	layout := system.Layout{Root: t.TempDir()}
 	var out bytes.Buffer
 	runner := &cleanupMenuRunner{t: t}
@@ -49,13 +49,13 @@ func TestNativeCleanupPreservesProxyDockDataWithoutDocker(t *testing.T) {
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
 		t.Fatalf("native cleanup retained its own data: %v", err)
 	}
-	if b, err := os.ReadFile(dockerData); err != nil || string(b) != "docker-data" {
-		t.Fatal("native cleanup changed ProxyDock data")
+	if _, err := os.Stat(dockerData); !os.IsNotExist(err) {
+		t.Fatalf("cleanup all retained %s: %v", dockerData, err)
 	}
 	if !runner.reloaded {
 		t.Fatal("native cleanup did not refresh systemd")
 	}
-	// The direct app entry must preserve the same namespace as the CLI.
+	// A second pass stays successful after the data root is already gone.
 	if err := a.Cleanup(context.Background(), "all"); err != nil {
 		t.Fatal(err)
 	}

@@ -106,7 +106,7 @@ func TestMainMenuCleanupAllConfirmationAndInstalledCoreProtection(t *testing.T) 
 			if runner.reloaded != test.cleaned {
 				t.Fatal("cancelled or rejected cleanup executed service changes")
 			}
-			for _, want := range []string{"清理全部卸载残留", "两个内核均须已卸载", "包括其中的自定义文件和目录"} {
+			for _, want := range []string{"清理全部卸载残留", "两个内核均须已卸载", "整个 /var/lib/proxyforge/ 目录，包括其中的自定义文件和目录"} {
 				if !strings.Contains(out.String(), want) {
 					t.Fatalf("confirmation omitted %q: %s", want, out.String())
 				}

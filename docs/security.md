@@ -27,7 +27,7 @@
 
 新证书在配置和状态应用成功后成为受管证书；失败时清理本次生成的文件。主节点证书轮换保留旧文件供备份引用。
 
-卸载及清理范围见[安装指南](installation.md#清理卸载残留)。历史 `/var/lib/proxyforge/docker/` 由 ProxyDock 管理，原生清理不会删除它。
+卸载及清理范围见[安装指南](installation.md#清理卸载残留)。`cleanup all` 会删除整个 `/var/lib/proxyforge/` 目录。
 
 ## 网络目标校验
 

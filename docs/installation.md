@@ -82,6 +82,6 @@ sudo proxyforge cleanup sing-box
 sudo proxyforge cleanup all --yes
 ```
 
-仅在目标内核完全卸载后执行；`all` 要求两个内核都已卸载，并会删除 `/var/lib/proxyforge/` 内的原生管理数据及自定义内容，但保留历史 `docker/` 目录，该目录由独立项目 ProxyDock 管理。单内核清理只删除对应内核的残留。清理不删除 systemd journal 或用户自行导出的客户端文件。
+仅在目标内核完全卸载后执行；`all` 要求两个内核都已卸载，并会删除整个 `/var/lib/proxyforge/` 目录，包括其中的自定义文件和目录。单内核清理只删除对应内核的残留。清理不删除 systemd journal 或用户自行导出的客户端文件。
 
 下载与脚本执行的检查范围见[文件与安全边界](security.md#下载与执行边界)。

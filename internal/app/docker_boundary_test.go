@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestNativeGlobalCleanupPreservesIndependentDockerNamespace(t *testing.T) {
+func TestGlobalCleanupRemovesEntireDataRoot(t *testing.T) {
 	r := &fakeRunner{missingBinary: true, serviceStopped: true, unitRemoved: true}
 	a, _ := testApp(t, r)
 	path := a.Layout.Resolve("/var/lib/proxyforge/docker/xray/state.json")
@@ -19,8 +19,7 @@ func TestNativeGlobalCleanupPreservesIndependentDockerNamespace(t *testing.T) {
 	if err := a.Cleanup(context.Background(), "all"); err != nil {
 		t.Fatal(err)
 	}
-	b, err := os.ReadFile(path)
-	if err != nil || string(b) != "docker-state" {
-		t.Fatal("native cleanup erased independent Docker state")
+	if _, err := os.Stat(a.Layout.Resolve("/var/lib/proxyforge")); !os.IsNotExist(err) {
+		t.Fatalf("cleanup all retained the data root: %v", err)
 	}
 }

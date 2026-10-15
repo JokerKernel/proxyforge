@@ -2,7 +2,7 @@
 
 ProxyForge 是面向 Linux 的代理管理工具，提供中文交互菜单和命令行，通过 systemd 独立管理原生 Xray-core 和 sing-box，包含版本更新、配置管理和日常维护。
 
-Docker 代理管理已分离为独立项目 **ProxyDock**，使用 `proxydock` 命令。原有 `proxyforge docker …` 改为 `proxydock …`；现有容器、配置和数据路径保持兼容。ProxyForge 的原生清理保留历史 Docker 数据，由 ProxyDock 单独管理。
+Docker 代理管理已分离为独立项目 **ProxyDock**，使用 `proxydock` 命令。原有 `proxyforge docker …` 改为 `proxydock …`。
 
 使用 Go 编写，单二进制部署；使用预编译版本无需安装 Go。
 
