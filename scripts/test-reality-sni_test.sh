@@ -169,7 +169,8 @@ grep -Fq '证书 / TLS SNI 探测' "${success_output}"
 grep -Fq 'HTTP 明文与 Host 探测' "${success_output}"
 grep -Fq 'HTTPS Host 探测' "${success_output}"
 grep -Fq '允许项的子域' "${success_output}"
-grep -Fxq '│ 错误 SNI  1 个均未获得证书' "${success_output}"
+grep -Fxq '│ 允许 SNI    收到匹配证书' "${success_output}"
+grep -Fxq '│ 错误 SNI    1 个均未获得证书' "${success_output}"
 grep -Fq '严格模式  已开启  -- 仅允许完整 SNI 域名' "${success_output}"
 grep -Fq 'SNI 防护  已开启  -- 按 SNI 域名规则限制回落' "${success_output}"
 grep -Fq 'HTTP Host 未开启  -- 非匹配 Host 仍收到 HTTP 响应' "${success_output}"
@@ -193,7 +194,8 @@ for closed_border in ╮ ╯ ┌ ┐ └ ┘; do
   fi
 done
 grep -Fq '收到 TLS 数据但未获得证书' "${success_output}"
-grep -Fxq '│ 无 SNI    仍获得证书' "${success_output}"
+grep -Fxq '│ 无 SNI      仍获得证书' "${success_output}"
+grep -Fxq '│ 说明        无 SNI 仍能拿到证书，回落链路保持开放' "${success_output}"
 grep -Fq '回落链路保持开放' "${success_output}"
 grep -Fxq '╭─ 探测明细' "${success_output}"
 grep -Fxq '╭─ 日志确认' "${success_output}"
@@ -227,9 +229,9 @@ awk '
 [[ $(grep -Fc '来源: 允许项证书 SAN' "${success_output}") -eq 6 ]]
 [[ $(grep -Fc 'HTTP Host 伪装测试（证书 SAN）' "${success_output}") -eq 2 ]]
 [[ $(grep -Fc 'HTTPS Host 访问（证书 SAN）' "${success_output}") -eq 2 ]]
-grep -Fxq '│ 证书 SAN  均未获得证书' "${success_output}"
-grep -Fxq '│ HTTP 附加 8 个收到响应' "${success_output}"
-grep -Fxq '│ HTTPS 附加 7 个收到响应' "${success_output}"
+grep -Fxq '│ 证书 SAN    均未获得证书' "${success_output}"
+grep -Fxq '│ HTTP 附加   8 个收到响应' "${success_output}"
+grep -Fxq '│ HTTPS 附加  7 个收到响应' "${success_output}"
 
 color_output="${test_tmp}/color.log"
 PROXYFORGE_COLOR=always \
@@ -272,7 +274,7 @@ run_probe 0 1 1 1 0 1 "${subdomain_loose_output}"
 [[ ${probe_status} -eq 0 ]]
 grep -Fq '允许项的子域' "${subdomain_loose_output}"
 grep -Fq '✓ SNI 过滤生效' "${subdomain_loose_output}"
-grep -Fxq '│ 错误 SNI  1 个均未获得证书' "${subdomain_loose_output}"
+grep -Fxq '│ 错误 SNI    1 个均未获得证书' "${subdomain_loose_output}"
 grep -Fq '严格模式  未开启' "${subdomain_loose_output}"
 if grep -Fq '✗ SNI 过滤未生效' "${subdomain_loose_output}"; then
   printf 'subdomain probe must not fail SNI filtering\n' >&2
@@ -292,7 +294,7 @@ run_probe 0 1 0 0 1 0 "${enhanced_output}"
 grep -Fq '✓ 增强 SNI 过滤生效' "${enhanced_output}"
 grep -Fq '严格模式  已开启' "${enhanced_output}"
 grep -Fq 'HTTP Host 无法确认  -- 允许 Host 未收到 HTTP 响应' "${enhanced_output}"
-grep -Fxq '│ 无 SNI    未获得证书' "${enhanced_output}"
+grep -Fxq '│ 无 SNI      未获得证书' "${enhanced_output}"
 grep -Fq 'curl退出码=52' "${enhanced_output}"
 grep -Fq '具体错误：curl: (52) Empty reply from server' "${enhanced_output}"
 
@@ -355,7 +357,7 @@ for http_mode in restricted restricted-reset mixed strict-child-leak partial-res
       grep -Fq 'HTTP Host 已开启  -- 按 SNI 域名规则检查明文 Host' "${http_output}"
       # HTTPS succeeds for unrelated hosts in this mock; it cannot override
       # the independently measured plaintext Host result.
-      grep -Fxq '│ HTTPS 附加 7 个收到响应' "${http_output}"
+      grep -Fxq '│ HTTPS 附加  7 个收到响应' "${http_output}"
       ;;
     mixed|strict-child-leak|partial-response)
       grep -Fq 'HTTP Host 未开启  -- 非匹配 Host 仍收到 HTTP 响应' "${http_output}"
@@ -376,7 +378,7 @@ grep -Fq '严格模式  未开启' "${child_sans_output}"
 grep -Fq 'HTTP Host 已开启' "${child_sans_output}"
 grep -Fq 'Host: assets.se-edge.itunes.apple.com' "${child_sans_output}"
 grep -Fq 'Host: cdn.se-edge.itunes.apple.com' "${child_sans_output}"
-grep -Fxq '│ HTTP 附加 5 个收到响应' "${child_sans_output}"
+grep -Fxq '│ HTTP 附加   5 个收到响应' "${child_sans_output}"
 
 certificate_mismatch_output="${test_tmp}/certificate-mismatch.log"
 MOCK_CERT_MATCHES=0 run_probe 0 1 1 1 0 0 "${certificate_mismatch_output}" se-edge.itunes.apple.com restricted

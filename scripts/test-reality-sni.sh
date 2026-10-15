@@ -328,8 +328,9 @@ print_card_row() {
   local value=$2
   local value_color=${3-}
   local width padding status extra status_color
+  local column=${card_label_width:-10}
   width=$(card_display_width "${label}")
-  padding=$((10 - width))
+  padding=$((column - width))
   ((padding >= 1)) || padding=1
   if [[ ${value} == *'  -- '* ]]; then
     status=${value%%  -- *}
@@ -773,6 +774,8 @@ tls_extra_probe_title() {
 print_probe_facts() {
   local note=$1
   local index source
+  # Longest label is "HTTPS 附加" (10). Keep two spaces before every value.
+  local card_label_width=12
   local san_total=0
   local san_certs=0
   local fallback_total=0
@@ -841,6 +844,7 @@ print_probe_facts() {
 }
 
 print_log_card() {
+  local card_label_width=12
   print_card_header '日志确认'
   print_card_row '说明' '目标站自己拒绝错误 SNI 时，外部结果也会像过滤已生效'
   print_card_row '核对' '错误请求应在本机被丢弃，不应连到配置里的回落网站'
