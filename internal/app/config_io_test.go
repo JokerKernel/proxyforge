@@ -120,3 +120,26 @@ func TestConfigValidationStopsWhenTemporaryFileCannotBeCreated(t *testing.T) {
 		t.Fatalf("existing file changed: %s, error = %v", got, err)
 	}
 }
+
+func TestConfigValidationReportsCleanupFailureAndKeepsCause(t *testing.T) {
+	dir := t.TempDir()
+	cause := errors.New("validation rejected")
+	runner := configValidationRunner(func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		path := args[len(args)-1]
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(path, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(path, "blocked"), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		return nil, cause
+	})
+	err := validateConfigBytes(context.Background(), xray.New(), runner, dir, "validate-*.json", []byte(`{}`))
+	var pathErr *os.PathError
+	if !errors.Is(err, cause) || !errors.As(err, &pathErr) || !strings.Contains(err.Error(), "清理临时校验配置") {
+		t.Fatalf("validation or cleanup error lost: %v", err)
+	}
+}

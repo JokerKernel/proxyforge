@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"proxyforge/internal/domain"
@@ -41,9 +42,7 @@ func TestModifyConfigStatusReadsGeneratedXray(t *testing.T) {
 	if err := a.Store.Save(node); err != nil {
 		t.Fatal(err)
 	}
-	orig := lookupSystemResolvers
-	lookupSystemResolvers = func() []string { return []string{"9.9.9.9", "1.0.0.1"} }
-	t.Cleanup(func() { lookupSystemResolvers = orig })
+	a.ResolverAddresses = func() []string { return []string{"9.9.9.9", "1.0.0.1"} }
 	got := a.ModifyConfigStatus(context.Background(), domain.CoreXray)
 	if !got.HasConfig || !got.HasFallback || got.SNI != "www.example.com" || got.Port != 443 ||
 		got.DNS != provider.DNSProfileSystem || got.OutboundIP != provider.OutboundIPUnset ||
@@ -66,4 +65,21 @@ func (configStatusRunner) Run(_ context.Context, name string, args ...string) ([
 		return []byte("active\n"), nil
 	}
 	return []byte("xray\n"), nil
+}
+
+func TestDNSServerLookupsAreIndependent(t *testing.T) {
+	for _, address := range []string{"9.9.9.9", "1.0.0.1"} {
+		t.Run(address, func(t *testing.T) {
+			t.Parallel()
+			calls := 0
+			a := &App{ResolverAddresses: func() []string {
+				calls++
+				return []string{address, address, ""}
+			}}
+			got := a.expandDNSServers([]string{"localhost", "local", "8.8.8.8", "8.8.8.8"})
+			if !reflect.DeepEqual(got, []string{address, "8.8.8.8"}) || calls != 1 {
+				t.Fatalf("servers=%v lookup calls=%d", got, calls)
+			}
+		})
+	}
 }

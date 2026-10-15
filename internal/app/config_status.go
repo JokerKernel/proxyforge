@@ -40,8 +40,6 @@ type ModifyConfigStatus struct {
 	HasConfig        bool
 }
 
-var lookupSystemResolvers = system.ResolverAddresses
-
 func (a *App) ModifyConfigStatus(ctx context.Context, core string) ModifyConfigStatus {
 	var status ModifyConfigStatus
 	if a == nil {
@@ -109,7 +107,7 @@ func (a *App) ModifyConfigStatus(ctx context.Context, core string) ModifyConfigS
 			status.DNS = current
 		}
 		if servers, err := dnsProvider.CurrentDNSServers(config); err == nil {
-			status.DNSServers = expandDNSServers(servers)
+			status.DNSServers = a.expandDNSServers(servers)
 		}
 	}
 	if ipProvider, ok := p.(provider.OutboundIPProvider); ok {
@@ -127,7 +125,11 @@ func (a *App) ModifyConfigStatus(ctx context.Context, core string) ModifyConfigS
 	return status
 }
 
-func expandDNSServers(servers []string) []string {
+func (a *App) expandDNSServers(servers []string) []string {
+	lookup := a.ResolverAddresses
+	if lookup == nil {
+		lookup = system.ResolverAddresses
+	}
 	var addrs []string
 	seen := make(map[string]struct{})
 	add := func(addr string) {
@@ -148,7 +150,7 @@ func expandDNSServers(servers []string) []string {
 				continue
 			}
 			usedSystem = true
-			if resolved := lookupSystemResolvers(); len(resolved) > 0 {
+			if resolved := lookup(); len(resolved) > 0 {
 				for _, addr := range resolved {
 					add(addr)
 				}

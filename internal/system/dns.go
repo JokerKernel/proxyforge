@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-var (
+const (
 	resolvConfFile   = "/etc/resolv.conf"
 	resolvedConfFile = "/run/systemd/resolve/resolv.conf"
 )
@@ -15,9 +15,13 @@ var (
 // If only systemd-resolved's stub listener is listed, it follows the
 // resolved upstream file so the card can show the real addresses.
 func ResolverAddresses() []string {
-	addrs := nameserversFromFile(resolvConfFile)
+	return resolverAddresses(resolvConfFile, resolvedConfFile)
+}
+
+func resolverAddresses(resolvPath, resolvedPath string) []string {
+	addrs := nameserversFromFile(resolvPath)
 	if len(addrs) == 0 || onlyStubResolvers(addrs) {
-		if upstream := nameserversFromFile(resolvedConfFile); len(upstream) > 0 && !onlyStubResolvers(upstream) {
+		if upstream := nameserversFromFile(resolvedPath); len(upstream) > 0 && !onlyStubResolvers(upstream) {
 			return upstream
 		}
 	}

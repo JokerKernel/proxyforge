@@ -328,6 +328,36 @@ func TestUseDedicatedXrayServiceUserReportsRollbackDaemonReloadFailure(t *testin
 	}
 }
 
+func TestServiceUserRecoverySurvivesCanceledOperation(t *testing.T) {
+	a, runner, root := newServiceUserTestApp(t, false)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cause := errors.New("migration canceled during restart")
+	restarts := 0
+	wrapped := configValidationRunner(func(commandCtx context.Context, name string, args ...string) ([]byte, error) {
+		if err := commandCtx.Err(); err != nil {
+			t.Fatalf("system command used canceled context: %v", err)
+		}
+		if name == "systemctl" && args[0] == "restart" {
+			restarts++
+			if restarts == 1 {
+				cancel()
+				return nil, cause
+			}
+		}
+		return runner.Run(commandCtx, name, args...)
+	})
+	a.Runner, a.Services.Runner = wrapped, wrapped
+	_, err := a.UseDedicatedXrayServiceUser(ctx)
+	if !errors.Is(err, cause) || strings.Contains(err.Error(), "回滚未完整完成") || restarts != 2 {
+		t.Fatalf("migration recovery failed: restarts=%d, %v", restarts, err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "etc/systemd/system/xray.service"))
+	if err != nil || !strings.Contains(string(data), "User=nobody") {
+		t.Fatalf("original systemd user was not restored: %s, %v", data, err)
+	}
+}
+
 func TestUseDedicatedXrayServiceUserRejectsExistingLoginAccount(t *testing.T) {
 	a, runner, root := newServiceUserTestApp(t, false)
 	runner.accountExists = true

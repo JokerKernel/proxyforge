@@ -168,8 +168,6 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte
 	return nil, nil
 }
 
-func (f *fakeRunner) close() {}
-
 func (f *fakeRunner) callLog() string {
 	f.mu.Lock()
 	defer f.mu.Unlock()

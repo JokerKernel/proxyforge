@@ -29,6 +29,14 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
+      - name: Check Go formatting
+        run: |
+          unformatted=$(gofmt -l $(git ls-files '*.go'))
+          if [[ -n "$unformatted" ]]; then
+            printf 'Go files need formatting:\n%s\n' "$unformatted"
+            exit 1
+          fi
+
       - name: Run tests with race detector
         run: go test -race ./...
 

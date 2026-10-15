@@ -388,8 +388,14 @@ func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, co
 			return cause
 		}
 		a.progressf("恢复服务", "%s，操作未应用", p.ServiceName())
-		if _, startErr := a.Services.Action(ctx, p.ServiceName(), "start"); startErr != nil {
-			return fmt.Errorf("%v；且恢复 %s 失败: %w", cause, p.ServiceName(), startErr)
+		recoveryCtx, cancel := recoveryContext(ctx)
+		defer cancel()
+		if _, startErr := a.Services.Action(recoveryCtx, p.ServiceName(), "start"); startErr != nil {
+			return recoveryResult(cause, "", fmt.Errorf("恢复 %s 失败: %w", p.ServiceName(), startErr))
+		}
+		status, err := a.Services.IsActive(recoveryCtx, p.ServiceName())
+		if err := serviceActiveError(p.ServiceName(), status, err); err != nil {
+			return recoveryResult(cause, "", err)
 		}
 		serviceStopped = false
 		return cause
@@ -424,22 +430,21 @@ func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, co
 	if err := system.AtomicWrite(configPath, config, 0600); err != nil {
 		return n, restoreStoppedService(err)
 	}
+	rollback := func(cause error) error {
+		a.progressf("操作回滚", "操作失败，恢复旧配置、状态和服务")
+		recoveryCtx, cancel := recoveryContext(ctx)
+		defer cancel()
+		if err := restoreFile(configPath, oldConfig, hadConfig, oldMetadata); err != nil {
+			return recoveryResult(cause, "", fmt.Errorf("恢复旧配置失败: %w", err))
+		}
+		// StateStore.Save restores completed writes if saving any file fails.
+		serviceErr := a.restartForRecovery(recoveryCtx, p.ServiceName())
+		return recoveryResult(cause, "已恢复旧配置和服务", serviceErr)
+	}
 	serviceUser := a.Services.User(ctx, p.ServiceName())
 	a.progressf("设置配置权限", "systemd 服务用户：%s", serviceUser)
 	if err := secureConfigForUser(configPath, serviceUser); err != nil {
-		_ = restoreFile(configPath, oldConfig, hadConfig, oldMetadata)
-		return n, restoreStoppedService(err)
-	}
-	rollback := func(cause error) error {
-		a.progressf("操作回滚", "操作失败，恢复旧配置、状态和服务")
-		restoreErr := restoreFile(configPath, oldConfig, hadConfig, oldMetadata)
-		// StateStore.Save restores completed writes if saving any file fails.
-		// Earlier failures leave node state and standalone settings untouched.
-		_ = a.Services.Restart(ctx, p.ServiceName())
-		if restoreErr != nil {
-			return fmt.Errorf("%v；且恢复旧配置失败: %w", cause, restoreErr)
-		}
-		return fmt.Errorf("%v；已恢复旧配置和状态", cause)
+		return n, rollback(err)
 	}
 	a.progressf("重启服务", "%s", p.ServiceName())
 	if err := a.Services.Restart(ctx, p.ServiceName()); err != nil {
@@ -447,8 +452,8 @@ func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, co
 	}
 	a.progressf("检查运行状态", "确认服务 active 并监听端口 %d", n.Port)
 	status, err := a.Services.IsActive(ctx, p.ServiceName())
-	if err != nil || !status.Active {
-		return n, rollback(fmt.Errorf("%s 未进入 active 状态: %s: %w", p.ServiceName(), status.Detail, err))
+	if err := serviceActiveError(p.ServiceName(), status, err); err != nil {
+		return n, rollback(err)
 	}
 	if err := a.Listening(ctx, n.Port, 4*time.Second); err != nil {
 		return n, rollback(err)

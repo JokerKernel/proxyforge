@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -108,6 +107,8 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 	}
 
 	rollback := func(cause error) error {
+		recoveryCtx, cancel := recoveryContext(ctx)
+		defer cancel()
 		a.progressf("恢复运行用户设置", "迁移失败，恢复 systemd unit 和文件权限")
 		var rollbackErrors []error
 		if err := restoreSnapshots(snapshots); err != nil {
@@ -116,21 +117,22 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 		if err := restoreMetadataSnapshots(configSnapshots); err != nil {
 			rollbackErrors = append(rollbackErrors, fmt.Errorf("恢复配置和日志权限: %w", err))
 		}
-		if err := a.Services.DaemonReload(ctx); err != nil {
+		filesRestored := len(rollbackErrors) == 0
+		if err := a.Services.DaemonReload(recoveryCtx); err != nil {
 			rollbackErrors = append(rollbackErrors, fmt.Errorf("恢复后刷新 systemd unit: %w", err))
 		}
-		if wasRunning {
-			if err := a.Services.Restart(ctx, p.ServiceName()); err != nil {
-				rollbackErrors = append(rollbackErrors, fmt.Errorf("恢复 %s 运行状态: %w", p.ServiceName(), err))
+		if wasRunning && filesRestored {
+			if err := a.restartForRecovery(recoveryCtx, p.ServiceName()); err != nil {
+				rollbackErrors = append(rollbackErrors, err)
 			}
 		}
 		if len(rollbackErrors) != 0 {
-			return fmt.Errorf("%v；且回滚未完整完成: %w", cause, errors.Join(rollbackErrors...))
+			return recoveryResult(cause, "", rollbackErrors...)
 		}
 		if change.UserCreated {
-			return fmt.Errorf("%v；已恢复旧 systemd 设置；新创建的 xray 专用账号已安全保留", cause)
+			return recoveryResult(cause, "已恢复旧 systemd 设置；新创建的 xray 专用账号已安全保留")
 		}
-		return fmt.Errorf("%v；已恢复旧 systemd 设置", cause)
+		return recoveryResult(cause, "已恢复旧 systemd 设置")
 	}
 
 	a.progressf("设置运行用户", "Xray systemd unit：%s", XrayDedicatedServiceUser)
@@ -174,8 +176,8 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 			return change, rollback(fmt.Errorf("重启 %s 失败: %w", p.ServiceName(), err))
 		}
 		active, activeErr := a.Services.IsActive(ctx, p.ServiceName())
-		if activeErr != nil || !active.Active {
-			return change, rollback(fmt.Errorf("%s 未恢复 active 状态: %s: %w", p.ServiceName(), active.Detail, activeErr))
+		if err := serviceActiveError(p.ServiceName(), active, activeErr); err != nil {
+			return change, rollback(err)
 		}
 		change.Restarted = true
 	}

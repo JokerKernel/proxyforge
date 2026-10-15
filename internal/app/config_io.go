@@ -60,14 +60,16 @@ func (a *App) applyServerSetting(ctx context.Context, p provider.CoreProvider, c
 
 	rollback := func(cause error) error {
 		a.progressf("恢复原配置", "%s 修改失败，恢复旧配置和服务", setting)
-		restoreErr := restoreFile(configPath, oldConfig, true, metadata)
+		recoveryCtx, cancel := recoveryContext(ctx)
+		defer cancel()
+		if err := restoreFile(configPath, oldConfig, true, metadata); err != nil {
+			return recoveryResult(cause, "", fmt.Errorf("恢复旧配置失败: %w", err))
+		}
+		var serviceErr error
 		if running {
-			_ = a.Services.Restart(ctx, p.ServiceName())
+			serviceErr = a.restartForRecovery(recoveryCtx, p.ServiceName())
 		}
-		if restoreErr != nil {
-			return fmt.Errorf("%v；且恢复旧配置失败: %w", cause, restoreErr)
-		}
-		return fmt.Errorf("%v；已恢复旧配置", cause)
+		return recoveryResult(cause, "已恢复旧配置", serviceErr)
 	}
 
 	a.progressf("写入配置修改", "%s：%s（原子写入）", setting, configPath)
@@ -88,8 +90,8 @@ func (a *App) applyServerSetting(ctx context.Context, p provider.CoreProvider, c
 			return false, rollback(fmt.Errorf("重启 %s 失败: %w", p.ServiceName(), err))
 		}
 		active, activeErr := a.Services.IsActive(ctx, p.ServiceName())
-		if activeErr != nil || !active.Active {
-			return false, rollback(fmt.Errorf("%s 未进入 active 状态: %s: %w", p.ServiceName(), active.Detail, activeErr))
+		if err := serviceActiveError(p.ServiceName(), active, activeErr); err != nil {
+			return false, rollback(err)
 		}
 	}
 	if managedState {
@@ -115,13 +117,17 @@ func validateTemporary(ctx context.Context, p provider.CoreProvider, runner prov
 	return validateConfigBytes(ctx, p, runner, "", "proxyforge-capability-*.json", b)
 }
 
-func validateConfigBytes(ctx context.Context, p provider.CoreProvider, runner provider.Runner, dir, pattern string, b []byte) error {
+func validateConfigBytes(ctx context.Context, p provider.CoreProvider, runner provider.Runner, dir, pattern string, b []byte) (result error) {
 	f, err := os.CreateTemp(dir, pattern)
 	if err != nil {
-		return err
+		return fmt.Errorf("创建临时校验配置: %w", err)
 	}
 	path := f.Name()
-	defer os.Remove(path)
+	defer func() {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			result = errors.Join(result, fmt.Errorf("清理临时校验配置 %s: %w", path, err))
+		}
+	}()
 	if err = f.Chmod(0600); err == nil {
 		_, err = f.Write(b)
 	}
@@ -129,7 +135,7 @@ func validateConfigBytes(ctx context.Context, p provider.CoreProvider, runner pr
 		err = closeErr
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("写入临时校验配置 %s: %w", path, err)
 	}
 	return p.ValidateConfig(ctx, runner, path)
 }
@@ -184,7 +190,17 @@ func secureConfigForUser(path, username string) error {
 	if err != nil {
 		return fmt.Errorf("查找服务用户 %s: %w", username, err)
 	}
-	gid, _ := strconv.Atoi(u.Gid)
+	return secureConfigForGroup(path, u.Gid)
+}
+
+func secureConfigForGroup(path, groupID string) error {
+	gid, err := strconv.Atoi(groupID)
+	if err != nil {
+		return fmt.Errorf("配置 %s 的服务用户 GID %q 无效: %w", path, groupID, err)
+	}
+	if gid < 0 || uint64(gid) >= 1<<32-1 {
+		return fmt.Errorf("配置 %s 的服务用户 GID %q 超出有效范围", path, groupID)
+	}
 	if err := os.Chown(filepath.Dir(path), 0, gid); err != nil {
 		return err
 	}

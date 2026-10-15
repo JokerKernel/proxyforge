@@ -20,7 +20,6 @@ import (
 
 func TestGenerateOverwritePreserveRotateAndRollback(t *testing.T) {
 	r := &fakeRunner{port: freePort(t)}
-	defer r.close()
 	a, root := testApp(t, r)
 	configPath := a.Layout.Resolve(singbox.New().ConfigPath())
 	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {

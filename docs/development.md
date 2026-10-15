@@ -99,7 +99,7 @@ REALITY SNI 黑盒测试见 [REALITY SNI 检测指南](reality-sni-check.md)。
 
 ## CI
 
-GitHub Actions 在分支 push、Pull Request 和手动触发时运行测试、`go vet` 和 Linux amd64/arm64 构建。Dependabot 每周一检查 Go Modules 和 GitHub Actions 更新。
+GitHub Actions 在分支 push、Pull Request 和手动触发时检查 Go 格式，运行 `go test -race ./...`、`go vet`、Shell 脚本检查及行为测试，并构建 Linux amd64/arm64。格式检查只报告需要格式化的文件，不自动修改源码。Dependabot 每周一检查 Go Modules 和 GitHub Actions 更新。
 
 ## 发布
 

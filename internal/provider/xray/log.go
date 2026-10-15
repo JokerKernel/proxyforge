@@ -1,10 +1,11 @@
 package xray
 
 import (
-	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
+
+	"proxyforge/internal/provider/jsonutil"
 )
 
 var supportedLogLevels = []string{"debug", "info", "warning", "error", "off"}
@@ -14,7 +15,7 @@ func (*Provider) LogLevels() []string {
 }
 
 func (*Provider) CurrentLogLevel(config []byte) (string, error) {
-	_, log, err := parseLogObject(config, "读取")
+	_, log, err := jsonutil.ParseOptionalObject(config, "Xray", "读取", "log")
 	if err != nil {
 		return "", err
 	}
@@ -40,7 +41,7 @@ func (*Provider) PatchLogLevel(config []byte, level string) ([]byte, error) {
 	if !slices.Contains(supportedLogLevels, level) {
 		return nil, fmt.Errorf("Xray 日志级别 %q 无效", level)
 	}
-	root, log, err := parseLogObject(config, "修改")
+	root, log, err := jsonutil.ParseOptionalObject(config, "Xray", "修改", "log")
 	if err != nil {
 		return nil, err
 	}
@@ -54,23 +55,4 @@ func (*Provider) PatchLogLevel(config []byte, level string) ([]byte, error) {
 		log["loglevel"] = level
 	}
 	return marshalXray(root)
-}
-
-func parseLogObject(config []byte, operation string) (map[string]any, map[string]any, error) {
-	var root map[string]any
-	if err := json.Unmarshal(config, &root); err != nil {
-		return nil, nil, fmt.Errorf("%s现有 Xray 配置: %w", operation, err)
-	}
-	if root == nil {
-		return nil, nil, fmt.Errorf("%s现有 Xray 配置: 顶层不是 JSON 对象", operation)
-	}
-	raw, exists := root["log"]
-	if !exists || raw == nil {
-		return root, nil, nil
-	}
-	log, ok := raw.(map[string]any)
-	if !ok {
-		return nil, nil, fmt.Errorf("现有 Xray log 不是对象")
-	}
-	return root, log, nil
 }

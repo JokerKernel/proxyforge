@@ -29,6 +29,9 @@ type App struct {
 	PortFree  func(int) error
 	Listening func(context.Context, int, time.Duration) error
 	Reachable func(context.Context, string, int) error
+
+	// ResolverAddresses defaults to the host DNS resolver files when nil.
+	ResolverAddresses func() []string
 }
 
 func New(reg *provider.Registry, runner provider.Runner, layout system.Layout, out io.Writer) *App {
