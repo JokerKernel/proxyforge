@@ -47,21 +47,24 @@ func TestPrintGenerateSuccessDisplaysNodeInformation(t *testing.T) {
 	})
 
 	for _, want := range []string{
-		"sing-box 服务端配置生成成功",
-		system.DetailLine("服务状态", "active（运行中）"),
-		system.DetailLine("开机启动", "enabled（已启用）"),
-		system.DetailLine("连接地址", "[2001:db8::10]:443"),
-		system.DetailLine("REALITY SNI", "www.example.com"),
-		system.DetailLine("REALITY target", "www.example.com:443"),
-		system.DetailLine("用户名称", "phone"),
-		system.DetailLine("入站标签", "phone-in"),
-		system.DetailLine("配置模式", "标准安全配置"),
-		system.DetailLine("内核版本", "sing-box version 1.13.16"),
-		"客户端配置",
+		"╭─ sing-box 服务端配置生成成功",
+		"│ 服务状态  运行中  -- active",
+		"│ 开机启动  已启用  -- enabled",
+		"│ 连接地址  [2001:db8::10]:443",
+		"│ SNI       www.example.com",
+		"│ 回落目标  www.example.com:443",
+		"│ 用户名称  phone",
+		"│ 入站标签  phone-in",
+		"│ 配置模式  标准安全",
+		"│ 内核版本  sing-box version 1.13.16",
+		proxyForgeHeaderRule,
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("success output missing %q: %q", want, out.String())
 		}
+	}
+	if strings.Contains(out.String(), "====") || strings.Contains(out.String(), " │ ") {
+		t.Fatalf("success output still uses detail rows: %q", out.String())
 	}
 }
 
@@ -523,7 +526,39 @@ func TestFillGenerateSelectsSelfSignedTLS(t *testing.T) {
 func TestPrintGenerateSuccessDisplaysTLS(t *testing.T) {
 	var out bytes.Buffer
 	printGenerateSuccess(&out, domain.NodeSpec{Core: domain.CoreXray, Security: "tls", Server: "server.example.com", Port: 443, SNI: "pf-test.invalid"})
-	if !strings.Contains(out.String(), "VLESS + RAW + TLS + Vision") || !strings.Contains(out.String(), system.DetailLine("TLS 名称", "pf-test.invalid")) || strings.Contains(out.String(), "REALITY target") {
+	if !strings.Contains(out.String(), "│ 节点协议  VLESS + RAW + TLS + Vision") || !strings.Contains(out.String(), "│ TLS 名称  pf-test.invalid") || !strings.Contains(out.String(), "│ 证书验证  固定指纹") || strings.Contains(out.String(), "回落目标") {
 		t.Fatal(out.String())
+	}
+}
+
+func TestPrintGenerateSuccessDisplaysXrayFallbackCard(t *testing.T) {
+	var out bytes.Buffer
+	printGenerateSuccess(&out, domain.NodeSpec{
+		Core: domain.CoreXray, Security: domain.LandingSecurityReality,
+		Server: "192.168.213.128", Port: 443,
+		SNI: "se-edge.itunes.apple.com", Target: "se-edge.itunes.apple.com:443",
+		UserName: "one", InboundTag: "xray-one",
+		XrayFallbackGuard: true, XrayFallbackPort: 50480,
+		CoreVersion: "Xray 26.3.27",
+	})
+	for _, want := range []string{
+		"╭─ xray 服务端配置生成成功",
+		"│ 连接地址  192.168.213.128:443",
+		"│ SNI       se-edge.itunes.apple.com",
+		"│ 回落目标  se-edge.itunes.apple.com:443",
+		"│ 配置模式  回落防护",
+		"│ 回落端口  tunnel 127.0.0.1:50480",
+		"│ 严格模式  未开启  -- 允许子域名",
+		"│ HTTP Host 不限制",
+		proxyForgeHeaderRule,
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("success output missing %q: %q", want, out.String())
+		}
+	}
+	strictAt := strings.Index(out.String(), "严格模式")
+	httpAt := strings.Index(out.String(), "HTTP Host")
+	if strictAt < 0 || httpAt < strictAt {
+		t.Fatalf("strict mode row must precede HTTP Host: %q", out.String())
 	}
 }

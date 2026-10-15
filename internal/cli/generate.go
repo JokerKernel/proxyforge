@@ -515,56 +515,56 @@ func (c *commandSet) runGenerate(ctx context.Context, core string, o domain.Gene
 }
 
 func printGenerateSuccess(w io.Writer, n domain.NodeSpec) {
-	const border = "========================================================"
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, border)
-	system.WriteDetail(w, "操作结果", "%s 服务端配置生成成功", n.Core)
-	fmt.Fprintln(w, border)
-	system.WriteDetail(w, "服务状态", "active（运行中）")
-	system.WriteDetail(w, "开机启动", "enabled（已启用）")
-	system.WriteDetail(w, "连接地址", "%s", netJoinHostPort(n.Server, strconv.Itoa(n.Port)))
-	system.WriteDetail(w, "节点协议", "%s", landingProtocolLabel(n.Security))
+	rows := [][2]string{
+		{"服务状态", "运行中  -- active"},
+		{"开机启动", "已启用  -- enabled"},
+		{"连接地址", netJoinHostPort(n.Server, strconv.Itoa(n.Port))},
+		{"节点协议", landingProtocolLabel(n.Security)},
+	}
 	if n.IsTLS() {
-		system.WriteDetail(w, "TLS 名称", "%s", n.SNI)
-		system.WriteDetail(w, "证书验证", "固定指纹")
+		rows = append(rows, [2]string{"TLS 名称", n.SNI}, [2]string{"证书验证", "固定指纹"})
 	} else {
-		system.WriteDetail(w, "REALITY SNI", "%s", n.SNI)
-		system.WriteDetail(w, "REALITY target", "%s", n.Target)
+		rows = append(rows, [2]string{"SNI", n.SNI}, [2]string{"回落目标", n.Target})
 	}
-	system.WriteDetail(w, "用户名称", "%s", n.UserName)
-	system.WriteDetail(w, "入站标签", "%s", n.InboundTag)
-	if n.Core == domain.CoreSingBox {
-		mode := "标准安全配置"
+	rows = append(rows, [2]string{"用户名称", n.UserName}, [2]string{"入站标签", n.InboundTag})
+	rows = append(rows, generateModeRows(n)...)
+	rows = append(rows, [2]string{"内核版本", n.CoreVersion})
+	(&commandSet{out: w}).printLabeledCard(n.Core+" 服务端配置生成成功", rows)
+}
+
+func generateModeRows(n domain.NodeSpec) [][2]string {
+	switch n.Core {
+	case domain.CoreSingBox:
 		if n.SingBoxFallbackGuard {
-			httpPolicy := "HTTP Host 不限制"
-			if n.SingBoxFallbackHTTPDomain {
-				httpPolicy = "HTTP Host 仅限 SNI"
-			}
-			domainPolicy := "允许子域名"
-			if n.SingBoxFallbackExactDomain {
-				domainPolicy = "严格匹配"
-			}
-			mode = fmt.Sprintf("回落防偷跑配置（direct 127.0.0.1:%d；%s；%s）", n.SingBoxFallbackPort, httpPolicy, domainPolicy)
-		} else if n.SimplifiedConfig {
-			mode = "简化配置（系统 DNS）"
+			return fallbackModeRows("direct", n.SingBoxFallbackPort, n.SingBoxFallbackHTTPDomain, n.SingBoxFallbackExactDomain)
 		}
-		system.WriteDetail(w, "配置模式", "%s", mode)
-	} else if n.Core == domain.CoreXray {
-		mode := "标准配置"
+		if n.SimplifiedConfig {
+			return [][2]string{{"配置模式", "简化配置  -- 系统 DNS"}}
+		}
+		return [][2]string{{"配置模式", "标准安全"}}
+	case domain.CoreXray:
 		if n.XrayFallbackGuard {
-			httpPolicy := "HTTP Host 不限制"
-			if n.XrayFallbackHTTPDomain {
-				httpPolicy = "HTTP Host 仅限 SNI"
-			}
-			domainPolicy := "允许子域名"
-			if n.XrayFallbackExactDomain {
-				domainPolicy = "严格匹配"
-			}
-			mode = fmt.Sprintf("回落防偷跑配置（tunnel 127.0.0.1:%d；%s；%s）", n.XrayFallbackPort, httpPolicy, domainPolicy)
+			return fallbackModeRows("tunnel", n.XrayFallbackPort, n.XrayFallbackHTTPDomain, n.XrayFallbackExactDomain)
 		}
-		system.WriteDetail(w, "配置模式", "%s", mode)
+		return [][2]string{{"配置模式", "标准配置"}}
+	default:
+		return nil
 	}
-	system.WriteDetail(w, "内核版本", "%s", n.CoreVersion)
-	fmt.Fprintln(w, border)
-	system.WriteDetail(w, "导出提示", "请从“客户端配置”导出并妥善保管。")
+}
+
+func fallbackModeRows(kind string, port int, httpDomain, exact bool) [][2]string {
+	httpHost := "不限制"
+	if httpDomain {
+		httpHost = "已开启  -- 仅限当前 SNI"
+	}
+	strict := "未开启  -- 允许子域名"
+	if exact {
+		strict = "已开启  -- 仅放行完整域名"
+	}
+	return [][2]string{
+		{"配置模式", "回落防护"},
+		{"回落端口", fmt.Sprintf("%s 127.0.0.1:%d", kind, port)},
+		{"严格模式", strict},
+		{"HTTP Host", httpHost},
+	}
 }

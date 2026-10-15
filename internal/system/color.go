@@ -182,7 +182,8 @@ func decorateConfigCardLine(value string) string {
 	labels := []string{
 		"HTTP Host", "DNS 设置", "SNI 防护", "严格模式", "服务状态", "日志级别", "运行用户", "出站 IP", "回落 IP",
 		"客户端用户", "线路名称", "落地地址", "落地协议", "出站 tag", "接入名称", "接入用户", "接入方式",
-		"监听端口", "中转协议", "端口", "SNI", "中转", "落地", "状态",
+		"监听端口", "中转协议", "回落端口", "回落目标", "连接地址", "节点协议", "用户名称", "入站标签",
+		"配置模式", "内核版本", "开机启动", "证书验证", "TLS 名称", "端口", "SNI", "中转", "落地", "状态",
 	}
 	rest := value[start+len(prefix):]
 	for _, label := range labels {
@@ -220,7 +221,7 @@ func decorateConfigCardValue(label, value string) string {
 			return colored + "  -- " + extra
 		}
 	}
-	if label == "SNI" || label == "端口" || label == "监听端口" || label == "落地地址" {
+	if label == "SNI" || label == "端口" || label == "监听端口" || label == "落地地址" || label == "连接地址" || label == "回落目标" || label == "回落端口" || label == "TLS 名称" {
 		return wrapANSI(ansiBoldOrange, value)
 	}
 	if label == "运行用户" && (value == "xray" || value == "sing-box") {
