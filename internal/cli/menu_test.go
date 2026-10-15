@@ -205,7 +205,7 @@ func TestCoreMenuMergesUninstallAndCleanup(t *testing.T) {
 	if !strings.Contains(out.String(), "╭─ 当前内核") ||
 		!strings.Contains(out.String(), "Xray-core") ||
 		!strings.Contains(out.String(), "[未安装]") ||
-		!strings.Contains(out.String(), "4   卸载内核          -- 同时清理配置和运行数据") ||
+		!strings.Contains(out.String(), "4   卸载并清理        -- 删除内核和数据，已卸载时仍会清理") ||
 		strings.Contains(out.String(), "5   ") {
 		t.Fatalf("menu did not merge uninstall and cleanup: %q", out.String())
 	}

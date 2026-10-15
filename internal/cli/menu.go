@@ -318,7 +318,7 @@ func (c *commandSet) printCoreMenu(ctx context.Context, core string) {
 	c.printMenuChoice("1", "安装/升级（安装内核或升级版本）")
 	c.printMenuChoice("2", "服务端配置（生成、修改、查看与服务管理）")
 	c.printMenuChoice("3", "客户端配置（显示普通节点或中转节点配置）")
-	c.printMenuChoice("4", "卸载内核（同时清理配置和运行数据）")
+	c.printMenuChoice("4", "卸载并清理（删除内核和数据，已卸载时仍会清理）")
 	c.printMenuChoice("0/q", "返回")
 }
 
