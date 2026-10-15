@@ -354,26 +354,14 @@ print_card_row() {
 print_conclusion_cdn_row() {
   [[ -n ${detected_cdn} ]] || return 0
   if [[ ${detected_cdn} == Cloudflare ]] && ((rejected_sni_certificate_count > 0)); then
-    print_card_row 'CDN' '✗ Cloudflare 严重错误：流量可能被刷' "${color_bold_red}"
-    return
-  fi
-  print_card_row 'CDN' "△ 当前有 CDN 风险（${detected_cdn}）" "${color_bold_yellow}"
-}
-
-print_cdn_summary() {
-  [[ -n ${detected_cdn} ]] || return 0
-  if [[ ${detected_cdn} == Cloudflare ]] && ((rejected_sni_certificate_count > 0)); then
-    printf '%s严重错误：允许 SNI 使用 Cloudflare CDN，且 SNI 过滤未生效。未认证回落可能导致流量被刷。%s\n' \
-      "${color_red}" "${color_reset}"
+    print_card_row 'CDN' '✗ 严重错误：未认证回落可能把流量转到 Cloudflare' "${color_bold_red}"
     return
   fi
   if [[ ${detected_cdn} == Cloudflare ]]; then
-    printf '%s当前有 CDN 风险：允许 SNI 使用 Cloudflare。即使 SNI 过滤已生效，未认证回落仍可能到达 Cloudflare。%s\n' \
-      "${color_yellow}" "${color_reset}"
+    print_card_row 'CDN' '△ 回落仍可能到达 Cloudflare' "${color_bold_yellow}"
     return
   fi
-  printf '%s当前有 CDN 风险：允许 SNI 检测到 %s。%s\n' \
-    "${color_yellow}" "${detected_cdn}" "${color_reset}"
+  print_card_row 'CDN' "△ 允许 SNI 指向 ${detected_cdn}" "${color_bold_yellow}"
 }
 
 print_probe_header() {
@@ -773,21 +761,6 @@ classify_http_host() {
   fi
 }
 
-print_strict_match_summary() {
-  if ! ${probe_allowed_subdomain}; then
-    printf '子域名严格匹配：未检测（允许 SNI 过长，无法构造子域）\n'
-  elif ! ${allowed_has_certificate} || ! ${allowed_certificate_matches_sni} || ((rejected_sni_certificate_count > 0)); then
-    printf '子域名严格匹配：无法确认（尚未确认有效的 SNI 防护）\n'
-  elif ${allowed_subdomain_has_certificate}; then
-    printf '%s子域名严格匹配：未开启%s（允许项的子域 %s 获得了证书）；该结果不改变 TLS SNI 判定。\n' \
-      "${color_yellow}" "${color_reset}" "${allowed_subdomain}"
-  else
-    printf '%s子域名严格匹配：已开启%s（允许项的子域 %s 未获得证书）\n' \
-      "${color_green}" "${color_reset}" "${allowed_subdomain}"
-  fi
-  print_cdn_summary
-}
-
 tls_extra_probe_title() {
   local source=$1
   case ${source} in
@@ -797,13 +770,32 @@ tls_extra_probe_title() {
   esac
 }
 
-print_extra_tls_summary() {
+print_probe_facts() {
+  local note=$1
   local index source
   local san_total=0
   local san_certs=0
   local fallback_total=0
   local fallback_certs=0
 
+  print_card_header '探测明细'
+  if ${allowed_has_certificate} && ${allowed_certificate_matches_sni}; then
+    print_card_row '允许 SNI' '收到匹配证书'
+  elif ${allowed_has_certificate}; then
+    print_card_row '允许 SNI' '收到证书，名称不匹配'
+  else
+    print_card_row '允许 SNI' '未获得证书'
+  fi
+  if ((rejected_sni_certificate_count > 0)); then
+    print_card_row '错误 SNI' "${rejected_sni_certificate_count} 个获得了证书"
+  else
+    print_card_row '错误 SNI' "${rejected_sni_probe_count} 个均未获得证书"
+  fi
+  if ${no_sni_has_certificate}; then
+    print_card_row '无 SNI' '仍获得证书'
+  else
+    print_card_row '无 SNI' '未获得证书'
+  fi
   for index in "${!tls_extra_snis[@]}"; do
     source=${tls_extra_sources[index]}
     if [[ ${source} == '允许项证书 SAN' ]]; then
@@ -820,43 +812,64 @@ print_extra_tls_summary() {
   done
   if ((san_total > 0)); then
     if ((san_certs > 0)); then
-      printf '%s证书 SAN 探测中有 %d 个获得了证书；该结果不改变 TLS SNI 判定。%s\n' \
-        "${color_yellow}" "${san_certs}" "${color_reset}"
+      print_card_row '证书 SAN' "${san_certs} 个获得证书" "${color_bold_yellow}"
     else
-      printf '证书 SAN 探测均未获得证书。\n'
+      print_card_row '证书 SAN' '均未获得证书'
     fi
   fi
   if ((fallback_total > 0)); then
     if ((fallback_certs > 0)); then
-      printf '%s补充域名探测中有 %d 个获得了证书；该结果不改变 TLS SNI 判定。%s\n' \
-        "${color_yellow}" "${fallback_certs}" "${color_reset}"
+      print_card_row '补充域名' "${fallback_certs} 个获得证书" "${color_bold_yellow}"
     else
-      printf '补充域名探测均未获得证书。\n'
+      print_card_row '补充域名' '均未获得证书'
     fi
   fi
-}
-
-print_http_summary() {
-  printf 'HTTP Host：%s（%s）；这是明文探测的黑盒判断，不改变 TLS SNI 判定。\n' "${http_host_status}" "${http_host_reason}"
   if ((http_response_count > 0)); then
-    printf '%sHTTP 附加探测中有 %d 个请求收到了响应；该结果不改变 TLS SNI 判定。%s\n' \
-      "${color_yellow}" "${http_response_count}" "${color_reset}"
+    print_card_row 'HTTP 附加' "${http_response_count} 个收到响应"
   else
-    printf 'HTTP 明文附加探测均未收到响应。\n'
+    print_card_row 'HTTP 附加' '均未收到响应'
   fi
   if ((https_response_count > 0)); then
-    printf '%sHTTPS Host 附加探测中有 %d 个请求收到了响应；该结果不改变 TLS SNI 判定。%s\n' \
-      "${color_yellow}" "${https_response_count}" "${color_reset}"
+    print_card_row 'HTTPS 附加' "${https_response_count} 个收到响应"
   else
-    printf 'HTTPS Host 附加探测均未收到响应。\n'
+    print_card_row 'HTTPS 附加' '均未收到响应'
   fi
+  if [[ -n ${note} ]]; then
+    print_card_row '说明' "${note}" "${color_bold_yellow}"
+  fi
+  print_card_footer
 }
 
-print_log_hint() {
-  printf '%s这是外部黑盒检测结果。目标站自身也可能拒绝错误 SNI；如需强确认，请同步查看服务日志：%s\n' "${color_dim}" "${color_reset}"
-  printf '  Xray:    sudo journalctl -u xray -f -o cat\n'
-  printf '  sing-box: sudo journalctl -u sing-box -f -o cat\n'
-  printf '确认错误请求命中 blackhole/private-block 或 reject，而不是连接真实 target。\n'
+print_log_card() {
+  print_card_header '日志确认'
+  print_card_row '说明' '目标站自己拒绝错误 SNI 时，外部结果也会像过滤已生效'
+  print_card_row '核对' '错误请求应在本机被丢弃，不应连到配置里的回落网站'
+  print_card_row 'Xray' 'sudo journalctl -u xray -f -o cat'
+  print_card_row 'sing-box' 'sudo journalctl -u sing-box -f -o cat'
+  print_card_footer
+}
+
+print_conclusion() {
+  local result=$1
+  local result_color=$2
+  local note=$3
+  local show_log=$4
+
+  printf '\n'
+  print_probe_facts "${note}"
+  if ${show_log}; then
+    printf '\n'
+    print_log_card
+  fi
+  if ((tls_certificate_count == 0)); then
+    printf '\n允许项原始输出：\n'
+    sed -n '1,40p' "${allowed_output}"
+  fi
+  printf '\n'
+  print_card_header '结论'
+  print_card_row '检测结果' "${result}" "${result_color}"
+  print_conclusion_features
+  print_card_footer
 }
 
 append_http_host_probe() {
@@ -998,94 +1011,42 @@ if ${allowed_subdomain_has_certificate}; then
 fi
 tls_certificate_count=$((tls_certificate_count + tls_extra_certificate_count))
 
-printf '\n'
 if ((tls_certificate_count == 0)); then
-  printf '\n'
-  print_card_header '结论'
-  print_card_row '检测结果' '? 未获得任何 TLS 证书' "${color_bold_yellow}"
-  print_conclusion_features
-  print_card_footer
-  printf '允许 SNI、错误 SNI 和无 SNI 探测均未获得证书。\n'
   if ${tls_connection_seen} || ((http_response_count > 0)); then
-    printf '节点端口存在连接或响应，更可能是所有 TLS 探测均被拒绝，或填写的 SNI 与当前配置不一致。\n'
+    print_conclusion '? 未获得任何 TLS 证书' "${color_bold_yellow}" \
+      '端口有响应，但所有 TLS 探测都没拿到证书。请核对 SNI 是否与配置一致' false
   else
-    printf '节点端口可能无法访问，也可能所有探测都被防火墙或增强过滤静默丢弃。\n'
+    print_conclusion '? 未获得任何 TLS 证书' "${color_bold_yellow}" \
+      '端口可能不通，或探测被防火墙丢弃' false
   fi
-  print_strict_match_summary
-  print_extra_tls_summary
-  print_http_summary
-  printf '允许项原始输出：\n'
-  sed -n '1,40p' "${allowed_output}"
   exit 2
 fi
 
 if ((rejected_sni_certificate_count > 0)); then
-  printf '\n'
-  print_card_header '结论'
-  print_card_row '检测结果' '✗ SNI 过滤未生效' "${color_bold_red}"
-  print_conclusion_features
-  print_card_footer
-  printf '检测到 %d 个错误 SNI 获得了 TLS 证书。\n' "${rejected_sni_certificate_count}"
-  print_strict_match_summary
-  print_extra_tls_summary
-  print_http_summary
-  printf '%s请检查当前运行配置、路由规则和服务是否已重启。%s\n' "${color_yellow}" "${color_reset}"
+  print_conclusion '✗ SNI 过滤未生效' "${color_bold_red}" \
+    '请核对正在运行的配置，并确认服务已重启' false
   exit 1
 fi
 
 if ! ${allowed_has_certificate}; then
   if ${no_sni_has_certificate}; then
-    printf '\n'
-    print_card_header '结论'
-    print_card_row '检测结果' '△ 检测到 SNI 过滤行为' "${color_bold_yellow}"
-    print_conclusion_features
-    print_card_footer
-    printf '带 SNI 的允许项和错误项均未获得证书，但无 SNI 探测获得了证书。\n'
-    printf '这与 SNI 过滤已经启用、但填写的 SNI 不是当前允许回落域名的情况一致。\n'
+    print_conclusion '△ 检测到 SNI 过滤行为' "${color_bold_yellow}" \
+      '填写的 SNI 可能不是当前允许的回落域名' true
   else
-    printf '\n'
-    print_card_header '结论'
-    print_card_row '检测结果' '? 无法确认 SNI 过滤状态' "${color_bold_yellow}"
-    print_conclusion_features
-    print_card_footer
-    printf '允许 SNI 和错误 SNI 均未获得证书。\n'
+    print_conclusion '? 无法确认 SNI 过滤状态' "${color_bold_yellow}" '' true
   fi
-  print_strict_match_summary
-  print_extra_tls_summary
-  print_http_summary
-  print_log_hint
   exit 2
 fi
 
 if ! ${allowed_certificate_matches_sni}; then
-  printf '\n'
-  print_card_header '结论'
-  print_card_row '检测结果' '? 无法确认 SNI 过滤状态' "${color_bold_yellow}"
-  print_conclusion_features
-  print_card_footer
-  printf '允许 SNI 收到了证书，但证书 SAN 不包含该 SNI。请确认 target 是否允许 SNI 与证书域名不同。\n'
-  print_strict_match_summary
-  print_extra_tls_summary
-  print_http_summary
+  print_conclusion '? 无法确认 SNI 过滤状态' "${color_bold_yellow}" \
+    '证书名称不包含这个 SNI，请核对回落目标' false
   exit 2
 fi
 
-printf '\n'
-print_card_header '结论'
 if ${no_sni_has_certificate}; then
-  print_card_row '检测结果' '✓ SNI 过滤生效' "${color_bold_green}"
+  print_conclusion '✓ SNI 过滤生效' "${color_bold_green}" \
+    '无 SNI 仍能拿到证书，回落链路保持开放' true
 else
-  print_card_row '检测结果' '✓ 增强 SNI 过滤生效' "${color_bold_green}"
+  print_conclusion '✓ 增强 SNI 过滤生效' "${color_bold_green}" '' true
 fi
-print_conclusion_features
-print_card_footer
-printf '允许 SNI 收到匹配证书，%d 个错误 SNI 均未获得证书。\n' "${rejected_sni_probe_count}"
-if ${no_sni_has_certificate}; then
-  printf '%s无 SNI 探测仍获得了证书，说明无 SNI 回落链路保持开放。%s\n' "${color_yellow}" "${color_reset}"
-else
-  printf '无 SNI 探测也未获得证书，说明无 SNI 访问已被增强过滤拒绝。\n'
-fi
-print_strict_match_summary
-print_extra_tls_summary
-print_http_summary
-print_log_hint

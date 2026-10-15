@@ -169,12 +169,19 @@ grep -Fq '证书 / TLS SNI 探测' "${success_output}"
 grep -Fq 'HTTP 明文与 Host 探测' "${success_output}"
 grep -Fq 'HTTPS Host 探测' "${success_output}"
 grep -Fq '允许项的子域' "${success_output}"
-grep -Fq '1 个错误 SNI 均未获得证书' "${success_output}"
-grep -Fq '子域名严格匹配：已开启' "${success_output}"
+grep -Fxq '│ 错误 SNI  1 个均未获得证书' "${success_output}"
 grep -Fq '严格模式  已开启  -- 仅允许完整 SNI 域名' "${success_output}"
 grep -Fq 'SNI 防护  已开启  -- 按 SNI 域名规则限制回落' "${success_output}"
 grep -Fq 'HTTP Host 未开启  -- 非匹配 Host 仍收到 HTTP 响应' "${success_output}"
 grep -Fxq '╭─ 结论' "${success_output}"
+awk '
+  /╭─ 探测明细/ { details = NR }
+  /╭─ 日志确认/ { logs = NR }
+  /╭─ 结论/ { conclusion = NR }
+  END {
+    if (!(details && logs && conclusion && details < logs && logs < conclusion)) exit 1
+  }
+' "${success_output}"
 grep -Fxq '│ SNI 防护  已开启  -- 按 SNI 域名规则限制回落' "${success_output}"
 grep -Fxq '│ 严格模式  已开启  -- 仅允许完整 SNI 域名' "${success_output}"
 grep -Fxq '│ HTTP Host 未开启  -- 非匹配 Host 仍收到 HTTP 响应' "${success_output}"
@@ -185,9 +192,16 @@ for closed_border in ╮ ╯ ┌ ┐ └ ┘; do
     exit 1
   fi
 done
-grep -Fq '允许项的子域 www.se-edge.itunes.apple.com 未获得证书' "${success_output}"
 grep -Fq '收到 TLS 数据但未获得证书' "${success_output}"
-grep -Fq '无 SNI 探测仍获得了证书' "${success_output}"
+grep -Fxq '│ 无 SNI    仍获得证书' "${success_output}"
+grep -Fq '回落链路保持开放' "${success_output}"
+grep -Fxq '╭─ 探测明细' "${success_output}"
+grep -Fxq '╭─ 日志确认' "${success_output}"
+grep -Fq '错误请求应在本机被丢弃，不应连到配置里的回落网站' "${success_output}"
+if grep -Fq 'blackhole' "${success_output}" || grep -Fq '该结果不改变 TLS SNI 判定' "${success_output}"; then
+  printf 'summary must stay on information cards\n' >&2
+  exit 1
+fi
 grep -Fq '状态码=400（错误的请求）' "${success_output}"
 grep -Fq 'Host: example.com' "${success_output}"
 grep -Fq 'Host: www.google.com' "${success_output}"
@@ -213,9 +227,9 @@ awk '
 [[ $(grep -Fc '来源: 允许项证书 SAN' "${success_output}") -eq 6 ]]
 [[ $(grep -Fc 'HTTP Host 伪装测试（证书 SAN）' "${success_output}") -eq 2 ]]
 [[ $(grep -Fc 'HTTPS Host 访问（证书 SAN）' "${success_output}") -eq 2 ]]
-grep -Fq '证书 SAN 探测均未获得证书' "${success_output}"
-grep -Fq 'HTTP 附加探测中有 8 个请求收到了响应' "${success_output}"
-grep -Fq 'HTTPS Host 附加探测中有 7 个请求收到了响应' "${success_output}"
+grep -Fxq '│ 证书 SAN  均未获得证书' "${success_output}"
+grep -Fxq '│ HTTP 附加 8 个收到响应' "${success_output}"
+grep -Fxq '│ HTTPS 附加 7 个收到响应' "${success_output}"
 
 color_output="${test_tmp}/color.log"
 PROXYFORGE_COLOR=always \
@@ -250,18 +264,16 @@ failure_output="${test_tmp}/failure.log"
 run_probe 1 1 1 1 0 0 "${failure_output}"
 [[ ${probe_status} -eq 1 ]]
 grep -Fq '✗ SNI 过滤未生效' "${failure_output}"
-grep -Fq '1 个错误 SNI 获得了 TLS 证书' "${failure_output}"
+grep -Fq '1 个获得了证书' "${failure_output}"
+grep -Fq '请核对正在运行的配置，并确认服务已重启' "${failure_output}"
 
 subdomain_loose_output="${test_tmp}/subdomain-loose.log"
 run_probe 0 1 1 1 0 1 "${subdomain_loose_output}"
 [[ ${probe_status} -eq 0 ]]
 grep -Fq '允许项的子域' "${subdomain_loose_output}"
 grep -Fq '✓ SNI 过滤生效' "${subdomain_loose_output}"
-grep -Fq '1 个错误 SNI 均未获得证书' "${subdomain_loose_output}"
-grep -Fq '子域名严格匹配：未开启' "${subdomain_loose_output}"
+grep -Fxq '│ 错误 SNI  1 个均未获得证书' "${subdomain_loose_output}"
 grep -Fq '严格模式  未开启' "${subdomain_loose_output}"
-grep -Fq '允许项的子域 www.se-edge.itunes.apple.com 获得了证书' "${subdomain_loose_output}"
-grep -Fq '该结果不改变 TLS SNI 判定' "${subdomain_loose_output}"
 if grep -Fq '✗ SNI 过滤未生效' "${subdomain_loose_output}"; then
   printf 'subdomain probe must not fail SNI filtering\n' >&2
   exit 1
@@ -271,8 +283,7 @@ mismatch_output="${test_tmp}/mismatch.log"
 run_probe 0 0 1 1 1 0 "${mismatch_output}"
 [[ ${probe_status} -eq 2 ]]
 grep -Fq '△ 检测到 SNI 过滤行为' "${mismatch_output}"
-grep -Fq '填写的 SNI 不是当前允许回落域名' "${mismatch_output}"
-grep -Fq '子域名严格匹配：无法确认' "${mismatch_output}"
+grep -Fq '填写的 SNI 可能不是当前允许的回落域名' "${mismatch_output}"
 grep -Fq '严格模式  无法确认' "${mismatch_output}"
 
 enhanced_output="${test_tmp}/enhanced.log"
@@ -281,8 +292,7 @@ run_probe 0 1 0 0 1 0 "${enhanced_output}"
 grep -Fq '✓ 增强 SNI 过滤生效' "${enhanced_output}"
 grep -Fq '严格模式  已开启' "${enhanced_output}"
 grep -Fq 'HTTP Host 无法确认  -- 允许 Host 未收到 HTTP 响应' "${enhanced_output}"
-grep -Fq '子域名严格匹配：已开启' "${enhanced_output}"
-grep -Fq '无 SNI 访问已被增强过滤拒绝' "${enhanced_output}"
+grep -Fxq '│ 无 SNI    未获得证书' "${enhanced_output}"
 grep -Fq 'curl退出码=52' "${enhanced_output}"
 grep -Fq '具体错误：curl: (52) Empty reply from server' "${enhanced_output}"
 
@@ -290,9 +300,16 @@ unreachable_output="${test_tmp}/unreachable.log"
 run_probe 0 0 0 0 0 0 "${unreachable_output}"
 [[ ${probe_status} -eq 2 ]]
 grep -Fq '? 未获得任何 TLS 证书' "${unreachable_output}"
-grep -Fq '节点端口可能无法访问' "${unreachable_output}"
-grep -Fq '子域名严格匹配：无法确认' "${unreachable_output}"
+grep -Fq '端口可能不通，或探测被防火墙丢弃' "${unreachable_output}"
 grep -Fq '严格模式  无法确认' "${unreachable_output}"
+awk '
+  /╭─ 探测明细/ { details = NR }
+  /允许项原始输出：/ { raw = NR }
+  /╭─ 结论/ { conclusion = NR }
+  END {
+    if (!(details && raw && conclusion && details < raw && raw < conclusion)) exit 1
+  }
+' "${unreachable_output}"
 grep -Fq 'HTTP Host 无法确认  -- 允许 Host 未收到 HTTP 响应' "${unreachable_output}"
 
 cloudflare_filtered_output="${test_tmp}/cloudflare-filtered.log"
@@ -300,8 +317,7 @@ run_probe 0 1 1 1 1 0 "${cloudflare_filtered_output}" speed.cloudflare.com
 [[ ${probe_status} -eq 0 ]]
 grep -Fq '✓ SNI 过滤生效' "${cloudflare_filtered_output}"
 grep -Fq 'CDN：Cloudflare' "${cloudflare_filtered_output}"
-grep -Fq '△ 当前有 CDN 风险（Cloudflare）' "${cloudflare_filtered_output}"
-grep -Fq '当前有 CDN 风险：允许 SNI 使用 Cloudflare' "${cloudflare_filtered_output}"
+grep -Fq '△ 回落仍可能到达 Cloudflare' "${cloudflare_filtered_output}"
 if grep -Fq '严重错误' "${cloudflare_filtered_output}"; then
   printf 'filtered Cloudflare must not be a severe error\n' >&2
   exit 1
@@ -312,22 +328,19 @@ run_probe 1 1 1 1 0 0 "${cloudflare_unfiltered_output}" speed.cloudflare.com
 [[ ${probe_status} -eq 1 ]]
 grep -Fq '✗ SNI 过滤未生效' "${cloudflare_unfiltered_output}"
 grep -Fq 'CDN：Cloudflare' "${cloudflare_unfiltered_output}"
-grep -Fq '✗ Cloudflare 严重错误：流量可能被刷' "${cloudflare_unfiltered_output}"
-grep -Fq '未认证回落可能导致流量被刷' "${cloudflare_unfiltered_output}"
+grep -Fq '✗ 严重错误：未认证回落可能把流量转到 Cloudflare' "${cloudflare_unfiltered_output}"
 
 akamai_output="${test_tmp}/akamai.log"
 run_probe 0 1 1 1 1 0 "${akamai_output}" img.akamaiedge.net
 [[ ${probe_status} -eq 0 ]]
 grep -Fq 'CDN：Akamai' "${akamai_output}"
-grep -Fq '△ 当前有 CDN 风险（Akamai）' "${akamai_output}"
-grep -Fq '当前有 CDN 风险：允许 SNI 检测到 Akamai' "${akamai_output}"
+grep -Fq '△ 允许 SNI 指向 Akamai' "${akamai_output}"
 
 alicdn_output="${test_tmp}/alicdn.log"
 run_probe 0 1 1 1 1 0 "${alicdn_output}" img.alicdn.com
 [[ ${probe_status} -eq 0 ]]
 grep -Fq 'CDN：阿里云 CDN' "${alicdn_output}"
-grep -Fq '△ 当前有 CDN 风险（阿里云 CDN）' "${alicdn_output}"
-grep -Fq '当前有 CDN 风险：允许 SNI 检测到 阿里云 CDN' "${alicdn_output}"
+grep -Fq '△ 允许 SNI 指向 阿里云 CDN' "${alicdn_output}"
 
 for http_mode in restricted restricted-reset mixed strict-child-leak partial-response baseline-fails timeout refused mixed-timeout; do
   http_output="${test_tmp}/http-${http_mode}.log"
@@ -340,10 +353,9 @@ for http_mode in restricted restricted-reset mixed strict-child-leak partial-res
   case ${http_mode} in
     restricted|restricted-reset)
       grep -Fq 'HTTP Host 已开启  -- 按 SNI 域名规则检查明文 Host' "${http_output}"
-      grep -Fq 'HTTP Host：已开启（允许 Host 有响应，非匹配 Host 均被断开）' "${http_output}"
       # HTTPS succeeds for unrelated hosts in this mock; it cannot override
       # the independently measured plaintext Host result.
-      grep -Fq 'HTTPS Host 附加探测中有 7 个请求收到了响应' "${http_output}"
+      grep -Fxq '│ HTTPS 附加 7 个收到响应' "${http_output}"
       ;;
     mixed|strict-child-leak|partial-response)
       grep -Fq 'HTTP Host 未开启  -- 非匹配 Host 仍收到 HTTP 响应' "${http_output}"
@@ -364,7 +376,7 @@ grep -Fq '严格模式  未开启' "${child_sans_output}"
 grep -Fq 'HTTP Host 已开启' "${child_sans_output}"
 grep -Fq 'Host: assets.se-edge.itunes.apple.com' "${child_sans_output}"
 grep -Fq 'Host: cdn.se-edge.itunes.apple.com' "${child_sans_output}"
-grep -Fq 'HTTP 附加探测中有 5 个请求收到了响应' "${child_sans_output}"
+grep -Fxq '│ HTTP 附加 5 个收到响应' "${child_sans_output}"
 
 certificate_mismatch_output="${test_tmp}/certificate-mismatch.log"
 MOCK_CERT_MATCHES=0 run_probe 0 1 1 1 0 0 "${certificate_mismatch_output}" se-edge.itunes.apple.com restricted
