@@ -59,49 +59,55 @@ paint() {
 
 detail() {
   local label=$1 text=$2 color=$3
-  local LC_ALL=C
-  local width=0 index character padding
-  # Count ASCII cells and UTF-8 leading bytes without requiring a locale.
-  for ((index = 0; index < ${#label}; index++)); do
-    character=${label:index:1}
-    if [[ "${character}" < $'\200' ]]; then
-      width=$((width + 1))
-    elif [[ "${character}" > $'\277' ]]; then
-      width=$((width + 2))
-    fi
-  done
-  padding=$((22 - width))
-  ((padding >= 0)) || padding=0
-  printf '%s%*s │ %s\n' "$(paint "${color}" "${label}")" "${padding}" '' "${text}"
+  printf '%s %s\n' "$(paint "${color}" "[${label}]")" "${text}"
 }
 
 info() {
-  detail "${1}" "${2}" "${color_blue}"
+  detail "信息" "$1：$2" "${color_blue}"
 }
 
 step() {
   printf '\n'
-  detail "${1}" "${2}" "${color_bold_orange}"
+  detail "步骤" "$1" "${color_bold_orange}"
 }
 
 result() {
-  detail "${1}" "${2}" "${color_bold_green}"
+  print_card "$2" "${color_bold_green}"
 }
 
 warn() {
-  detail "${1}" "${2}" "${color_bold_yellow}"
+  detail "警告" "$1：$2" "${color_bold_yellow}"
 }
 
 die() {
-  detail "操作失败" "$*" "${color_bold_red}" >&2
+  detail "错误" "$*" "${color_bold_red}" >&2
   exit 1
 }
 
-print_header() {
-  local subtitle=${1:-自身安装与更新}
+card_open() {
   printf '%s\n' "$(paint "${color_bold_orange}" '╭─ ProxyForge')"
-  printf '%s\n' "$(paint "${color_orange}" "│ ${subtitle}")"
+}
+
+card_line() {
+  local text=$1 color=${2:-${color_orange}}
+  printf '%s %s\n' "$(paint "${color_orange}" '│')" "$(paint "${color}" "${text}")"
+}
+
+card_close() {
   printf '%s\n' "$(paint "${color_bold_orange}" '╰──────────────────────────────────────────────')"
+}
+
+print_card() {
+  printf '\n'
+  card_open
+  card_line "$1" "${2:-${color_orange}}"
+  card_close
+}
+
+print_header() {
+  card_open
+  card_line "${1:-自身安装与更新}"
+  card_close
 }
 
 print_release_summary() {
@@ -116,13 +122,14 @@ print_release_summary() {
     current) action_display="无需更新" ;;
     newer) action_display="跳过，避免降级" ;;
   esac
-  printf '\n%s\n' "$(paint "${color_bold_orange}" '发布信息')"
-  printf '%s\n' "$(paint "${color_orange}" '----------------------------------------')"
-  info "平台" "Linux/$1"
-  info "当前版本" "${current_display}"
-  info "目标版本" "${resolved_version}"
-  info "执行操作" "${action_display}"
-  printf '%s\n' "$(paint "${color_orange}" '----------------------------------------')"
+  printf '\n'
+  card_open
+  card_line "发布信息"
+  card_line "平台：Linux/$1" "${color_blue}"
+  card_line "当前版本：${current_display}" "${color_blue}"
+  card_line "目标版本：${resolved_version}" "${color_blue}"
+  card_line "执行操作：${action_display}" "${color_blue}"
+  card_close
 }
 
 print_completion() {
@@ -132,12 +139,12 @@ print_completion() {
   elif [[ "${installation_action}" == "replace" ]]; then
     action_label="重新安装完成"
   fi
-  printf '\n%s\n' "$(paint "${color_bold_orange}" '╭─ ProxyForge')"
-  result "安装结果" "${action_label}"
-  info "程序版本" "${resolved_version}"
-  info "安装位置" "${install_path}"
-  info "运行命令" "sudo ${install_path}"
-  printf '%s\n' "$(paint "${color_bold_orange}" '╰──────────────────────────────────────────────')"
+  printf '\n'
+  card_open
+  card_line "${action_label}" "${color_bold_green}"
+  card_line "版本：${resolved_version}" "${color_blue}"
+  card_line "位置：${install_path}" "${color_blue}"
+  card_close
 }
 
 cleanup() {
@@ -168,14 +175,14 @@ remove_proxyforge_binary() {
 
 uninstall_proxyforge() {
   print_header "自身卸载"
-  step "检查安装状态" "ProxyForge"
+  step "检查安装状态"
   if ! proxyforge_binary_exists; then
     result "卸载结果" "ProxyForge 当前未安装，无需卸载。"
     return
   fi
 
   info "卸载位置" "${install_path}"
-  step "删除程序文件" "ProxyForge 二进制"
+  step "删除程序文件"
   remove_proxyforge_binary
   if proxyforge_binary_exists; then
     die "卸载后仍检测到文件：${install_path}"
@@ -483,7 +490,7 @@ main() {
   trap 'exit 143' TERM
 
   print_header
-  step "检查发布版本" "GitHub Release"
+  step "检查发布版本"
   if [[ "${requested_version}" == "latest" ]]; then
     if resolve_latest_version "${release_base}"; then
       release_base="https://github.com/${repository}/releases/download/${resolved_version}"
@@ -508,15 +515,12 @@ main() {
       result "更新结果" "当前版本高于目标版本，已跳过以避免降级。"
       return
     fi
-    if [[ "${installation_action}" == "upgrade" ]]; then
-      info "版本更新范围" "${current_version} → ${resolved_version}"
-    elif [[ "${installation_action}" == "replace" ]]; then
+    if [[ "${installation_action}" == "replace" ]]; then
       warn "版本识别警告" "无法识别当前版本 ${current_version}，将重新安装 ${resolved_version}"
     fi
   fi
 
-  step "校验发布文件" "读取发布清单与 SHA-256"
-  info "读取发布清单" "Linux/${architecture}"
+  step "下载发布文件"
   download "${release_base}/SHA256SUMS" "${temporary_dir}/SHA256SUMS"
   select_asset "${temporary_dir}/SHA256SUMS" "${architecture}"
   if [[ -n "${resolved_version}" ]]; then
@@ -526,13 +530,17 @@ main() {
       die "version 与校验清单中的二进制文件名不一致"
   fi
 
-  info "下载发布文件" "${selected_asset}"
+  info "正在下载" "${selected_asset}"
   download "${release_base}/${selected_asset}" "${temporary_dir}/${selected_asset}" true
+  print_card "发布文件下载完成" "${color_bold_green}"
+
+  step "校验发布文件"
   printf '%s  %s\n' "${selected_checksum}" "${selected_asset}" |
     (cd "${temporary_dir}" && sha256sum --check --status -) || die "SHA-256 校验失败"
   result "文件校验结果" "SHA-256 校验通过"
 
-  step "写入程序文件" "${install_path}（原子替换）"
+  step "安装程序"
+  info "正在写入" "${install_path}"
   if [[ ! -d "${install_dir}" ]]; then
     install -d -m 0755 "${install_dir}"
   fi
@@ -541,7 +549,7 @@ main() {
   mv -f -- "${staged_path}" "${install_path}"
   staged_path=""
 
-  "${install_path}" --version
+  "${install_path}" --version >/dev/null
   print_completion
 }
 
