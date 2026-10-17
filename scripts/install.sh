@@ -126,8 +126,8 @@ print_release_summary() {
   card_open
   card_line "发布信息"
   card_line "平台：Linux/$1" "${color_blue}"
-  card_line "当前版本：${current_display}" "${color_blue}"
-  card_line "目标版本：${resolved_version}" "${color_blue}"
+  card_line "当前版本：${current_display}"
+  card_line "目标版本：${resolved_version}"
   card_line "执行操作：${action_display}" "${color_blue}"
   card_close
 }
