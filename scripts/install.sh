@@ -31,6 +31,7 @@ if [[ "${color_enabled}" == true ]]; then
   readonly color_bold_orange=$'\033[1;38;5;208m'
   readonly color_orange=$'\033[38;5;208m'
   readonly color_blue=$'\033[34m'
+  readonly color_white=$'\033[37m'
   readonly color_bold_green=$'\033[1;32m'
   readonly color_bold_yellow=$'\033[1;33m'
   readonly color_bold_red=$'\033[1;31m'
@@ -39,6 +40,7 @@ else
   readonly color_bold_orange=""
   readonly color_orange=""
   readonly color_blue=""
+  readonly color_white=""
   readonly color_bold_green=""
   readonly color_bold_yellow=""
   readonly color_bold_red=""
@@ -125,10 +127,10 @@ print_release_summary() {
   printf '\n'
   card_open
   card_line "发布信息"
-  card_line "平台：Linux/$1" "${color_blue}"
+  card_line "平台：Linux/$1" "${color_white}"
   card_line "当前版本：${current_display}"
   card_line "目标版本：${resolved_version}"
-  card_line "执行操作：${action_display}" "${color_blue}"
+  card_line "执行操作：${action_display}" "${color_white}"
   card_close
 }
 
