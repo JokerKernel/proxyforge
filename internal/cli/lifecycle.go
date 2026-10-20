@@ -128,6 +128,26 @@ func validateInstallVersionFlags(version string, beta bool) error {
 	return nil
 }
 
+// installMenu owns the installation page; command-line installation still uses
+// chooseInstallOptions once and exits after completing the requested command.
+func (c *commandSet) installMenu(ctx context.Context, core string) error {
+	opts := install.Options{Confirm: c.confirm}
+	for {
+		var err error
+		opts, err = c.chooseInstallOptions(ctx, core, opts)
+		if errors.Is(err, errReturnToMenu) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if err := c.app.Install(ctx, core, opts); err != nil {
+			c.printMenuError(err)
+		}
+		c.pauseForMenu()
+	}
+}
+
 func (c *commandSet) chooseInstallOptions(ctx context.Context, core string, opts install.Options) (install.Options, error) {
 	if opts.Version == "" && !opts.Beta {
 		channel, err := c.app.PreferredInstallChannel(core)

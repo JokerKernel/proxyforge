@@ -310,7 +310,7 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 			}
 		}
 	}
-	if o.SNI == "" {
+	for o.SNI == "" {
 		var err error
 		o.SNI, err = c.askDefaultCancelable("REALITY SNI（输入域名；直接回车自动测速候选）", "")
 		if err != nil {
@@ -322,7 +322,7 @@ func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.Ge
 			selected, err := c.selectSNICandidate(ctx, o.Server)
 			if err != nil {
 				if errors.Is(err, errReturnToMenu) {
-					return err
+					continue
 				}
 				return fmt.Errorf("自动选择 SNI 失败: %w", err)
 			}
@@ -463,6 +463,9 @@ func (c *commandSet) selectPublicAddress(ctx context.Context) (string, error) {
 		}
 		if err == nil {
 			return address, nil
+		}
+		if errors.Is(err, errReturnToMenu) {
+			continue
 		}
 		system.WriteDetail(c.out, "获取公网地址失败", "%v，请重新选择。", err)
 		fmt.Fprintln(c.out)

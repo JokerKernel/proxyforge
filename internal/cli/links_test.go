@@ -142,7 +142,7 @@ func TestTLSLandingCreationDoesNotAskForPortDomainOrCertificatePaths(t *testing.
 	var out bytes.Buffer
 	c := &commandSet{
 		app:    &app.App{Store: store, RootCheck: func() error { return nil }},
-		reader: bufio.NewReader(strings.NewReader("2\nauto-tls\nn\n")), out: &out,
+		reader: bufio.NewReader(strings.NewReader("2\nauto-tls\nq\nq\n")), out: &out,
 	}
 	err := c.addLandingInteractive(context.Background(), domain.CoreXray)
 	if !errors.Is(err, errReturnToMenu) {
@@ -217,7 +217,7 @@ func TestManageRelaySelectsLongLineNameByNumber(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
 		app:    &app.App{Store: store},
-		reader: bufio.NewReader(strings.NewReader("2\n0\n")),
+		reader: bufio.NewReader(strings.NewReader("2\n0\n0\n")),
 		out:    &out,
 	}
 	err := c.manageRelayInteractive(context.Background(), domain.CoreXray)
@@ -256,7 +256,7 @@ func TestManageLandingSelectsLongAccessNameByNumber(t *testing.T) {
 	var out bytes.Buffer
 	c := &commandSet{
 		app:    &app.App{Store: store},
-		reader: bufio.NewReader(strings.NewReader("2\n0\n")),
+		reader: bufio.NewReader(strings.NewReader("2\n0\n0\n")),
 		out:    &out,
 	}
 	err := c.manageLandingInteractive(context.Background(), domain.CoreSingBox)

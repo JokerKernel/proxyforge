@@ -142,7 +142,7 @@ func TestAccessBatchInvalidCancellationAndRestartFailureKeepFiles(t *testing.T) 
 						t.Fatal(err)
 					}
 				case "cancel-menu":
-					c.reader = bufio.NewReader(strings.NewReader("2\n1\ngood.example.com,192.168.1.10\n1\nq\n0\n0\n"))
+					c.reader = bufio.NewReader(strings.NewReader("2\n1\ngood.example.com,192.168.1.10\n1\nq\n0\n0\n0\n"))
 					if err := c.accessPolicyMenu(context.Background(), core); err != nil {
 						t.Fatal(err)
 					}

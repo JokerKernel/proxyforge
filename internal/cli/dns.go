@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -11,99 +12,106 @@ import (
 )
 
 func (c *commandSet) dnsSettingsMenu(ctx context.Context, core string) error {
-	settings, err := c.app.DNSSettings(ctx, core)
-	if err != nil {
-		return err
-	}
-	c.clearScreen()
-	c.printPageHeader(core, "DNS 设置")
-	fmt.Fprintf(c.out, "当前配置：%s\n\n", dnsProfileDisplay(core, settings.Current))
-	defaultChoice := 1
-	for index, profile := range settings.Profiles {
-		c.printMenuChoice(strconv.Itoa(index+1), dnsProfileDisplay(core, profile))
-		if profile == settings.Current ||
-			(profile == provider.DNSProfilePublicCloudflare && settings.Current == provider.DNSProfileCloudflare) ||
-			(profile == provider.DNSProfilePublicGoogle && settings.Current == provider.DNSProfileGoogle) {
-			defaultChoice = index + 1
+	for {
+		settings, err := c.app.DNSSettings(ctx, core)
+		if err != nil {
+			return err
 		}
-	}
-	c.printMenuChoice("0/q", "返回")
-	choice, err := c.chooseNumber("请选择 DNS", 0, len(settings.Profiles), defaultChoice)
-	if err != nil {
-		return err
-	}
-	if choice == 0 {
-		return errReturnToMenu
-	}
-	selected := settings.Profiles[choice-1]
-	if selected == settings.Current {
-		system.WriteDetail(c.out, "操作提示", "DNS 已经是 %s，无需修改。", dnsProfileDisplay(core, selected))
-		return nil
-	}
+		c.clearScreen()
+		c.printPageHeader(core, "DNS 设置")
+		fmt.Fprintf(c.out, "当前配置：%s\n\n", dnsProfileDisplay(core, settings.Current))
+		defaultChoice := 1
+		for index, profile := range settings.Profiles {
+			c.printMenuChoice(strconv.Itoa(index+1), dnsProfileDisplay(core, profile))
+			if profile == settings.Current ||
+				(profile == provider.DNSProfilePublicCloudflare && settings.Current == provider.DNSProfileCloudflare) ||
+				(profile == provider.DNSProfilePublicGoogle && settings.Current == provider.DNSProfileGoogle) {
+				defaultChoice = index + 1
+			}
+		}
+		c.printMenuChoice("0/q", "返回")
+		choice, err := c.chooseNumber("请选择 DNS", 0, len(settings.Profiles), defaultChoice)
+		if err != nil {
+			return err
+		}
+		if choice == 0 {
+			return errReturnToMenu
+		}
+		selected := settings.Profiles[choice-1]
+		if selected == settings.Current {
+			system.WriteDetail(c.out, "操作提示", "DNS 已经是 %s，无需修改。", dnsProfileDisplay(core, selected))
+			c.pauseForMenu()
+			continue
+		}
 
-	sections := []confirmationSection{{title: "将执行", items: []string{
-		"按 " + core + " 原生格式更新 DNS 配置",
-		"保留私网和保留地址拦截",
-		"使用内核原生命令校验候选配置",
-		"备份并原子更新当前服务端配置",
-		"服务正在运行时自动重启使设置立即生效",
-	}}}
-	if isEncryptedDNSProfile(selected) {
-		items := []string{
-			"普通域名查询将通过 HTTPS/443 加密传输",
-			"该设置只修改代理内核解析器，不修改系统全局 DNS",
+		sections := []confirmationSection{{title: "将执行", items: []string{
+			"按 " + core + " 原生格式更新 DNS 配置",
+			"保留私网和保留地址拦截",
+			"使用内核原生命令校验候选配置",
+			"备份并原子更新当前服务端配置",
+			"服务正在运行时自动重启使设置立即生效",
+		}}}
+		if isEncryptedDNSProfile(selected) {
+			items := []string{
+				"普通域名查询将通过 HTTPS/443 加密传输",
+				"该设置只修改代理内核解析器，不修改系统全局 DNS",
+			}
+			if core == domain.CoreSingBox {
+				items = append(items,
+					"sing-box 仅使用系统 DNS 引导解析 DoH 服务地址，普通域名查询不会使用系统 DNS",
+					"sing-box 只写入所选的一个 DoH 上游，不配置无效的备用服务器",
+				)
+			} else {
+				items = append(items, "Xray 使用 IP 形式的 DoH 地址，不依赖系统 DNS 引导，并按配置顺序自动回退")
+			}
+			sections = append(sections, confirmationSection{title: "加密 DNS", items: items})
+		} else if selected != provider.DNSProfileSystem {
+			items := []string{
+				"公共 DNS 使用 UDP/53 明文查询，网络运营方可能观察或拦截",
+				"该设置只修改代理内核解析器，不修改系统全局 DNS",
+			}
+			if core == domain.CoreSingBox {
+				items = append(items, "sing-box 只写入所选的一个公共 DNS，不配置无效的备用服务器")
+			}
+			sections = append(sections, confirmationSection{title: "注意", items: items})
 		}
-		if core == domain.CoreSingBox {
-			items = append(items,
-				"sing-box 仅使用系统 DNS 引导解析 DoH 服务地址，普通域名查询不会使用系统 DNS",
-				"sing-box 只写入所选的一个 DoH 上游，不配置无效的备用服务器",
-			)
-		} else {
-			items = append(items, "Xray 使用 IP 形式的 DoH 地址，不依赖系统 DNS 引导，并按配置顺序自动回退")
+		c.printConfirmationPanel(
+			"操作确认：设置 DNS",
+			[]string{
+				"目标内核：" + core,
+				"当前配置：" + dnsProfileDisplay(core, settings.Current),
+				"新的配置：" + dnsProfileDisplay(core, selected),
+			},
+			sections...,
+		)
+		confirmed, err := c.confirmCancelable("应用新的 DNS 设置？")
+		if errors.Is(err, errReturnToMenu) {
+			continue
 		}
-		sections = append(sections, confirmationSection{title: "加密 DNS", items: items})
-	} else if selected != provider.DNSProfileSystem {
-		items := []string{
-			"公共 DNS 使用 UDP/53 明文查询，网络运营方可能观察或拦截",
-			"该设置只修改代理内核解析器，不修改系统全局 DNS",
+		if err != nil {
+			return err
 		}
-		if core == domain.CoreSingBox {
-			items = append(items, "sing-box 只写入所选的一个公共 DNS，不配置无效的备用服务器")
+		if !confirmed {
+			system.WriteDetail(c.out, "取消操作", "%s", "已取消 DNS 修改。")
+			continue
 		}
-		sections = append(sections, confirmationSection{title: "注意", items: items})
+		change, err := c.app.SetDNSProfile(ctx, core, selected)
+		if err != nil {
+			return err
+		}
+		if !change.Changed {
+			system.WriteDetail(c.out, "操作提示", "DNS 已经是 %s，无需修改。", dnsProfileDisplay(core, change.Current))
+			c.pauseForMenu()
+			continue
+		}
+		effect := "服务当前未运行，将在下次启动时生效"
+		if change.Restarted {
+			effect = "服务已重启，设置已生效"
+		}
+		system.WriteDetail(c.out, "操作结果", "%s DNS 已从 %s 修改为 %s；%s。",
+			core, dnsProfileDisplay(core, change.Previous), dnsProfileDisplay(core, change.Current), effect)
+		c.pauseForMenu()
 	}
-	c.printConfirmationPanel(
-		"操作确认：设置 DNS",
-		[]string{
-			"目标内核：" + core,
-			"当前配置：" + dnsProfileDisplay(core, settings.Current),
-			"新的配置：" + dnsProfileDisplay(core, selected),
-		},
-		sections...,
-	)
-	confirmed, err := c.confirmCancelable("应用新的 DNS 设置？")
-	if err != nil {
-		return err
-	}
-	if !confirmed {
-		system.WriteDetail(c.out, "取消操作", "%s", "已取消 DNS 修改。")
-		return nil
-	}
-	change, err := c.app.SetDNSProfile(ctx, core, selected)
-	if err != nil {
-		return err
-	}
-	if !change.Changed {
-		system.WriteDetail(c.out, "操作提示", "DNS 已经是 %s，无需修改。", dnsProfileDisplay(core, change.Current))
-		return nil
-	}
-	effect := "服务当前未运行，将在下次启动时生效"
-	if change.Restarted {
-		effect = "服务已重启，设置已生效"
-	}
-	system.WriteDetail(c.out, "操作结果", "%s DNS 已从 %s 修改为 %s；%s。",
-		core, dnsProfileDisplay(core, change.Previous), dnsProfileDisplay(core, change.Current), effect)
-	return nil
 }
 
 func dnsProfileDisplay(core, profile string) string {

@@ -56,12 +56,14 @@ func TestConfirmAcceptsGlobalAffirmativeForms(t *testing.T) {
 }
 
 func TestCancelableGenerateInputsRecognizeQ(t *testing.T) {
-	t.Run("text", func(t *testing.T) {
-		c := &commandSet{reader: bufio.NewReader(strings.NewReader("Q\n")), out: io.Discard}
-		if _, err := c.askDefaultCancelable("value", "default"); !errors.Is(err, errReturnToMenu) {
-			t.Fatalf("error=%v", err)
-		}
-	})
+	for _, back := range []string{"0", "q", "Q"} {
+		t.Run("text/"+back, func(t *testing.T) {
+			c := &commandSet{reader: bufio.NewReader(strings.NewReader(back + "\n")), out: io.Discard}
+			if _, err := c.askDefaultCancelable("value", "default"); !errors.Is(err, errReturnToMenu) {
+				t.Fatalf("error=%v", err)
+			}
+		})
+	}
 	t.Run("number", func(t *testing.T) {
 		c := &commandSet{reader: bufio.NewReader(strings.NewReader("q\n")), out: io.Discard}
 		if _, err := c.chooseNumberCancelable("choice", 1, 3, 1); !errors.Is(err, errReturnToMenu) {

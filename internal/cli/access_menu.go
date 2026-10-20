@@ -151,84 +151,12 @@ func (c *commandSet) accessListMenu(ctx context.Context, core, list string) erro
 		c.clearScreen()
 		switch choice {
 		case 1:
-			c.printPageHeader(core, "访问控制", section, "添加规则")
-			c.printLabeledCard("规则说明", [][2]string{
-				{"支持目标", "域名、单个 IP 或 CIDR 网段"},
-				{"批量输入", "一行输入多个目标，用空格或逗号分隔"},
-				{"域名匹配", "默认包括子域名，可选择精确匹配"},
-				{"返回", "输入 0/q 返回" + section},
-			})
-			value, err := c.askDefaultCancelable("目标（多个用空格或逗号分隔）", "")
-			if errors.Is(err, errReturnToMenu) || value == "0" {
+			additions, entryErr := c.accessEntriesMenu(core, section, name)
+			if errors.Is(entryErr, errReturnToMenu) {
 				continue
 			}
-			if err != nil {
-				return err
-			}
-			additions, err := domain.ParseAccessEntries(value, false)
-			if err != nil {
-				c.printMenuError(err)
-				c.pauseForMenu()
-				continue
-			}
-			domainCount := 0
-			for _, entry := range additions {
-				if entry.Type == domain.AccessEntryDomain {
-					domainCount++
-				}
-			}
-			if domainCount > 0 {
-				c.clearScreen()
-				c.printPageHeader(core, "访问控制", section, "添加规则", "域名匹配")
-				c.printLabeledCard("目标规则", [][2]string{
-					{"名单", name}, {"目标数量", strconv.Itoa(len(additions)) + " 条"},
-					{"域名匹配", "以下选择对本次所有域名生效，IP 和网段不受影响"},
-				})
-				for i, entry := range additions {
-					fmt.Fprintf(c.out, "%d. %s\n", i+1, entry.Value)
-				}
-				fmt.Fprintln(c.out)
-				c.printMenuChoice("1", "域名及其全部子域名（默认）")
-				c.printMenuChoice("2", "仅完整域名")
-				c.printMenuChoice("0/q", "返回")
-				selected, err := c.chooseNumberCancelable("请选择域名匹配方式", 1, 2, 1)
-				if errors.Is(err, errReturnToMenu) {
-					continue
-				}
-				if err != nil {
-					return err
-				}
-				for i := range additions {
-					if additions[i].Type == domain.AccessEntryDomain {
-						additions[i].IncludeSubdomains = selected == 1
-					}
-				}
-			}
-			fmt.Fprintln(c.out, "逐条设置目标端口；支持 80,443、80.443、中文逗号、8000-8100；all 表示全部端口，q 返回。")
-			cancelled := false
-			for i := range additions {
-				defaultPorts := "all"
-				if additions[i].Type == domain.AccessEntryDomain {
-					defaultPorts = domain.DefaultAccessDomainPorts
-				}
-				value, askErr := c.askDefaultCancelable(additions[i].Value+" 的目标端口", defaultPorts)
-				if errors.Is(askErr, errReturnToMenu) {
-					cancelled = true
-					break
-				}
-				if askErr != nil {
-					return askErr
-				}
-				additions[i].Ports, err = domain.NormalizeAccessPorts(value)
-				if err != nil {
-					c.printMenuError(err)
-					c.pauseForMenu()
-					cancelled = true
-					break
-				}
-			}
-			if cancelled {
-				continue
+			if entryErr != nil {
+				return entryErr
 			}
 			next, err = next.AddEntries(list, additions)
 			if err != nil {
@@ -312,4 +240,93 @@ func (c *commandSet) applyAccessPolicyFromMenu(ctx context.Context, core, sectio
 		c.pauseForMenu()
 	}
 	return nil
+}
+
+func (c *commandSet) accessEntriesMenu(core, section, name string) ([]domain.AccessEntry, error) {
+	for {
+		c.clearScreen()
+		c.printPageHeader(core, "访问控制", section, "添加规则")
+		c.printLabeledCard("规则说明", [][2]string{
+			{"支持目标", "域名、单个 IP 或 CIDR 网段"},
+			{"批量输入", "一行输入多个目标，用空格或逗号分隔"},
+			{"域名匹配", "默认包括子域名，可选择精确匹配"},
+			{"返回", "输入 0/q 返回" + section},
+		})
+		value, err := c.askDefaultCancelable("目标（多个用空格或逗号分隔）", "")
+		if errors.Is(err, errReturnToMenu) || value == "0" {
+			return nil, errReturnToMenu
+		}
+		if err != nil {
+			return nil, err
+		}
+		additions, err := domain.ParseAccessEntries(value, false)
+		if err != nil {
+			c.printMenuError(err)
+			c.pauseForMenu()
+			return nil, errReturnToMenu
+		}
+		domainCount := 0
+		for _, entry := range additions {
+			if entry.Type == domain.AccessEntryDomain {
+				domainCount++
+			}
+		}
+		if domainCount > 0 {
+			c.clearScreen()
+			c.printPageHeader(core, "访问控制", section, "添加规则", "域名匹配")
+			c.printLabeledCard("目标规则", [][2]string{
+				{"名单", name}, {"目标数量", strconv.Itoa(len(additions)) + " 条"},
+				{"域名匹配", "以下选择对本次所有域名生效，IP 和网段不受影响"},
+			})
+			for i, entry := range additions {
+				fmt.Fprintf(c.out, "%d. %s\n", i+1, entry.Value)
+			}
+			fmt.Fprintln(c.out)
+			c.printMenuChoice("1", "域名及其全部子域名（默认）")
+			c.printMenuChoice("2", "仅完整域名")
+			c.printMenuChoice("0/q", "返回")
+			selected, err := c.chooseNumberCancelable("请选择域名匹配方式", 1, 2, 1)
+			if errors.Is(err, errReturnToMenu) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			for i := range additions {
+				if additions[i].Type == domain.AccessEntryDomain {
+					additions[i].IncludeSubdomains = selected == 1
+				}
+			}
+		}
+		c.clearScreen()
+		c.printPageHeader(core, "访问控制", section, "添加规则", "端口限制")
+		fmt.Fprintln(c.out, "逐条设置目标端口；支持 80,443、80.443、中文逗号、8000-8100；all 表示全部端口，q 返回。")
+		cancelled := false
+		for i := range additions {
+			defaultPorts := "all"
+			if additions[i].Type == domain.AccessEntryDomain {
+				defaultPorts = domain.DefaultAccessDomainPorts
+			}
+			value, askErr := c.askDefaultCancelable(additions[i].Value+" 的目标端口", defaultPorts)
+			if errors.Is(askErr, errReturnToMenu) {
+				cancelled = true
+				break
+			}
+			if askErr != nil {
+				return nil, askErr
+			}
+			additions[i].Ports, err = domain.NormalizeAccessPorts(value)
+			if err != nil {
+				c.printMenuError(err)
+				c.pauseForMenu()
+				cancelled = true
+				break
+			}
+		}
+		if cancelled {
+			continue
+		}
+
+		return additions, nil
+	}
 }

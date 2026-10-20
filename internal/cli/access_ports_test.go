@@ -108,7 +108,7 @@ func TestAccessMenuPerRecordPortsAndInvalidBatch(t *testing.T) {
 			if err := runAccess(t, c, "add", core, "white", "valid.example.com", "192.168.1.1", "--ports", "80,65536"); err == nil {
 				t.Fatal("invalid port batch accepted")
 			}
-			c.reader = bufio.NewReader(strings.NewReader("2\n1\nvalid.example.com 192.168.1.2\n1\n443\n0\n0\n0\n"))
+			c.reader = bufio.NewReader(strings.NewReader("2\n1\nvalid.example.com 192.168.1.2\n1\n443\n0\n0\n0\n0\n"))
 			if err := c.accessPolicyMenu(context.Background(), core); err != nil {
 				t.Fatal(err)
 			}

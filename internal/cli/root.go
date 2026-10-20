@@ -18,7 +18,7 @@ import (
 	"proxyforge/internal/system"
 )
 
-var errReturnToMenu = errors.New("返回主菜单")
+var errReturnToMenu = errors.New("返回上一级菜单")
 
 type commandSet struct {
 	app              *app.App

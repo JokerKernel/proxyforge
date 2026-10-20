@@ -49,7 +49,7 @@ func TestModifyConfigResetSNIQReturnsWithoutError(t *testing.T) {
 	var out, errOut bytes.Buffer
 	c := &commandSet{
 		app:    &app.App{Store: store},
-		reader: bufio.NewReader(strings.NewReader("3\n\nq\n0\n")),
+		reader: bufio.NewReader(strings.NewReader("3\n\nq\n0\n0\n")),
 		out:    &out,
 		errOut: &errOut,
 		probeSNI: func(context.Context, []string, string, int) ([]app.SNICandidate, error) {
@@ -64,6 +64,16 @@ func TestModifyConfigResetSNIQReturnsWithoutError(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "操作失败") {
 		t.Fatalf("q treated as failure: %q", out.String())
+	}
+	if strings.Count(out.String(), "新的 REALITY SNI（输入域名；直接回车自动测速候选）") != 2 {
+		t.Fatalf("candidate cancellation did not return to SNI input: %q", out.String())
+	}
+	current, err := store.Load(domain.CoreSingBox)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.SNI != "old.example.com" || current.Target != "old.example.com:443" {
+		t.Fatalf("canceled reset changed node: %#v", current)
 	}
 }
 

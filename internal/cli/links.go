@@ -351,14 +351,17 @@ func (c *commandSet) linkMenu(ctx context.Context, core string) error {
 			return err
 		}
 		c.clearScreen()
+		shouldPause := true
 		switch choice {
 		case 1:
 			err = c.addRelayInteractive(ctx, core)
 		case 2:
+			shouldPause = false
 			err = c.manageRelayInteractive(ctx, core)
 		case 3:
 			err = c.addLandingInteractive(ctx, core)
 		case 4:
+			shouldPause = false
 			err = c.manageLandingInteractive(ctx, core)
 		case 5:
 			err = c.printLinkGraph(core)
@@ -366,10 +369,15 @@ func (c *commandSet) linkMenu(ctx context.Context, core string) error {
 		if errors.Is(err, errReturnToMenu) {
 			continue
 		}
+		if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
+			return err
+		}
 		if err != nil {
 			c.printMenuError(err)
 		}
-		c.pauseForMenu()
+		if shouldPause || err != nil {
+			c.pauseForMenu()
+		}
 	}
 }
 
@@ -497,44 +505,57 @@ func landingProtocolLabel(security string) string {
 }
 
 func (c *commandSet) addLandingInteractive(ctx context.Context, core string) error {
-	c.printPageHeader(core, "创建落地接入")
-	node, err := c.app.Store.Load(core)
-	if err != nil {
-		return err
+	for {
+		c.clearScreen()
+		c.printPageHeader(core, "创建落地接入")
+		node, err := c.app.Store.Load(core)
+		if err != nil {
+			return err
+		}
+		c.printMenuChoice("1", fmt.Sprintf("使用当前协议（%s，复用端口 %d）", landingProtocolLabel(node.Security), node.Port))
+		c.printMenuChoice("2", "创建 VLESS + RAW + TLS + Vision（随机高位独立端口）")
+		c.printMenuChoice("0/q", "返回")
+		protocolChoice, err := c.chooseNumberCancelable("请选择落地接入协议", 1, 2, 1)
+		if err != nil {
+			return err
+		}
+		name, err := c.askDefaultCancelable("接入名称", nextLandingAccessName(node))
+		if errors.Is(err, errReturnToMenu) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if err = c.app.ValidateLinkNameAvailable(core, name); err != nil {
+			return err
+		}
+		opts := app.LandingAddOptions{Security: domain.LandingSecurityCurrent}
+		confirmMessage := "将向当前主入站添加独立接入用户；不新增端口，普通用户路由保持不变，应用时会重启当前服务。"
+		if protocolChoice == 2 {
+			opts.Security = domain.LandingSecurityTLS
+			confirmMessage = "将自动选择 30000–65000 的可用端口并生成 10 年有效的 ECDSA 自签证书；中转机使用连接文本中的指纹固定验证，普通用户和当前主入站保持不变，应用时会重启当前服务。"
+		}
+		ok, err := c.confirmCancelable(confirmMessage)
+		if errors.Is(err, errReturnToMenu) || (err == nil && !ok) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if _, err = c.app.AddLandingAccessWithOptions(ctx, core, name, opts); err != nil {
+			return err
+		}
+		b, err := c.app.ExportLandingBundle(core, name, "", false)
+		if err == nil {
+			system.WriteDetail(c.out, "创建落地接入", "落地接入已创建。请复制下面完整的 JSON 文本，在中转机的粘贴编辑器中使用：")
+			fmt.Fprintln(c.out)
+			_, err = c.out.Write(b)
+		}
+		if err != nil {
+			c.printMenuError(err)
+		}
+		c.pauseForMenu()
 	}
-	c.printMenuChoice("1", fmt.Sprintf("使用当前协议（%s，复用端口 %d）", landingProtocolLabel(node.Security), node.Port))
-	c.printMenuChoice("2", "创建 VLESS + RAW + TLS + Vision（随机高位独立端口）")
-	protocolChoice, err := c.chooseNumberCancelable("请选择落地接入协议", 1, 2, 1)
-	if err != nil {
-		return err
-	}
-	name, err := c.askDefaultCancelable("接入名称", nextLandingAccessName(node))
-	if err != nil {
-		return err
-	}
-	if err = c.app.ValidateLinkNameAvailable(core, name); err != nil {
-		return err
-	}
-	opts := app.LandingAddOptions{Security: domain.LandingSecurityCurrent}
-	confirmMessage := "将向当前主入站添加独立接入用户；不新增端口，普通用户路由保持不变，应用时会重启当前服务。"
-	if protocolChoice == 2 {
-		opts.Security = domain.LandingSecurityTLS
-		confirmMessage = "将自动选择 30000–65000 的可用端口并生成 10 年有效的 ECDSA 自签证书；中转机使用连接文本中的指纹固定验证，普通用户和当前主入站保持不变，应用时会重启当前服务。"
-	}
-	ok, err := c.confirmCancelable(confirmMessage)
-	if err != nil || !ok {
-		return errReturnToMenu
-	}
-	if _, err = c.app.AddLandingAccessWithOptions(ctx, core, name, opts); err != nil {
-		return err
-	}
-	b, err := c.app.ExportLandingBundle(core, name, "", false)
-	if err == nil {
-		system.WriteDetail(c.out, "创建落地接入", "落地接入已创建。请复制下面完整的 JSON 文本，在中转机的粘贴编辑器中使用：")
-		fmt.Fprintln(c.out)
-		_, err = c.out.Write(b)
-	}
-	return err
 }
 
 func nextLandingAccessName(node domain.NodeSpec) string {
@@ -563,50 +584,72 @@ func nextLandingAccessName(node domain.NodeSpec) string {
 }
 
 func (c *commandSet) addRelayInteractive(ctx context.Context, core string) error {
-	c.printPageHeader(core, "添加中转线路")
-	c.printMenuChoice("1", "打开临时编辑文件并粘贴连接文本（推荐）")
-	c.printMenuChoice("2", "手动输入落地连接信息")
-	choice, err := c.chooseNumberCancelable("请选择落地信息来源", 1, 2, 1)
-	if err != nil {
-		return err
-	}
-	var peer domain.LandingPeer
-	if choice == 1 {
-		peer, err = c.pasteLandingBundle()
+	for {
+		c.clearScreen()
+		c.printPageHeader(core, "添加中转线路")
+		c.printMenuChoice("1", "打开临时编辑文件并粘贴连接文本（推荐）")
+		c.printMenuChoice("2", "手动输入落地连接信息")
+		c.printMenuChoice("0/q", "返回")
+		choice, err := c.chooseNumberCancelable("请选择落地信息来源", 1, 2, 1)
 		if err != nil {
 			return err
 		}
-	} else {
-		peer, err = c.askLandingPeer()
+		var peer domain.LandingPeer
+		if choice == 1 {
+			peer, err = c.pasteLandingBundle()
+			if errors.Is(err, errReturnToMenu) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+		} else {
+			peer, err = c.askLandingPeer()
+			if errors.Is(err, errReturnToMenu) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+		}
+		name, err := c.askDefaultCancelable("线路名称", peer.Name)
+		if errors.Is(err, errReturnToMenu) {
+			continue
+		}
 		if err != nil {
 			return err
 		}
-	}
-	name, err := c.askDefaultCancelable("线路名称", peer.Name)
-	if err != nil {
-		return err
-	}
-	if err = c.app.ValidateLinkNameAvailable(core, name); err != nil {
-		return err
-	}
-	fmt.Fprintf(c.out, "\n落地：%s:%d · %s · SNI %s\n", peer.Server, peer.Port, strings.ToUpper(domain.NormalizeLandingSecurity(peer.Security)), peer.SNI)
-	ok, err := c.confirmCancelable("该线路使用独立 UUID；原有用户继续 direct。落地不可用时线路将失败，不回退本机出口。")
-	if err != nil || !ok {
-		return errReturnToMenu
-	}
-	link, err := c.app.AddRelayLink(ctx, core, name, peer, app.RelayAddOptions{})
-	if err != nil && strings.Contains(err.Error(), "落地端点不可达") {
-		fmt.Fprintln(c.out, err)
-		ok, confirmErr := c.confirmCancelable("落地当前不可达，是否仍保存线路配置？")
-		if confirmErr != nil || !ok {
-			return errReturnToMenu
+		if err = c.app.ValidateLinkNameAvailable(core, name); err != nil {
+			return err
 		}
-		link, err = c.app.AddRelayLink(ctx, core, name, peer, app.RelayAddOptions{AllowUnreachable: true})
+		fmt.Fprintf(c.out, "\n落地：%s:%d · %s · SNI %s\n", peer.Server, peer.Port, strings.ToUpper(domain.NormalizeLandingSecurity(peer.Security)), peer.SNI)
+		ok, err := c.confirmCancelable("该线路使用独立 UUID；原有用户继续 direct。落地不可用时线路将失败，不回退本机出口。")
+		if errors.Is(err, errReturnToMenu) || (err == nil && !ok) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		link, err := c.app.AddRelayLink(ctx, core, name, peer, app.RelayAddOptions{})
+		if err != nil && strings.Contains(err.Error(), "落地端点不可达") {
+			fmt.Fprintln(c.out, err)
+			ok, confirmErr := c.confirmCancelable("落地当前不可达，是否仍保存线路配置？")
+			if errors.Is(confirmErr, errReturnToMenu) || (confirmErr == nil && !ok) {
+				continue
+			}
+			if confirmErr != nil {
+				return confirmErr
+			}
+			link, err = c.app.AddRelayLink(ctx, core, name, peer, app.RelayAddOptions{AllowUnreachable: true})
+		}
+		if err == nil {
+			system.WriteDetail(c.out, "更新结果", "中转线路 %s 已启用，客户端用户：%s。", link.Name, link.UserName)
+		}
+		if err != nil {
+			c.printMenuError(err)
+		}
+		c.pauseForMenu()
 	}
-	if err == nil {
-		system.WriteDetail(c.out, "更新结果", "中转线路 %s 已启用，客户端用户：%s。", link.Name, link.UserName)
-	}
-	return err
 }
 
 func (c *commandSet) pasteLandingBundle() (domain.LandingPeer, error) {
@@ -731,177 +774,249 @@ func (c *commandSet) askLandingPeer() (domain.LandingPeer, error) {
 }
 
 func (c *commandSet) manageRelayInteractive(ctx context.Context, core string) error {
-	node, err := c.app.Store.Load(core)
-	if err != nil {
-		return err
-	}
-	items := node.RelayLinks
-	if len(items) == 0 {
-		fmt.Fprintln(c.out, "尚未配置中转线路。")
-		return nil
-	}
-	c.printPageHeader(core, "管理中转线路")
-	c.printLinkStatusCard(node)
-	for i, item := range items {
-		userName := item.UserName
-		if userName == "" {
-			userName = item.Name
+	for {
+		node, err := c.app.Store.Load(core)
+		if err != nil {
+			return err
 		}
-		title := fmt.Sprintf("%s · %s · %s:%d", userName, domain.RelayOutboundTag(item.Name), item.Upstream.Server, item.Upstream.Port)
-		c.printMenuBadgeChoice(strconv.Itoa(i+1), title, "["+enabledLabel(item.Enabled)+"]")
-	}
-	c.printMenuChoice("0/q", "返回")
-	selectedNumber, err := c.chooseNumber("请选择中转线路", 0, len(items), 1)
-	if err != nil {
-		return err
-	}
-	if selectedNumber == 0 {
-		return errReturnToMenu
-	}
-	selected := &items[selectedNumber-1]
-	name := selected.Name
-	c.clearScreen()
-	c.printPageHeader(core, "管理中转线路", domain.RelayOutboundTag(name))
-	c.printRelayLinkCard(*selected)
-	c.printMenuChoice("1", "导出原生客户端配置")
-	c.printMenuChoice("2", "测试落地 TCP 连通性")
-	c.printMenuChoice("3", "粘贴新的落地连接文本")
-	c.printMenuChoice("4", "轮换中转客户端 UUID")
-	if selected.Enabled {
-		c.printMenuChoice("5", "停用线路")
-	} else {
-		c.printMenuChoice("5", "启用线路")
-	}
-	c.printMenuChoice("6", "删除线路")
-	c.printMenuChoice("0/q", "返回")
-	choice, err := c.chooseNumber("请选择", 0, 6, 0)
-	if err != nil || choice == 0 {
-		return errReturnToMenu
-	}
-	switch choice {
-	case 1:
-		c.printMenuChoice("1", "原生 JSON")
-		c.printMenuChoice("2", "Clash/Mihomo YAML")
-		formatChoice, e := c.chooseNumberCancelable("请选择客户端格式", 1, 2, 1)
-		if e != nil {
-			return e
-		}
-		format := app.ClientFormatNative
-		if formatChoice == 2 {
-			format = app.ClientFormatClash
-		}
-		b, e := c.app.RelayClientConfig(ctx, core, name, format, "", false)
-		if e == nil {
-			_, e = c.out.Write(b)
-		}
-		return e
-	case 2:
-		if e := c.app.TestRelayLink(ctx, core, name); e != nil {
-			return e
-		}
-		system.WriteDetail(c.out, "连通性结果", "%s", "落地端点 TCP 可达。")
-		return nil
-	case 3:
-		peer, e := c.pasteLandingBundle()
-		if e != nil {
-			return e
-		}
-		return c.app.UpdateRelayLink(ctx, core, name, peer, app.RelayAddOptions{})
-	case 4:
-		ok, e := c.confirmCancelable("轮换后该线路的旧客户端会立即失效。")
-		if e != nil || !ok {
+		items := node.RelayLinks
+		c.clearScreen()
+		c.printPageHeader(core, "管理中转线路")
+		if len(items) == 0 {
+			fmt.Fprintln(c.out, "尚未配置中转线路。")
+			c.pauseForMenu()
 			return errReturnToMenu
 		}
-		_, e = c.app.RotateRelayLink(ctx, core, name)
-		return e
-	case 5:
-		return c.app.SetRelayLinkEnabled(ctx, core, name, !selected.Enabled)
-	case 6:
-		ok, e := c.confirmCancelable("删除会移除该用户、路由和落地出站，旧客户端立即失效。")
-		if e != nil || !ok {
+		c.printLinkStatusCard(node)
+		for i, item := range items {
+			userName := item.UserName
+			if userName == "" {
+				userName = item.Name
+			}
+			title := fmt.Sprintf("%s · %s · %s:%d", userName, domain.RelayOutboundTag(item.Name), item.Upstream.Server, item.Upstream.Port)
+			c.printMenuBadgeChoice(strconv.Itoa(i+1), title, "["+enabledLabel(item.Enabled)+"]")
+		}
+		c.printMenuChoice("0/q", "返回")
+		selectedNumber, err := c.chooseNumber("请选择中转线路", 0, len(items), 1)
+		if err != nil {
+			return err
+		}
+		if selectedNumber == 0 {
 			return errReturnToMenu
 		}
-		return c.app.RemoveRelayLink(ctx, core, name)
+		if err := c.manageRelayDetails(ctx, core, items[selectedNumber-1].Name); err != nil {
+			return err
+		}
 	}
-	return nil
+}
+
+func (c *commandSet) manageRelayDetails(ctx context.Context, core, name string) error {
+	for {
+		node, err := c.app.Store.Load(core)
+		if err != nil {
+			return err
+		}
+		var selected *domain.RelayLink
+		for i := range node.RelayLinks {
+			if node.RelayLinks[i].Name == name {
+				selected = &node.RelayLinks[i]
+				break
+			}
+		}
+		if selected == nil {
+			return nil
+		}
+		c.clearScreen()
+		c.printPageHeader(core, "管理中转线路", domain.RelayOutboundTag(name))
+		c.printRelayLinkCard(*selected)
+		c.printMenuChoice("1", "导出客户端配置")
+		c.printMenuChoice("2", "测试落地 TCP 连通性")
+		c.printMenuChoice("3", "粘贴新的落地连接文本")
+		c.printMenuChoice("4", "轮换中转客户端 UUID")
+		if selected.Enabled {
+			c.printMenuChoice("5", "停用线路")
+		} else {
+			c.printMenuChoice("5", "启用线路")
+		}
+		c.printMenuChoice("6", "删除线路")
+		c.printMenuChoice("0/q", "返回")
+		choice, err := c.chooseNumber("请选择", 0, 6, 0)
+		if err != nil || choice == 0 {
+			return err
+		}
+		switch choice {
+		case 1:
+			if err := c.relayClientFormatMenu(ctx, core, name, "管理中转线路", domain.RelayOutboundTag(name), "客户端配置"); err != nil {
+				return err
+			}
+			continue
+		case 2:
+			err = c.app.TestRelayLink(ctx, core, name)
+			if err == nil {
+				system.WriteDetail(c.out, "连通性结果", "%s", "落地端点 TCP 可达。")
+			}
+		case 3:
+			var peer domain.LandingPeer
+			peer, err = c.pasteLandingBundle()
+			if err == nil {
+				err = c.app.UpdateRelayLink(ctx, core, name, peer, app.RelayAddOptions{})
+			}
+		case 4, 6:
+			message := "轮换后该线路的旧客户端会立即失效。"
+			if choice == 6 {
+				message = "删除会移除该用户、路由和落地出站，旧客户端立即失效。"
+			}
+			var confirmed bool
+			confirmed, err = c.confirmCancelable(message)
+			if err == nil && !confirmed {
+				continue
+			}
+			if err == nil {
+				if choice == 4 {
+					_, err = c.app.RotateRelayLink(ctx, core, name)
+				} else {
+					err = c.app.RemoveRelayLink(ctx, core, name)
+				}
+			}
+			if choice == 6 && err == nil {
+				system.WriteDetail(c.out, "更新结果", "中转线路 %s 已删除。", name)
+				c.pauseForMenu()
+				return nil
+			}
+		case 5:
+			err = c.app.SetRelayLinkEnabled(ctx, core, name, !selected.Enabled)
+		}
+		if errors.Is(err, errReturnToMenu) {
+			continue
+		}
+		if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
+			return err
+		}
+		if err != nil {
+			c.printMenuError(err)
+		}
+		c.pauseForMenu()
+	}
 }
 
 func (c *commandSet) manageLandingInteractive(ctx context.Context, core string) error {
-	node, err := c.app.Store.Load(core)
-	if err != nil {
-		return err
-	}
-	items := node.LandingAccesses
-	if len(items) == 0 {
-		fmt.Fprintln(c.out, "尚未配置落地接入。")
-		return nil
-	}
-	c.printPageHeader(core, "管理落地接入")
-	c.printLinkStatusCard(node)
-	for i, item := range items {
-		title := item.Name
-		if item.UserName != "" && item.UserName != item.Name {
-			title += " · " + item.UserName
+	for {
+		node, err := c.app.Store.Load(core)
+		if err != nil {
+			return err
 		}
-		if !item.UsesPrimaryInbound() {
-			title += fmt.Sprintf(" · TLS :%d", item.Port)
+		items := node.LandingAccesses
+		c.clearScreen()
+		c.printPageHeader(core, "管理落地接入")
+		if len(items) == 0 {
+			fmt.Fprintln(c.out, "尚未配置落地接入。")
+			c.pauseForMenu()
+			return errReturnToMenu
+		}
+		c.printLinkStatusCard(node)
+		for i, item := range items {
+			title := item.Name
+			if item.UserName != "" && item.UserName != item.Name {
+				title += " · " + item.UserName
+			}
+			if !item.UsesPrimaryInbound() {
+				title += fmt.Sprintf(" · TLS :%d", item.Port)
+			} else {
+				title += " · 当前 " + strings.ToUpper(domain.NormalizeLandingSecurity(node.Security))
+			}
+			c.printMenuBadgeChoice(strconv.Itoa(i+1), title, "["+enabledLabel(item.Enabled)+"]")
+		}
+		c.printMenuChoice("0/q", "返回")
+		selectedNumber, err := c.chooseNumber("请选择落地接入", 0, len(items), 1)
+		if err != nil {
+			return err
+		}
+		if selectedNumber == 0 {
+			return errReturnToMenu
+		}
+		if err := c.manageLandingDetails(ctx, core, items[selectedNumber-1].Name); err != nil {
+			return err
+		}
+	}
+}
+
+func (c *commandSet) manageLandingDetails(ctx context.Context, core, name string) error {
+	for {
+		node, err := c.app.Store.Load(core)
+		if err != nil {
+			return err
+		}
+		var selected *domain.LandingAccess
+		for i := range node.LandingAccesses {
+			if node.LandingAccesses[i].Name == name {
+				selected = &node.LandingAccesses[i]
+				break
+			}
+		}
+		if selected == nil {
+			return nil
+		}
+		c.clearScreen()
+		c.printPageHeader(core, "管理落地接入", name)
+		c.printLandingAccessCard(*selected)
+		c.printMenuChoice("1", "显示可复制的落地连接文本")
+		c.printMenuChoice("2", "轮换接入 UUID")
+		if selected.Enabled {
+			c.printMenuChoice("3", "停用接入")
 		} else {
-			title += " · 当前 " + strings.ToUpper(domain.NormalizeLandingSecurity(node.Security))
+			c.printMenuChoice("3", "启用接入")
 		}
-		c.printMenuBadgeChoice(strconv.Itoa(i+1), title, "["+enabledLabel(item.Enabled)+"]")
-	}
-	c.printMenuChoice("0/q", "返回")
-	selectedNumber, err := c.chooseNumber("请选择落地接入", 0, len(items), 1)
-	if err != nil {
-		return err
-	}
-	if selectedNumber == 0 {
-		return errReturnToMenu
-	}
-	selected := &items[selectedNumber-1]
-	name := selected.Name
-	c.clearScreen()
-	c.printPageHeader(core, "管理落地接入", name)
-	c.printLandingAccessCard(*selected)
-	c.printMenuChoice("1", "显示可复制的落地连接文本")
-	c.printMenuChoice("2", "轮换接入 UUID")
-	if selected.Enabled {
-		c.printMenuChoice("3", "停用接入")
-	} else {
-		c.printMenuChoice("3", "启用接入")
-	}
-	c.printMenuChoice("4", "删除接入")
-	c.printMenuChoice("0/q", "返回")
-	choice, err := c.chooseNumber("请选择", 0, 4, 0)
-	if err != nil || choice == 0 {
-		return errReturnToMenu
-	}
-	switch choice {
-	case 1:
-		b, e := c.app.ExportLandingBundle(core, name, "", false)
-		if e == nil {
-			fmt.Fprintln(c.out, "请复制下面完整的 JSON 文本：")
-			fmt.Fprintln(c.out)
-			_, e = c.out.Write(b)
+		c.printMenuChoice("4", "删除接入")
+		c.printMenuChoice("0/q", "返回")
+		choice, err := c.chooseNumber("请选择", 0, 4, 0)
+		if err != nil || choice == 0 {
+			return err
 		}
-		return e
-	case 2:
-		ok, e := c.confirmCancelable("轮换后使用旧连接文本的所有中转机都会断开。")
-		if e != nil || !ok {
-			return errReturnToMenu
+		switch choice {
+		case 1:
+			var b []byte
+			b, err = c.app.ExportLandingBundle(core, name, "", false)
+			if err == nil {
+				fmt.Fprintln(c.out, "请复制下面完整的 JSON 文本：")
+				fmt.Fprintln(c.out)
+				_, err = c.out.Write(b)
+			}
+		case 2, 4:
+			message := "轮换后使用旧连接文本的所有中转机都会断开。"
+			if choice == 4 {
+				message = "删除后使用该 UUID 的中转机会立即断开。"
+			}
+			var confirmed bool
+			confirmed, err = c.confirmCancelable(message)
+			if err == nil && !confirmed {
+				continue
+			}
+			if err == nil {
+				if choice == 2 {
+					_, err = c.app.RotateLandingAccess(ctx, core, name)
+				} else {
+					err = c.app.RemoveLandingAccess(ctx, core, name)
+				}
+			}
+			if choice == 4 && err == nil {
+				system.WriteDetail(c.out, "更新结果", "落地接入 %s 已删除。", name)
+				c.pauseForMenu()
+				return nil
+			}
+		case 3:
+			err = c.app.SetLandingAccessEnabled(ctx, core, name, !selected.Enabled)
 		}
-		_, e = c.app.RotateLandingAccess(ctx, core, name)
-		return e
-	case 3:
-		return c.app.SetLandingAccessEnabled(ctx, core, name, !selected.Enabled)
-	case 4:
-		ok, e := c.confirmCancelable("删除后使用该 UUID 的中转机会立即断开。")
-		if e != nil || !ok {
-			return errReturnToMenu
+		if errors.Is(err, errReturnToMenu) {
+			continue
 		}
-		return c.app.RemoveLandingAccess(ctx, core, name)
+		if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
+			return err
+		}
+		if err != nil {
+			c.printMenuError(err)
+		}
+		c.pauseForMenu()
 	}
-	return nil
 }
 
 func (c *commandSet) printLinkGraph(core string) error {

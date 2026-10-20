@@ -38,6 +38,16 @@ go test ./internal/provider/xray ./internal/provider/singbox \
 
 两个内核各自维护字段排序规则，共用 `jsonutil.MarshalOrdered`；未列入排序规则的手工字段仍会保留。
 
+## 菜单导航
+
+所有菜单的 `0/q`（含大写 `Q`）返回直接上一级；确认页取消后回到对应选项页，配置、状态或操作结果显示后的回车也回到该选项页。只有顶层内核选择页的 `0/q` 退出程序。SNI 候选页使用 `m` 手动输入，`0/q` 保持返回含义。
+
+导航回归测试使用模拟终端逐字输入，检查返回层级、结果暂停次数、父菜单剩余输入以及取消后配置不变：
+
+```bash
+go test ./internal/cli -run 'TestMenusReturn|TestClientMenuReturns|TestAccessMenuReturns'
+```
+
 ## 原生集成测试
 
 指定官方二进制后运行配置验收，覆盖 REALITY/TLS、客户端、中转、访问控制和设置组合：

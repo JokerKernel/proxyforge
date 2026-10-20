@@ -35,79 +35,100 @@ func (c *commandSet) clientCommand() *cobra.Command {
 	return cmd
 }
 
-func (c *commandSet) clientMenu(ctx context.Context, core string) (bool, error) {
-	c.clearScreen()
-	c.printPageHeader(core, "客户端配置")
-	c.printMenuChoice("1", "普通节点 · Clash YAML（Mihomo/Clash Meta）")
-	c.printMenuChoice("2", "普通节点 · 原生 JSON（sing-box / Xray 客户端）")
-	c.printMenuChoice("3", "中转节点客户端配置（选择线路与格式）")
-	c.printMenuChoice("0/q", "返回")
-	choice, err := c.chooseNumber("请选择", 0, 3, 1)
-	if err != nil {
-		return false, err
+func (c *commandSet) clientMenu(ctx context.Context, core string) error {
+	for {
+		c.clearScreen()
+		c.printPageHeader(core, "客户端配置")
+		c.printMenuChoice("1", "普通节点 · Clash YAML（Mihomo/Clash Meta）")
+		c.printMenuChoice("2", "普通节点 · 原生 JSON（sing-box / Xray 客户端）")
+		c.printMenuChoice("3", "中转节点客户端配置（选择线路与格式）")
+		c.printMenuChoice("0/q", "返回")
+		choice, err := c.chooseNumber("请选择", 0, 3, 1)
+		if err != nil || choice == 0 {
+			return err
+		}
+		if choice == 3 {
+			if err := c.relayClientMenu(ctx, core); err != nil {
+				return err
+			}
+			continue
+		}
+		format := app.ClientFormatClash
+		if choice == 2 {
+			format = app.ClientFormatNative
+		}
+		b, err := c.app.ClientConfig(ctx, core, format, "", false)
+		if err != nil {
+			c.printMenuError(err)
+		} else if _, err := c.out.Write(b); err != nil {
+			return err
+		}
+		c.pauseForMenu()
 	}
-	if choice == 0 {
-		return false, nil
-	}
-	if choice == 3 {
-		return c.relayClientMenu(ctx, core)
-	}
-	format := app.ClientFormatClash
-	if choice == 2 {
-		format = app.ClientFormatNative
-	}
-	b, err := c.app.ClientConfig(ctx, core, format, "", false)
-	if err == nil {
-		_, err = c.out.Write(b)
-	}
-	return true, err
 }
 
-func (c *commandSet) relayClientMenu(ctx context.Context, core string) (bool, error) {
-	links, err := c.app.RelayLinks(core)
-	if err != nil {
-		return true, err
-	}
-	c.clearScreen()
-	c.printPageHeader(core, "客户端配置", "中转节点")
-	if len(links) == 0 {
-		fmt.Fprintln(c.out, "尚未配置中转线路，请先从服务端配置中添加中转线路。")
-		return true, nil
-	}
-	for i, link := range links {
-		title := link.Name
-		if link.UserName != "" && link.UserName != link.Name {
-			title += " · 用户 " + link.UserName
+func (c *commandSet) relayClientMenu(ctx context.Context, core string) error {
+	for {
+		links, err := c.app.RelayLinks(core)
+		if err != nil {
+			c.printMenuError(err)
+			c.pauseForMenu()
+			return nil
 		}
-		c.printMenuBadgeChoice(fmt.Sprintf("%d", i+1), title, "["+enabledLabel(link.Enabled)+"]")
+		c.clearScreen()
+		c.printPageHeader(core, "客户端配置", "中转节点")
+		if len(links) == 0 {
+			fmt.Fprintln(c.out, "尚未配置中转线路，请先从服务端配置中添加中转线路。")
+			c.pauseForMenu()
+			return nil
+		}
+		for i, link := range links {
+			title := link.Name
+			if link.UserName != "" && link.UserName != link.Name {
+				title += " · 用户 " + link.UserName
+			}
+			c.printMenuBadgeChoice(fmt.Sprintf("%d", i+1), title, "["+enabledLabel(link.Enabled)+"]")
+		}
+		c.printMenuChoice("0/q", "返回")
+		choice, err := c.chooseNumber("请选择中转线路", 0, len(links), 1)
+		if err != nil || choice == 0 {
+			return err
+		}
+		if err := c.relayClientFormatMenu(ctx, core, links[choice-1].Name); err != nil {
+			return err
+		}
 	}
-	c.printMenuChoice("0/q", "返回")
-	choice, err := c.chooseNumber("请选择中转线路", 0, len(links), 1)
-	if err != nil || choice == 0 {
-		return false, err
-	}
-	selected := links[choice-1]
+}
 
-	c.clearScreen()
-	c.printPageHeader(core, "客户端配置", "中转节点", selected.Name)
-	c.printMenuChoice("1", "原生 JSON（sing-box / Xray 客户端）")
-	c.printMenuChoice("2", "Clash YAML（Mihomo/Clash Meta）")
-	c.printMenuChoice("0/q", "返回")
-	formatChoice, err := c.chooseNumber("请选择客户端格式", 0, 2, 1)
-	if err != nil || formatChoice == 0 {
-		return false, err
+func (c *commandSet) relayClientFormatMenu(ctx context.Context, core, name string, path ...string) error {
+	if len(path) == 0 {
+		path = []string{"客户端配置", "中转节点", name}
 	}
-	format := app.ClientFormatNative
-	formatLabel := "原生 JSON"
-	if formatChoice == 2 {
-		format = app.ClientFormatClash
-		formatLabel = "Clash YAML"
+	for {
+		c.clearScreen()
+		c.printPageHeader(append([]string{core}, path...)...)
+		c.printMenuChoice("1", "Clash YAML（Mihomo/Clash Meta）")
+		c.printMenuChoice("2", "原生 JSON（sing-box / Xray 客户端）")
+		c.printMenuChoice("0/q", "返回")
+		choice, err := c.chooseNumber("请选择客户端格式", 0, 2, 1)
+		if err != nil || choice == 0 {
+			return err
+		}
+		format := app.ClientFormatClash
+		formatLabel := "Clash YAML"
+		if choice == 2 {
+			format = app.ClientFormatNative
+			formatLabel = "原生 JSON"
+		}
+		b, err := c.app.RelayClientConfig(ctx, core, name, format, "", false)
+		if err != nil {
+			c.printMenuError(err)
+		} else {
+			fmt.Fprintf(c.out, "\n中转节点 %s 的 %s 配置：\n\n", name, formatLabel)
+			if _, err := c.out.Write(b); err != nil {
+				return err
+			}
+		}
+		c.pauseForMenu()
 	}
-	b, err := c.app.RelayClientConfig(ctx, core, selected.Name, format, "", false)
-	if err != nil {
-		return true, err
-	}
-	fmt.Fprintf(c.out, "\n中转节点 %s 的 %s 配置：\n\n", selected.Name, formatLabel)
-	_, err = c.out.Write(b)
-	return true, err
 }

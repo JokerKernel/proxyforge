@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -155,7 +156,11 @@ func (c *commandSet) selectSNICandidate(ctx context.Context, server string) (str
 		case sniPageActionSelect:
 			return candidates[index-1].Domain, nil
 		case sniPageActionManual:
-			return c.askManualSNI(ctx, server)
+			selected, err := c.askManualSNI(ctx, server)
+			if errors.Is(err, errReturnToMenu) {
+				continue
+			}
+			return selected, err
 		}
 	}
 }
@@ -170,6 +175,9 @@ func (c *commandSet) askManualSNI(ctx context.Context, server string) (string, e
 		domain = strings.TrimSpace(domain)
 		if domain != "" {
 			if err := c.confirmManualSNI(ctx, domain, server); err != nil {
+				if errors.Is(err, errReturnToMenu) {
+					continue
+				}
 				return "", err
 			}
 			return domain, nil
@@ -351,7 +359,7 @@ func sniPageControlLines(page, pages int, sortIPv4 bool, opts sniPageChoiceOptio
 	lines := []string{joinSNIControls(nav)}
 	actions := make([]string, 0, 2)
 	if opts.AllowManual {
-		actions = append(actions, "0 手动输入", "q 返回")
+		actions = append(actions, "m 手动输入", "0/q 返回")
 	} else if opts.AllowBack {
 		actions = append(actions, "0/q 返回")
 	}
@@ -416,19 +424,16 @@ func (c *commandSet) readSNIPageChoice(total, page, pages int, opts sniPageChoic
 
 func parseSNIPageInput(value string, total, page, pages int, opts sniPageChoiceOptions) (string, int, bool) {
 	switch {
-	case strings.EqualFold(value, "q"):
+	case strings.EqualFold(value, "q") || value == "0":
 		if opts.AllowBack {
 			return sniPageActionBack, 0, true
 		}
 		if opts.AllowManual {
 			return sniPageActionCancel, 0, true
 		}
-	case value == "0":
+	case strings.EqualFold(value, "m"):
 		if opts.AllowManual {
 			return sniPageActionManual, 0, true
-		}
-		if opts.AllowBack {
-			return sniPageActionBack, 0, true
 		}
 	case strings.EqualFold(value, "n"):
 		if page+1 < pages {

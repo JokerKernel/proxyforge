@@ -99,7 +99,7 @@ func (c *commandSet) askDefaultCancelable(label, def string) (string, error) {
 		return "", err
 	}
 	v := strings.TrimSpace(line)
-	if strings.EqualFold(v, "q") {
+	if strings.EqualFold(v, "q") || v == "0" {
 		return "", errReturnToMenu
 	}
 	if v != "" {

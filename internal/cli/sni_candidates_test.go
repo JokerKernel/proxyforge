@@ -164,7 +164,7 @@ func TestSNIPageControlLinesStayCompact(t *testing.T) {
 		strings.Contains(first[0], "上一页") {
 		t.Fatalf("first page nav=%q", first[0])
 	}
-	if first[1] != "  0 手动输入  ·  q 返回" {
+	if first[1] != "  m 手动输入  ·  0/q 返回" {
 		t.Fatalf("first page actions=%q", first[1])
 	}
 
@@ -265,7 +265,7 @@ func TestSelectSNICandidateProbesManualOtherDomain(t *testing.T) {
 	var out bytes.Buffer
 	probeCalls := 0
 	c := &commandSet{
-		reader: bufio.NewReader(strings.NewReader("0\nother.example.com\nyes\n")),
+		reader: bufio.NewReader(strings.NewReader("m\nother.example.com\nyes\n")),
 		out:    &out,
 		probeSNI: func(_ context.Context, candidates []string, _ string, limit int) ([]app.SNICandidate, error) {
 			probeCalls++

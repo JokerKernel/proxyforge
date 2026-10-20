@@ -110,7 +110,7 @@ func (c *commandSet) fillReset(ctx context.Context, core string, opts *domain.Re
 	c.printPageHeader(core, "重置节点")
 	opts.SNI = strings.TrimSpace(opts.SNI)
 	manualSNI := opts.SNI != ""
-	if opts.SNI == "" {
+	for opts.SNI == "" {
 		opts.SNI, err = c.askDefaultCancelable("新的 REALITY SNI（输入域名；直接回车自动测速候选）", "")
 		if err != nil {
 			return err
@@ -121,7 +121,7 @@ func (c *commandSet) fillReset(ctx context.Context, core string, opts *domain.Re
 			selected, err := c.selectSNICandidate(ctx, current.Server)
 			if err != nil {
 				if errors.Is(err, errReturnToMenu) {
-					return err
+					continue
 				}
 				return fmt.Errorf("自动选择 SNI 失败: %w", err)
 			}

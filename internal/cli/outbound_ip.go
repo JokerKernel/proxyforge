@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -11,103 +12,110 @@ import (
 )
 
 func (c *commandSet) outboundIPMenu(ctx context.Context, core string) error {
-	settings, err := c.app.OutboundIPSettings(ctx, core)
-	if err != nil {
-		return err
-	}
-	c.clearScreen()
-	c.printPageHeader(core, "出站 IP")
-	fmt.Fprintf(c.out, "当前生效：%s\n\n", outboundIPDisplay(settings.Current))
-	defaultChoice := -1
-	for index, strategy := range settings.Strategies {
-		key := strconv.Itoa(index + 1)
-		label := outboundIPChoiceLabel(core, strategy)
-		if strategy == settings.Current {
-			label = "[当前] " + label
-			defaultChoice = index + 1
+	for {
+		settings, err := c.app.OutboundIPSettings(ctx, core)
+		if err != nil {
+			return err
 		}
-		c.printMenuChoice(key, label)
-	}
-	c.printMenuChoice("0/q", "返回")
-	choice, err := c.chooseNumber("请选择出站 IP", 0, len(settings.Strategies), defaultChoice)
-	if err != nil {
-		return err
-	}
-	if choice == 0 {
-		return errReturnToMenu
-	}
-	selected := settings.Strategies[choice-1]
-	if selected == settings.Current {
-		system.WriteDetail(c.out, "操作提示", "出站 IP 已经是 %s，无需修改。", outboundIPDisplay(selected))
-		return nil
-	}
+		c.clearScreen()
+		c.printPageHeader(core, "出站 IP")
+		fmt.Fprintf(c.out, "当前生效：%s\n\n", outboundIPDisplay(settings.Current))
+		defaultChoice := -1
+		for index, strategy := range settings.Strategies {
+			key := strconv.Itoa(index + 1)
+			label := outboundIPChoiceLabel(core, strategy)
+			if strategy == settings.Current {
+				label = "[当前] " + label
+				defaultChoice = index + 1
+			}
+			c.printMenuChoice(key, label)
+		}
+		c.printMenuChoice("0/q", "返回")
+		choice, err := c.chooseNumber("请选择出站 IP", 0, len(settings.Strategies), defaultChoice)
+		if err != nil {
+			return err
+		}
+		if choice == 0 {
+			return errReturnToMenu
+		}
+		selected := settings.Strategies[choice-1]
+		if selected == settings.Current {
+			system.WriteDetail(c.out, "操作提示", "出站 IP 已经是 %s，无需修改。", outboundIPDisplay(selected))
+			c.pauseForMenu()
+			continue
+		}
 
-	sections := []confirmationSection{{title: "将执行", items: []string{
-		"按 " + core + " 出站访问域名时的地址族策略更新配置",
-		"只影响用户代理流量，REALITY 回落仍保持双栈",
-		"不修改 DNS 服务器列表和系统全局 DNS",
-		"使用内核原生命令校验候选配置",
-		"备份并原子更新当前服务端配置",
-		"服务正在运行时自动重启使设置立即生效",
-	}}}
-	switch selected {
-	case provider.OutboundIPPreferIPv4, provider.OutboundIPPreferIPv6:
-		items := []string{
-			"优先解析所选地址族；解析不到时再尝试另一族",
+		sections := []confirmationSection{{title: "将执行", items: []string{
+			"按 " + core + " 出站访问域名时的地址族策略更新配置",
+			"只影响用户代理流量，REALITY 回落仍保持双栈",
+			"不修改 DNS 服务器列表和系统全局 DNS",
+			"使用内核原生命令校验候选配置",
+			"备份并原子更新当前服务端配置",
+			"服务正在运行时自动重启使设置立即生效",
+		}}}
+		switch selected {
+		case provider.OutboundIPPreferIPv4, provider.OutboundIPPreferIPv6:
+			items := []string{
+				"优先解析所选地址族；解析不到时再尝试另一族",
+			}
+			if core == domain.CoreXray {
+				items = append(items, "Xray 在已经解析出优先地址族后，连接失败不会改走另一族")
+			} else {
+				items = append(items, "sing-box 会在短延迟后尝试另一族地址（连接回退）")
+			}
+			sections = append(sections, confirmationSection{title: "优先策略", items: items})
+		case provider.OutboundIPUnset:
+			items := []string{"恢复为生成配置时的双栈行为"}
+			if core == domain.CoreXray {
+				items = append(items, "Xray 先连 IPv4，约 300ms 后竞速 IPv6")
+			} else {
+				items = append(items, "不偏科某一地址族；双栈时先 IPv4，约 300ms 后竞速 IPv6")
+			}
+			sections = append(sections, confirmationSection{title: "恢复默认", items: items})
+		default:
+			items := []string{"对端只有另一地址族时将无法访问"}
+			if core == domain.CoreXray {
+				items = append(items, "Xray Freedom 的 UDP 出站默认仍偏向 IPv4")
+			}
+			sections = append(sections, confirmationSection{title: "仅单族", items: items})
 		}
-		if core == domain.CoreXray {
-			items = append(items, "Xray 在已经解析出优先地址族后，连接失败不会改走另一族")
-		} else {
-			items = append(items, "sing-box 会在短延迟后尝试另一族地址（连接回退）")
+		c.printConfirmationPanel(
+			"操作确认：设置出站 IP",
+			[]string{
+				"目标内核：" + core,
+				"当前生效：" + outboundIPDisplay(settings.Current),
+				"新的配置：" + outboundIPDisplay(selected),
+			},
+			sections...,
+		)
+		confirmed, err := c.confirmCancelable("应用新的出站 IP 设置？")
+		if errors.Is(err, errReturnToMenu) {
+			continue
 		}
-		sections = append(sections, confirmationSection{title: "优先策略", items: items})
-	case provider.OutboundIPUnset:
-		items := []string{"恢复为生成配置时的双栈行为"}
-		if core == domain.CoreXray {
-			items = append(items, "Xray 先连 IPv4，约 300ms 后竞速 IPv6")
-		} else {
-			items = append(items, "不偏科某一地址族；双栈时先 IPv4，约 300ms 后竞速 IPv6")
+		if err != nil {
+			return err
 		}
-		sections = append(sections, confirmationSection{title: "恢复默认", items: items})
-	default:
-		items := []string{"对端只有另一地址族时将无法访问"}
-		if core == domain.CoreXray {
-			items = append(items, "Xray Freedom 的 UDP 出站默认仍偏向 IPv4")
+		if !confirmed {
+			system.WriteDetail(c.out, "取消操作", "%s", "已取消出站 IP 修改。")
+			continue
 		}
-		sections = append(sections, confirmationSection{title: "仅单族", items: items})
+		change, err := c.app.SetOutboundIPStrategy(ctx, core, selected)
+		if err != nil {
+			return err
+		}
+		if !change.Changed {
+			system.WriteDetail(c.out, "操作提示", "出站 IP 已经是 %s，无需修改。", outboundIPDisplay(change.Current))
+			c.pauseForMenu()
+			continue
+		}
+		effect := "服务当前未运行，将在下次启动时生效"
+		if change.Restarted {
+			effect = "服务已重启，设置已生效"
+		}
+		system.WriteDetail(c.out, "操作结果", "%s 出站 IP 已从 %s 修改为 %s；%s。",
+			core, outboundIPDisplay(change.Previous), outboundIPDisplay(change.Current), effect)
+		c.pauseForMenu()
 	}
-	c.printConfirmationPanel(
-		"操作确认：设置出站 IP",
-		[]string{
-			"目标内核：" + core,
-			"当前生效：" + outboundIPDisplay(settings.Current),
-			"新的配置：" + outboundIPDisplay(selected),
-		},
-		sections...,
-	)
-	confirmed, err := c.confirmCancelable("应用新的出站 IP 设置？")
-	if err != nil {
-		return err
-	}
-	if !confirmed {
-		system.WriteDetail(c.out, "取消操作", "%s", "已取消出站 IP 修改。")
-		return nil
-	}
-	change, err := c.app.SetOutboundIPStrategy(ctx, core, selected)
-	if err != nil {
-		return err
-	}
-	if !change.Changed {
-		system.WriteDetail(c.out, "操作提示", "出站 IP 已经是 %s，无需修改。", outboundIPDisplay(change.Current))
-		return nil
-	}
-	effect := "服务当前未运行，将在下次启动时生效"
-	if change.Restarted {
-		effect = "服务已重启，设置已生效"
-	}
-	system.WriteDetail(c.out, "操作结果", "%s 出站 IP 已从 %s 修改为 %s；%s。",
-		core, outboundIPDisplay(change.Previous), outboundIPDisplay(change.Current), effect)
-	return nil
 }
 
 func outboundIPChoiceTitle(strategy string) string {

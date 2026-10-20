@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -75,77 +76,84 @@ func (c *commandSet) serviceMenu(ctx context.Context, core string) error {
 }
 
 func (c *commandSet) logLevelMenu(ctx context.Context, core string) error {
-	settings, err := c.app.LogLevelSettings(ctx, core)
-	if err != nil {
-		return err
-	}
-	c.clearScreen()
-	c.printPageHeader(core, "服务端配置", "日志级别")
-	fmt.Fprintf(c.out, "当前级别：%s\n\n", logLevelCardDisplay(core, settings.Current))
-	defaultChoice := 1
-	for index, level := range settings.Levels {
-		c.printMenuChoice(strconv.Itoa(index+1), logLevelDisplay(core, level))
-		if level == settings.Current {
-			defaultChoice = index + 1
+	for {
+		settings, err := c.app.LogLevelSettings(ctx, core)
+		if err != nil {
+			return err
 		}
-	}
-	c.printMenuChoice("0/q", "返回")
-	choice, err := c.chooseNumber("请选择日志级别", 0, len(settings.Levels), defaultChoice)
-	if err != nil {
-		return err
-	}
-	if choice == 0 {
-		return errReturnToMenu
-	}
-	selected := settings.Levels[choice-1]
-	if selected == settings.Current {
-		system.WriteDetail(c.out, "操作提示", "日志级别已经是 %s，无需修改。", logLevelCardDisplay(core, selected))
-		return nil
-	}
+		c.clearScreen()
+		c.printPageHeader(core, "服务端配置", "日志级别")
+		fmt.Fprintf(c.out, "当前级别：%s\n\n", logLevelCardDisplay(core, settings.Current))
+		defaultChoice := 1
+		for index, level := range settings.Levels {
+			c.printMenuChoice(strconv.Itoa(index+1), logLevelDisplay(core, level))
+			if level == settings.Current {
+				defaultChoice = index + 1
+			}
+		}
+		c.printMenuChoice("0/q", "返回")
+		choice, err := c.chooseNumber("请选择日志级别", 0, len(settings.Levels), defaultChoice)
+		if err != nil {
+			return err
+		}
+		if choice == 0 {
+			return errReturnToMenu
+		}
+		selected := settings.Levels[choice-1]
+		if selected == settings.Current {
+			system.WriteDetail(c.out, "操作提示", "日志级别已经是 %s，无需修改。", logLevelCardDisplay(core, selected))
+			c.pauseForMenu()
+			continue
+		}
 
-	sections := []confirmationSection{{title: "将执行", items: []string{
-		"使用内核原生命令校验候选配置",
-		"备份并原子更新当前服务端配置",
-		"服务正在运行时自动重启使设置立即生效",
-	}}}
-	if selected == "off" {
-		sections = append(sections, confirmationSection{title: "注意", items: []string{
-			"关闭后将无法通过 systemd journal 查看内核运行日志",
-			"排查故障时需要重新开启日志",
-		}})
+		sections := []confirmationSection{{title: "将执行", items: []string{
+			"使用内核原生命令校验候选配置",
+			"备份并原子更新当前服务端配置",
+			"服务正在运行时自动重启使设置立即生效",
+		}}}
+		if selected == "off" {
+			sections = append(sections, confirmationSection{title: "注意", items: []string{
+				"关闭后将无法通过 systemd journal 查看内核运行日志",
+				"排查故障时需要重新开启日志",
+			}})
+		}
+		c.printConfirmationPanel(
+			"操作确认：设置日志级别",
+			[]string{
+				"目标内核：" + core,
+				"当前级别：" + logLevelCardDisplay(core, settings.Current),
+				"新的级别：" + logLevelCardDisplay(core, selected),
+			},
+			sections...,
+		)
+		confirmed, err := c.confirmCancelable("应用新的日志级别？")
+		if errors.Is(err, errReturnToMenu) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			system.WriteDetail(c.out, "取消操作", "%s", "已取消日志级别修改。")
+			continue
+		}
+		change, err := c.app.SetLogLevel(ctx, core, selected)
+		if err != nil {
+			return err
+		}
+		if !change.Changed {
+			system.WriteDetail(c.out, "操作提示", "日志级别已经是 %s，无需修改。", logLevelCardDisplay(core, change.Current))
+			c.pauseForMenu()
+			continue
+		}
+		effect := "服务当前未运行，将在下次启动时生效"
+		if change.Restarted {
+			effect = "服务已重启，设置已生效"
+		}
+		system.WriteDetail(c.out, "操作结果", "%s 日志级别已从 %s 修改为 %s；%s。",
+			core, logLevelCardDisplay(core, change.Previous), logLevelCardDisplay(core, change.Current), effect)
+		c.pauseForMenu()
 	}
-	c.printConfirmationPanel(
-		"操作确认：设置日志级别",
-		[]string{
-			"目标内核：" + core,
-			"当前级别：" + logLevelCardDisplay(core, settings.Current),
-			"新的级别：" + logLevelCardDisplay(core, selected),
-		},
-		sections...,
-	)
-	confirmed, err := c.confirmCancelable("应用新的日志级别？")
-	if err != nil {
-		return err
-	}
-	if !confirmed {
-		system.WriteDetail(c.out, "取消操作", "%s", "已取消日志级别修改。")
-		return nil
-	}
-	change, err := c.app.SetLogLevel(ctx, core, selected)
-	if err != nil {
-		return err
-	}
-	if !change.Changed {
-		system.WriteDetail(c.out, "操作提示", "日志级别已经是 %s，无需修改。", logLevelCardDisplay(core, change.Current))
-		return nil
-	}
-	effect := "服务当前未运行，将在下次启动时生效"
-	if change.Restarted {
-		effect = "服务已重启，设置已生效"
-	}
-	system.WriteDetail(c.out, "操作结果", "%s 日志级别已从 %s 修改为 %s；%s。",
-		core, logLevelCardDisplay(core, change.Previous), logLevelCardDisplay(core, change.Current), effect)
-	return nil
 }
 
 func logLevelDisplay(core, level string) string {

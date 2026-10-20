@@ -59,19 +59,14 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 		shouldPause := true
 		switch choice {
 		case 1:
-			var opts install.Options
-			opts, err = c.chooseInstallOptions(ctx, core, install.Options{Confirm: c.confirm})
-			if errors.Is(err, errReturnToMenu) {
-				continue
-			}
-			if err == nil {
-				err = c.app.Install(ctx, core, opts)
-			}
+			shouldPause = false
+			err = c.installMenu(ctx, core)
 		case 2:
 			shouldPause = false
 			err = c.serverConfigMenu(ctx, core)
 		case 3:
-			shouldPause, err = c.clientMenu(ctx, core)
+			shouldPause = false
+			err = c.clientMenu(ctx, core)
 		case 4:
 			var confirmed bool
 			confirmed, err = c.confirmUninstall(core)
@@ -82,12 +77,10 @@ func (c *commandSet) coreMenu(ctx context.Context, core string) error {
 			}
 		}
 		if errors.Is(err, errReturnToMenu) {
-			err = nil
-			if choice == 1 {
-				system.WriteDetail(c.out, "取消操作", "%s", "已取消安装/升级。")
-			} else if choice == 4 {
-				system.WriteDetail(c.out, "取消操作", "%s", "已取消卸载。")
-			}
+			continue
+		}
+		if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
+			return err
 		}
 		if err != nil {
 			c.printMenuError(err)
@@ -185,6 +178,9 @@ func (c *commandSet) serverConfigMenu(ctx context.Context, core string) error {
 				continue
 			}
 		}
+		if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
+			return err
+		}
 		if err != nil {
 			c.printMenuError(err)
 		}
@@ -255,10 +251,14 @@ func (c *commandSet) modifyConfigMenu(ctx context.Context, core string) error {
 		case choice == dnsChoice:
 			err = c.dnsSettingsMenu(ctx, core)
 		case choice == sniChoice:
+			shouldPause = false
 			err = c.retestSNICandidates(ctx, core)
 		}
 		if errors.Is(err, errReturnToMenu) {
 			continue
+		}
+		if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
+			return err
 		}
 		if err != nil {
 			c.printMenuError(err)
