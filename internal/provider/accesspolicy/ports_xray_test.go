@@ -81,6 +81,7 @@ func TestPortsGroupOnlyCompatibleDestinationsAndKeepRelayScope(t *testing.T) {
 		LandingAccesses: []domain.LandingAccess{{Name: "office", Security: "tls", Port: 9443, Enabled: true}},
 		RelayLinks:      []domain.RelayLink{{Name: "relay", UserName: "relay-user", Enabled: true}},
 		AccessPolicy: domain.AccessPolicy{
+			Mode: domain.AccessModeDefault,
 			Whitelist: []domain.AccessEntry{
 				{Type: "domain", Value: "a.example.com", IncludeSubdomains: true, Ports: "443"},
 				{Type: "domain", Value: "b.example.com", Ports: "443"},
@@ -249,7 +250,7 @@ func TestMergedPortsPreserveEachDestinationsScope(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			before := append([]domain.AccessEntry(nil), tc.entries...)
-			n := domain.NodeSpec{Core: domain.CoreXray, InboundTag: "main", AccessPolicy: domain.AccessPolicy{Whitelist: tc.entries, Blacklist: tc.entries}}
+			n := domain.NodeSpec{Core: domain.CoreXray, InboundTag: "main", AccessPolicy: domain.AccessPolicy{Mode: domain.AccessModeDefault, Whitelist: tc.entries, Blacklist: tc.entries}}
 			root := testRoot()
 			if err := Apply(root, n); err != nil {
 				t.Fatal(err)

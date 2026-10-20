@@ -96,7 +96,7 @@ func NormalizeAccessPorts(value string) (string, error) {
 
 func (p AccessPolicy) EffectiveMode() string {
 	if p.Mode == "" {
-		if p.AutoWhitelist {
+		if p.AutoWhitelist || len(p.Whitelist) > 0 {
 			return AccessModeWhitelist
 		}
 		return AccessModeDefault
@@ -134,8 +134,8 @@ func (p AccessPolicy) SelectMode(mode string) (AccessPolicy, error) {
 func (p AccessPolicy) AddEntries(listName string, entries []AccessEntry) (AccessPolicy, error) {
 	switch listName {
 	case "white":
-		// Only a new first whitelist chooses the mode automatically. Explicit
-		// modes and existing lists keep their behavior until the user changes it.
+		// Remember the first automatic restriction without recording a manual
+		// mode. EffectiveMode also checks existing whitelists on read.
 		if p.Mode == "" && len(p.Whitelist) == 0 && len(entries) > 0 {
 			p.AutoWhitelist = true
 		}
@@ -151,6 +151,9 @@ func (p AccessPolicy) AddEntries(listName string, entries []AccessEntry) (Access
 func (p AccessPolicy) ClearList(listName string) (AccessPolicy, error) {
 	switch listName {
 	case "white":
+		if p.Mode == "" && len(p.Whitelist) > 0 {
+			p.AutoWhitelist = true
+		}
 		p.Whitelist = nil
 	case "black":
 		p.Blacklist = nil
@@ -269,5 +272,8 @@ func (p AccessPolicy) Normalize() (AccessPolicy, error) {
 		return p, err
 	}
 	p.Blacklist, err = normalize(p.Blacklist)
+	if err == nil && p.Mode == "" && len(p.Whitelist) > 0 {
+		p.AutoWhitelist = true
+	}
 	return p, err
 }

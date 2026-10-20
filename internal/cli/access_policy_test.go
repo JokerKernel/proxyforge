@@ -115,9 +115,9 @@ func TestAccessPolicyCardShowsEffectiveRuleOrder(t *testing.T) {
 		order  string
 	}{
 		{"default-empty", domain.AccessPolicy{}, "原有拦截 → 其余放行"},
-		{"default-white", domain.AccessPolicy{Whitelist: entries}, "白名单放行 → 原有拦截 → 其余放行"},
+		{"default-white", domain.AccessPolicy{Mode: domain.AccessModeDefault, Whitelist: entries}, "白名单放行 → 原有拦截 → 其余放行"},
 		{"default-black", domain.AccessPolicy{Blacklist: entries}, "黑名单拒绝 → 原有拦截 → 其余放行"},
-		{"default-both", domain.AccessPolicy{Whitelist: entries, Blacklist: entries}, "白名单放行 → 黑名单拒绝 → 原有拦截 → 其余放行"},
+		{"default-both", domain.AccessPolicy{Mode: domain.AccessModeDefault, Whitelist: entries, Blacklist: entries}, "白名单放行 → 黑名单拒绝 → 原有拦截 → 其余放行"},
 		{"whitelist-empty", domain.AccessPolicy{Mode: domain.AccessModeWhitelist}, "原有拦截 → 其余拒绝"},
 		{"whitelist-black-only", domain.AccessPolicy{Mode: domain.AccessModeWhitelist, Blacklist: entries}, "原有拦截 → 其余拒绝"},
 		{"whitelist-both", domain.AccessPolicy{Mode: domain.AccessModeWhitelist, Whitelist: entries, Blacklist: entries}, "白名单放行 → 原有拦截 → 其余拒绝"},

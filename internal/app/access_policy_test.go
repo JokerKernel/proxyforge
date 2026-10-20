@@ -86,6 +86,7 @@ func TestAccessPolicyLifecyclePersistsAcrossNodeAndLinkChanges(t *testing.T) {
 				t.Fatal(err)
 			}
 			if err := a.SetAccessPolicy(ctx, core, domain.AccessPolicy{
+				Mode: domain.AccessModeDefault,
 				Whitelist: []domain.AccessEntry{
 					{Type: domain.AccessEntryIP, Value: "192.168.1.10"},
 					{Type: domain.AccessEntryDomain, Value: "Allowed.COM.", IncludeSubdomains: true},
