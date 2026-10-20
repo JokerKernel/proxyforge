@@ -73,7 +73,7 @@ func (c *commandSet) printAccessPolicyCard(policy domain.AccessPolicy) {
 	c.printLabeledCard("访问策略", [][2]string{
 		{"访问控制", accessSwitchLabel(policy)},
 		{"访问模式", accessModeLabel(policy.Mode)},
-		{"当前生效模式", effectiveMode},
+		{"生效模式", effectiveMode},
 		{"规则顺序", strings.Join(order, " → ")},
 		{"默认动作", defaultAction},
 	})
