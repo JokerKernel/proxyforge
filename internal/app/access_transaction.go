@@ -39,6 +39,27 @@ func (a *App) accessTransactionFiles(p provider.CoreProvider, core string) []str
 		a.Layout.LandingPath(core), a.Layout.RelayPath(core), a.Layout.StatePath(core)}
 }
 
+// Link updates write relay policies too, so share their lock and recover any
+// interrupted policy update before loading the links to modify.
+func (a *App) lockLinkUpdate(ctx context.Context, core string) (func(), error) {
+	if err := a.RootCheck(); err != nil {
+		return nil, err
+	}
+	p, err := a.Registry.Get(core)
+	if err != nil {
+		return nil, err
+	}
+	unlock, err := a.lockAccessPolicy(ctx, core)
+	if err != nil {
+		return nil, err
+	}
+	if err := a.recoverAccessTransaction(ctx, p, core); err != nil {
+		unlock()
+		return nil, err
+	}
+	return unlock, nil
+}
+
 func (a *App) lockAccessPolicy(ctx context.Context, core string) (func(), error) {
 	path := a.accessTransactionPath(core) + ".lock"
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {

@@ -30,7 +30,7 @@ func (a *App) applyServerSetting(ctx context.Context, p provider.CoreProvider, c
 	}
 	managedState := hasState && oldState.ConfigSHA256 != "" && oldState.ConfigSHA256 == system.SHA256(oldConfig)
 
-	if hasState && oldState.AccessPolicy.Active() {
+	if hasState && oldState.HasActiveAccessPolicy() {
 		if policyProvider, ok := p.(provider.AccessPolicyProvider); ok {
 			patched, err = policyProvider.PatchAccessPolicy(patched, oldState, oldState)
 			if err != nil {

@@ -13,6 +13,17 @@ import (
 )
 
 func (a *App) AccessPolicy(core string) (domain.AccessPolicy, error) {
+	return a.accessPolicy(core, "")
+}
+
+func (a *App) RelayAccessPolicy(core, name string) (domain.AccessPolicy, error) {
+	if name == "" {
+		return domain.AccessPolicy{}, fmt.Errorf("请指定中转线路名称")
+	}
+	return a.accessPolicy(core, name)
+}
+
+func (a *App) accessPolicy(core, relay string) (domain.AccessPolicy, error) {
 	if err := a.RootCheck(); err != nil {
 		return domain.AccessPolicy{}, err
 	}
@@ -32,10 +43,28 @@ func (a *App) AccessPolicy(core string) (domain.AccessPolicy, error) {
 	if err != nil {
 		return domain.AccessPolicy{}, err
 	}
-	return n.AccessPolicy.Normalize()
+	if relay == "" {
+		return n.AccessPolicy.Normalize()
+	}
+	index, ok := findRelay(n, relay)
+	if !ok {
+		return domain.AccessPolicy{}, fmt.Errorf("找不到中转线路 %q", relay)
+	}
+	return n.RelayLinks[index].EffectiveAccessPolicy(n.AccessPolicy).Normalize()
 }
 
 func (a *App) SetAccessPolicy(ctx context.Context, core string, requested domain.AccessPolicy, expected ...domain.AccessPolicy) error {
+	return a.setAccessPolicy(ctx, core, "", requested, expected...)
+}
+
+func (a *App) SetRelayAccessPolicy(ctx context.Context, core, name string, requested domain.AccessPolicy, expected ...domain.AccessPolicy) error {
+	if name == "" {
+		return fmt.Errorf("请指定中转线路名称")
+	}
+	return a.setAccessPolicy(ctx, core, name, requested, expected...)
+}
+
+func (a *App) setAccessPolicy(ctx context.Context, core, relay string, requested domain.AccessPolicy, expected ...domain.AccessPolicy) error {
 	if err := a.RootCheck(); err != nil {
 		return err
 	}
@@ -63,6 +92,15 @@ func (a *App) SetAccessPolicy(ctx context.Context, core string, requested domain
 		return err
 	}
 	current, err := old.AccessPolicy.Normalize()
+	index := -1
+	if relay != "" {
+		var ok bool
+		index, ok = findRelay(old, relay)
+		if !ok {
+			return fmt.Errorf("找不到中转线路 %q", relay)
+		}
+		current, err = old.RelayLinks[index].EffectiveAccessPolicy(old.AccessPolicy).Normalize()
+	}
 	if err != nil {
 		return err
 	}
@@ -87,14 +125,20 @@ func (a *App) SetAccessPolicy(ctx context.Context, core string, requested domain
 		return err
 	}
 	next := old
-	next.AccessPolicy = policy
-	if !old.AccessPolicy.Active() && policy.Active() {
+	if relay == "" {
+		next.AccessPolicy = policy
+	} else {
+		next.RelayLinks = append([]domain.RelayLink(nil), old.RelayLinks...)
+		next.RelayLinks[index].AccessPolicy = &policy
+		next.RelayLinks[index].UpdatedAt = a.Now().UTC()
+	}
+	if !old.HasActiveAccessPolicy() && next.HasActiveAccessPolicy() {
 		next.AccessPolicySniffing, err = accesspolicy.SnapshotSniffing(config, next)
 		if err != nil {
 			return err
 		}
 	}
-	if !policy.Active() {
+	if !next.HasActiveAccessPolicy() {
 		next.AccessPolicySniffing = nil
 	}
 	next.SchemaVersion = domain.StateSchemaVersion

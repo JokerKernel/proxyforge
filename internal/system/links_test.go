@@ -24,7 +24,8 @@ func TestLinkRecordsStoredSeparatelyAndIsolatedByCore(t *testing.T) {
 				CertificateSHA256: "certificate-pin", CertificatePublicKeySHA256: "public-key-pin", Enabled: true, UpdatedAt: time.Unix(100, 0).UTC(),
 			}},
 			RelayLinks: []domain.RelayLink{{
-				Name: core + "-relay", UserName: "relay", UUID: "relay-uuid", Enabled: false, UpdatedAt: time.Unix(200, 0).UTC(),
+				AccessPolicy: &domain.AccessPolicy{Disabled: true},
+				Name:         core + "-relay", UserName: "relay", UUID: "relay-uuid", Enabled: false, UpdatedAt: time.Unix(200, 0).UTC(),
 				Upstream: domain.LandingPeer{Name: "remote", Core: domain.CoreXray, Security: domain.LandingSecurityReality,
 					Server: "exit.example.com", Port: 443, SNI: "example.com", UUID: "remote-uuid", PublicKey: "remote-public-key", ShortID: "1234567890abcdef", Flow: domain.VisionFlow},
 			}},
@@ -102,7 +103,7 @@ func TestStateDoesNotReadOrMigrateInlineLinks(t *testing.T) {
 	}
 	storeLinks := LinkStore{Layout: store.Layout}
 	landings := []domain.LandingAccess{{Name: "new-landing"}}
-	relays := []domain.RelayLink{{Name: "new-relay"}}
+	relays := []domain.RelayLink{{Name: "new-relay", AccessPolicy: &domain.AccessPolicy{Disabled: true}}}
 	if err := storeLinks.Save(domain.CoreXray, landings, relays); err != nil {
 		t.Fatal(err)
 	}

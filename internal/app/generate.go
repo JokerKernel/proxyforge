@@ -266,9 +266,8 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 		}
 		n.SNI = n.TLSCertificate.SNI
 	}
-	if n.AccessPolicy.Active() {
-		base := n
-		base.AccessPolicy = domain.AccessPolicy{}
+	if n.HasActiveAccessPolicy() {
+		base := n.WithoutAccessPolicies()
 		raw, renderErr := p.RenderServer(base)
 		if renderErr != nil {
 			return n, renderErr

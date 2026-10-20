@@ -113,16 +113,19 @@ func (c *commandSet) confirmAccessChange(policy domain.AccessPolicy) error {
 
 func (c *commandSet) accessCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "access", Short: "管理目标域名、IP 和网段的访问白名单与黑名单"}
+	var relay string
+	cmd.PersistentFlags().StringVar(&relay, "relay", "", "仅管理指定中转线路的独立访问策略")
 	cmd.AddCommand(&cobra.Command{Use: "list <sing-box|xray>", Short: "查看模式与两份名单", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		policy, err := c.app.AccessPolicy(args[0])
+		policy, err := c.loadAccessPolicy(args[0], relay)
 		if err != nil {
 			return err
 		}
+		c.printAccessPolicyScope(args[0], []string{relay})
 		c.printAccessPolicy(policy)
 		return nil
 	}})
 	cmd.AddCommand(&cobra.Command{Use: "mode <sing-box|xray> <auto|default|whitelist>", Short: "切换访问模式，保留名单", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
-		policy, err := c.app.AccessPolicy(args[0])
+		policy, err := c.loadAccessPolicy(args[0], relay)
 		if err != nil {
 			return err
 		}
@@ -131,13 +134,14 @@ func (c *commandSet) accessCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
+		c.printAccessPolicyScope(args[0], []string{relay})
 		if err = c.confirmAccessChange(policy); err != nil {
 			if errors.Is(err, errReturnToMenu) {
 				return nil
 			}
 			return err
 		}
-		if err = c.app.SetAccessPolicy(cmd.Context(), args[0], policy, previous); err != nil {
+		if err = c.saveAccessPolicy(cmd.Context(), args[0], policy, previous, relay); err != nil {
 			return err
 		}
 		system.WriteDetail(c.out, "更新结果", "%s", "访问模式已更新："+accessModeLabel(policy.Mode))
@@ -145,19 +149,20 @@ func (c *commandSet) accessCommand() *cobra.Command {
 	}})
 	for _, operation := range []string{"enable", "disable"} {
 		cmd.AddCommand(&cobra.Command{Use: operation + " <sing-box|xray>", Short: map[string]string{"enable": "启用访问控制，应用保存的模式和名单", "disable": "关闭访问控制，保留模式和名单"}[operation], Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-			policy, err := c.app.AccessPolicy(args[0])
+			policy, err := c.loadAccessPolicy(args[0], relay)
 			if err != nil {
 				return err
 			}
 			previous := policy
 			policy.Disabled = operation == "disable"
+			c.printAccessPolicyScope(args[0], []string{relay})
 			if err = c.confirmAccessChange(policy); err != nil {
 				if errors.Is(err, errReturnToMenu) {
 					return nil
 				}
 				return err
 			}
-			if err = c.app.SetAccessPolicy(cmd.Context(), args[0], policy, previous); err != nil {
+			if err = c.saveAccessPolicy(cmd.Context(), args[0], policy, previous, relay); err != nil {
 				return err
 			}
 			system.WriteDetail(c.out, "更新结果", "%s", "访问控制"+accessSwitchLabel(policy)+"。")
@@ -202,7 +207,7 @@ func (c *commandSet) accessCommand() *cobra.Command {
 				setPorts(&additions[i])
 			}
 			setPorts(&removal)
-			policy, err := c.app.AccessPolicy(args[0])
+			policy, err := c.loadAccessPolicy(args[0], relay)
 			if err != nil {
 				return err
 			}
@@ -239,13 +244,14 @@ func (c *commandSet) accessCommand() *cobra.Command {
 				copied := append([]domain.AccessEntry(nil), (*entries)...)
 				*entries = append(copied[:found], copied[found+1:]...)
 			}
+			c.printAccessPolicyScope(args[0], []string{relay})
 			if err = c.confirmAccessChange(policy); err != nil {
 				if errors.Is(err, errReturnToMenu) {
 					return nil
 				}
 				return err
 			}
-			if err = c.app.SetAccessPolicy(cmd.Context(), args[0], policy, previous); err != nil {
+			if err = c.saveAccessPolicy(cmd.Context(), args[0], policy, previous, relay); err != nil {
 				return err
 			}
 			system.WriteDetail(c.out, "更新结果", "%s", "访问名单已更新。")
@@ -256,7 +262,7 @@ func (c *commandSet) accessCommand() *cobra.Command {
 		cmd.AddCommand(child)
 	}
 	cmd.AddCommand(&cobra.Command{Use: "clear <sing-box|xray> <white|black>", Short: "清空指定名单，保留模式和访问控制开关", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
-		policy, err := c.app.AccessPolicy(args[0])
+		policy, err := c.loadAccessPolicy(args[0], relay)
 		if err != nil {
 			return err
 		}
@@ -268,13 +274,14 @@ func (c *commandSet) accessCommand() *cobra.Command {
 			system.WriteDetail(c.out, "当前状态", "%s", "当前名单已为空，无需修改。")
 			return nil
 		}
+		c.printAccessPolicyScope(args[0], []string{relay})
 		if err = c.confirmAccessChange(next); err != nil {
 			if errors.Is(err, errReturnToMenu) {
 				return nil
 			}
 			return err
 		}
-		if err = c.app.SetAccessPolicy(cmd.Context(), args[0], next, policy); err != nil {
+		if err = c.saveAccessPolicy(cmd.Context(), args[0], next, policy, relay); err != nil {
 			return err
 		}
 		system.WriteDetail(c.out, "更新结果", "%s", "访问名单已清空。")

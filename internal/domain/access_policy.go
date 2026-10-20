@@ -33,6 +33,42 @@ type AccessPolicy struct {
 	Blacklist []AccessEntry `json:"blacklist,omitempty"`
 }
 
+// Clone keeps independently managed lists from sharing backing arrays.
+func (p AccessPolicy) Clone() AccessPolicy {
+	p.Whitelist = append([]AccessEntry(nil), p.Whitelist...)
+	p.Blacklist = append([]AccessEntry(nil), p.Blacklist...)
+	return p
+}
+
+// A missing policy belongs to an old relay that shared the node policy.
+func (l RelayLink) EffectiveAccessPolicy(node AccessPolicy) AccessPolicy {
+	if l.AccessPolicy == nil {
+		return node.Clone()
+	}
+	return l.AccessPolicy.Clone()
+}
+
+func (n NodeSpec) HasActiveAccessPolicy() bool {
+	if n.AccessPolicy.Active() {
+		return true
+	}
+	for _, link := range n.RelayLinks {
+		if link.Enabled && link.EffectiveAccessPolicy(n.AccessPolicy).Active() {
+			return true
+		}
+	}
+	return false
+}
+
+func (n NodeSpec) WithoutAccessPolicies() NodeSpec {
+	n.AccessPolicy = AccessPolicy{}
+	n.RelayLinks = append([]RelayLink(nil), n.RelayLinks...)
+	for i := range n.RelayLinks {
+		n.RelayLinks[i].AccessPolicy = &AccessPolicy{Disabled: true}
+	}
+	return n
+}
+
 // NormalizeAccessPorts canonicalizes destination ports; empty means all ports.
 func NormalizeAccessPorts(value string) (string, error) {
 	value = strings.TrimSpace(value)

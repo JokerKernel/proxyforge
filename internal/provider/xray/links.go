@@ -14,7 +14,7 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 	if err := json.Unmarshal(config, &root); err != nil {
 		return nil, fmt.Errorf("解析现有 Xray 配置: %w", err)
 	}
-	if old.AccessPolicy.Active() || next.AccessPolicy.Active() {
+	if old.HasActiveAccessPolicy() || next.HasActiveAccessPolicy() {
 		if err := accesspolicy.ValidateRoot(root, next.Core); err != nil {
 			return nil, err
 		}
@@ -239,8 +239,12 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 		})
 	}
 	routing["rules"] = rules
-	if next.AccessPolicy.Active() {
+	if next.HasActiveAccessPolicy() {
 		if err := accesspolicy.Apply(root, next); err != nil {
+			return nil, err
+		}
+	} else if old.HasActiveAccessPolicy() {
+		if err := accesspolicy.RestoreSniffing(root, old); err != nil {
 			return nil, err
 		}
 	}

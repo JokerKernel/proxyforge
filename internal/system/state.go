@@ -47,10 +47,24 @@ func (s StateStore) Load(core string) (domain.NodeSpec, error) {
 	if err != nil {
 		return n, err
 	}
+	// Freeze the previous shared policy before any caller edits the node policy.
+	for i := range n.RelayLinks {
+		policy, err := n.RelayLinks[i].EffectiveAccessPolicy(n.AccessPolicy).Normalize()
+		if err != nil {
+			return n, fmt.Errorf("中转线路 %q 访问策略无效: %w", n.RelayLinks[i].Name, err)
+		}
+		n.RelayLinks[i].AccessPolicy = &policy
+	}
 	return n, nil
 }
 
 func (s StateStore) Save(n domain.NodeSpec) error {
+	for _, link := range n.RelayLinks {
+		if link.AccessPolicy != nil {
+			n.SchemaVersion = domain.StateSchemaVersion
+			break
+		}
+	}
 	nodeFile, err := preparePrivateJSON(s.Layout.StatePath(n.Core), n)
 	if err != nil {
 		return err

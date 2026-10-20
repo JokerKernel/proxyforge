@@ -11,14 +11,46 @@ import (
 	"proxyforge/internal/system"
 )
 
-func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
+func (c *commandSet) loadAccessPolicy(core string, relay ...string) (domain.AccessPolicy, error) {
+	if len(relay) > 0 && relay[0] != "" {
+		return c.app.RelayAccessPolicy(core, relay[0])
+	}
+	return c.app.AccessPolicy(core)
+}
+
+func (c *commandSet) saveAccessPolicy(ctx context.Context, core string, next, previous domain.AccessPolicy, relay ...string) error {
+	if len(relay) > 0 && relay[0] != "" {
+		return c.app.SetRelayAccessPolicy(ctx, core, relay[0], next, previous)
+	}
+	return c.app.SetAccessPolicy(ctx, core, next, previous)
+}
+
+func (c *commandSet) printAccessPolicyHeader(core string, relay []string, sections ...string) {
+	path := []string{core}
+	if len(relay) > 0 && relay[0] != "" {
+		path = append(path, "管理中转线路", relay[0])
+	}
+	path = append(path, "访问控制")
+	c.printPageHeader(append(path, sections...)...)
+}
+
+func (c *commandSet) printAccessPolicyScope(core string, relay []string) {
+	if len(relay) > 0 && relay[0] != "" {
+		c.printLabeledCard("作用范围", [][2]string{{"中转线路", relay[0]}, {"放行出站", domain.RelayOutboundTag(relay[0])}})
+	} else {
+		c.printLabeledCard("作用范围", [][2]string{{"节点", core + " 普通用户与落地接入"}, {"中转线路", "各线路独立管理"}})
+	}
+}
+
+func (c *commandSet) accessPolicyMenu(ctx context.Context, core string, relay ...string) error {
 	for {
-		policy, err := c.app.AccessPolicy(core)
+		policy, err := c.loadAccessPolicy(core, relay...)
 		if err != nil {
 			return err
 		}
 		c.clearScreen()
-		c.printPageHeader(core, "访问控制")
+		c.printAccessPolicyHeader(core, relay)
+		c.printAccessPolicyScope(core, relay)
 		c.printAccessPolicyCard(policy)
 		c.printMenuChoice("1", "切换访问模式")
 		c.printMenuChoice("2", fmt.Sprintf("白名单管理（%d 条）", len(policy.Whitelist)))
@@ -37,11 +69,11 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 		case 0:
 			return nil
 		case 1:
-			err = c.accessModeMenu(ctx, core)
+			err = c.accessModeMenu(ctx, core, relay...)
 		case 2:
-			err = c.accessListMenu(ctx, core, "white")
+			err = c.accessListMenu(ctx, core, "white", relay...)
 		case 3:
-			err = c.accessListMenu(ctx, core, "black")
+			err = c.accessListMenu(ctx, core, "black", relay...)
 		case 4:
 			next := policy
 			next.Disabled = !policy.Disabled
@@ -50,7 +82,7 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 				confirmation = "启用访问控制？按保存的模式和两份名单应用规则。"
 			}
 			success := "访问控制" + accessSwitchLabel(next) + "。"
-			err = c.applyAccessPolicyFromMenu(ctx, core, "访问开关", next, policy, confirmation, success)
+			err = c.applyAccessPolicyFromMenu(ctx, core, "访问开关", next, policy, confirmation, success, relay...)
 		}
 		if err != nil {
 			return err
@@ -58,14 +90,15 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 	}
 }
 
-func (c *commandSet) accessModeMenu(ctx context.Context, core string) error {
+func (c *commandSet) accessModeMenu(ctx context.Context, core string, relay ...string) error {
 	for {
-		policy, err := c.app.AccessPolicy(core)
+		policy, err := c.loadAccessPolicy(core, relay...)
 		if err != nil {
 			return err
 		}
 		c.clearScreen()
-		c.printPageHeader(core, "访问控制", "切换访问模式")
+		c.printAccessPolicyHeader(core, relay, "切换访问模式")
+		c.printAccessPolicyScope(core, relay)
 		c.printAccessPolicyCard(policy)
 		modes := []string{domain.AccessModeAuto, domain.AccessModeDefault, domain.AccessModeWhitelist}
 		currentMode := policy.Mode
@@ -106,13 +139,13 @@ func (c *commandSet) accessModeMenu(ctx context.Context, core string) error {
 		if next.Disabled {
 			confirmation += "访问控制保持关闭，本次仅保存模式修改。"
 		}
-		if err := c.applyAccessPolicyFromMenu(ctx, core, "切换访问模式", next, policy, confirmation, success); err != nil {
+		if err := c.applyAccessPolicyFromMenu(ctx, core, "切换访问模式", next, policy, confirmation, success, relay...); err != nil {
 			return err
 		}
 	}
 }
 
-func (c *commandSet) accessListMenu(ctx context.Context, core, list string) error {
+func (c *commandSet) accessListMenu(ctx context.Context, core, list string, relay ...string) error {
 	name := "白名单"
 	if list == "black" {
 		name = "黑名单"
@@ -121,7 +154,7 @@ func (c *commandSet) accessListMenu(ctx context.Context, core, list string) erro
 	}
 	section := name + "管理"
 	for {
-		policy, err := c.app.AccessPolicy(core)
+		policy, err := c.loadAccessPolicy(core, relay...)
 		if err != nil {
 			return err
 		}
@@ -131,7 +164,8 @@ func (c *commandSet) accessListMenu(ctx context.Context, core, list string) erro
 			entries = &next.Blacklist
 		}
 		c.clearScreen()
-		c.printPageHeader(core, "访问控制", section)
+		c.printAccessPolicyHeader(core, relay, section)
+		c.printAccessPolicyScope(core, relay)
 		c.printAccessPolicyCard(policy)
 		c.printAccessEntries(name, *entries)
 		fmt.Fprintln(c.out)
@@ -151,7 +185,7 @@ func (c *commandSet) accessListMenu(ctx context.Context, core, list string) erro
 		c.clearScreen()
 		switch choice {
 		case 1:
-			additions, entryErr := c.accessEntriesMenu(core, section, name)
+			additions, entryErr := c.accessEntriesMenu(core, section, name, relay...)
 			if errors.Is(entryErr, errReturnToMenu) {
 				continue
 			}
@@ -163,7 +197,7 @@ func (c *commandSet) accessListMenu(ctx context.Context, core, list string) erro
 				return err
 			}
 		case 2:
-			c.printPageHeader(core, "访问控制", section, "删除规则")
+			c.printAccessPolicyHeader(core, relay, section, "删除规则")
 			c.printLabeledCard("当前名单", [][2]string{{"名单", name}, {"规则数量", strconv.Itoa(len(*entries)) + " 条"}})
 			if len(*entries) == 0 {
 				fmt.Fprintln(c.out, "当前名单为空。")
@@ -190,7 +224,7 @@ func (c *commandSet) accessListMenu(ctx context.Context, core, list string) erro
 				return err
 			}
 			if reflect.DeepEqual(policy, next) {
-				c.printPageHeader(core, "访问控制", section, "清空名单")
+				c.printAccessPolicyHeader(core, relay, section, "清空名单")
 				system.WriteDetail(c.out, "当前状态", "%s", "当前名单已为空，无需修改。")
 				c.pauseForMenu()
 				continue
@@ -208,13 +242,13 @@ func (c *commandSet) accessListMenu(ctx context.Context, core, list string) erro
 		if next.Disabled {
 			confirmation += "访问控制保持关闭，本次仅保存名单修改。"
 		}
-		if err := c.applyAccessPolicyFromMenu(ctx, core, section, next, policy, confirmation, success); err != nil {
+		if err := c.applyAccessPolicyFromMenu(ctx, core, section, next, policy, confirmation, success, relay...); err != nil {
 			return err
 		}
 	}
 }
 
-func (c *commandSet) applyAccessPolicyFromMenu(ctx context.Context, core, section string, next, previous domain.AccessPolicy, confirmation, success string) error {
+func (c *commandSet) applyAccessPolicyFromMenu(ctx context.Context, core, section string, next, previous domain.AccessPolicy, confirmation, success string, relay ...string) error {
 	next, err := next.Normalize()
 	if err != nil {
 		c.printMenuError(err)
@@ -222,7 +256,8 @@ func (c *commandSet) applyAccessPolicyFromMenu(ctx context.Context, core, sectio
 		return nil
 	}
 	c.clearScreen()
-	c.printPageHeader(core, "访问控制", section, "确认修改")
+	c.printAccessPolicyHeader(core, relay, section, "确认修改")
+	c.printAccessPolicyScope(core, relay)
 	c.printAccessPolicy(next)
 	ok, err := c.confirmCancelable(confirmation)
 	if errors.Is(err, errReturnToMenu) {
@@ -232,7 +267,7 @@ func (c *commandSet) applyAccessPolicyFromMenu(ctx context.Context, core, sectio
 		return err
 	}
 	if ok {
-		if err := c.app.SetAccessPolicy(ctx, core, next, previous); err != nil {
+		if err := c.saveAccessPolicy(ctx, core, next, previous, relay...); err != nil {
 			c.printMenuError(err)
 		} else {
 			system.WriteDetail(c.out, "更新结果", "%s", success)
@@ -242,10 +277,10 @@ func (c *commandSet) applyAccessPolicyFromMenu(ctx context.Context, core, sectio
 	return nil
 }
 
-func (c *commandSet) accessEntriesMenu(core, section, name string) ([]domain.AccessEntry, error) {
+func (c *commandSet) accessEntriesMenu(core, section, name string, relay ...string) ([]domain.AccessEntry, error) {
 	for {
 		c.clearScreen()
-		c.printPageHeader(core, "访问控制", section, "添加规则")
+		c.printAccessPolicyHeader(core, relay, section, "添加规则")
 		c.printLabeledCard("规则说明", [][2]string{
 			{"支持目标", "域名、单个 IP 或 CIDR 网段"},
 			{"批量输入", "一行输入多个目标，用空格或逗号分隔"},
@@ -273,7 +308,7 @@ func (c *commandSet) accessEntriesMenu(core, section, name string) ([]domain.Acc
 		}
 		if domainCount > 0 {
 			c.clearScreen()
-			c.printPageHeader(core, "访问控制", section, "添加规则", "域名匹配")
+			c.printAccessPolicyHeader(core, relay, section, "添加规则", "域名匹配")
 			c.printLabeledCard("目标规则", [][2]string{
 				{"名单", name}, {"目标数量", strconv.Itoa(len(additions)) + " 条"},
 				{"域名匹配", "以下选择对本次所有域名生效，IP 和网段不受影响"},
@@ -299,7 +334,7 @@ func (c *commandSet) accessEntriesMenu(core, section, name string) ([]domain.Acc
 			}
 		}
 		c.clearScreen()
-		c.printPageHeader(core, "访问控制", section, "添加规则", "端口限制")
+		c.printAccessPolicyHeader(core, relay, section, "添加规则", "端口限制")
 		fmt.Fprintln(c.out, "逐条设置目标端口；支持 80,443、80.443、中文逗号、8000-8100；all 表示全部端口，q 返回。")
 		cancelled := false
 		for i := range additions {

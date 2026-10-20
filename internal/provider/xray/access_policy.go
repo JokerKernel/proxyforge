@@ -9,8 +9,7 @@ import (
 )
 
 func (p *Provider) RenderServer(n domain.NodeSpec) ([]byte, error) {
-	base := n
-	base.AccessPolicy = domain.AccessPolicy{}
+	base := n.WithoutAccessPolicies()
 	b, err := renderServer(base)
 	if err != nil {
 		return nil, err
@@ -24,7 +23,7 @@ func (*Provider) PatchAccessPolicy(config []byte, old, next domain.NodeSpec) ([]
 		return nil, err
 	}
 	next.AccessPolicy = normalized
-	if !old.AccessPolicy.Active() && !next.AccessPolicy.Active() {
+	if !old.HasActiveAccessPolicy() && !next.HasActiveAccessPolicy() {
 		return config, nil
 	}
 	old.Core, next.Core = domain.CoreXray, domain.CoreXray
@@ -32,13 +31,13 @@ func (*Provider) PatchAccessPolicy(config []byte, old, next domain.NodeSpec) ([]
 	if err := json.Unmarshal(config, &root); err != nil {
 		return nil, err
 	}
-	if !old.AccessPolicy.Active() && accesspolicy.HasComponents(root, next.Core) {
+	if !old.HasActiveAccessPolicy() && accesspolicy.HasComponents(root, next.Core) {
 		return nil, fmt.Errorf("配置已使用访问策略保留名称，拒绝覆盖")
 	}
 	if err := accesspolicy.Apply(root, next); err != nil {
 		return nil, err
 	}
-	if old.AccessPolicy.Active() && !next.AccessPolicy.Active() {
+	if old.HasActiveAccessPolicy() && !next.HasActiveAccessPolicy() {
 		if err := accesspolicy.RestoreSniffing(root, old); err != nil {
 			return nil, err
 		}

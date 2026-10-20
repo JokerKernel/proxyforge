@@ -75,7 +75,8 @@ func TestRealConfigurationSettingsMatrix(t *testing.T) {
 							CertificateSHA256: access.CertificateSHA256, CertificatePublicKeySHA256: access.CertificatePublicKeySHA256}
 						name := "relay-" + security
 						n.RelayLinks = append(n.RelayLinks, domain.RelayLink{Name: name, UserName: name,
-							UUID: fmt.Sprintf("11b50d17-8c92-4b5d-9449-245f3b70d7b%d", i), Enabled: true, Upstream: peer})
+							UUID: fmt.Sprintf("11b50d17-8c92-4b5d-9449-245f3b70d7b%d", i), Enabled: true, Upstream: peer,
+							AccessPolicy: &domain.AccessPolicy{Mode: domain.AccessModeWhitelist, Whitelist: []domain.AccessEntry{{Type: "domain", Value: name + ".test", Ports: "80,443,8000-8100"}}}})
 					}
 					n.AccessPolicy = domain.AccessPolicy{Mode: domain.AccessModeDefault,
 						Whitelist: []domain.AccessEntry{{Type: "domain", Value: "allowed.test", IncludeSubdomains: true}, {Type: "cidr", Value: "192.168.1.0/24"}},

@@ -44,6 +44,8 @@ func TestMenusReturnToImmediateParentWithoutExtraPause(t *testing.T) {
 		{name: "relay client format", choices: "3 3 1 BACK BACK BACK BACK"},
 		{name: "relay management export", choices: "2 7 2 1 1 BACK BACK BACK BACK BACK BACK"},
 		{name: "relay management confirmation", choices: "2 7 2 1 4 BACK BACK BACK BACK BACK BACK"},
+		{name: "relay access mode", choices: "2 7 2 1 7 1 BACK BACK BACK BACK BACK BACK BACK"},
+		{name: "relay access ports", choices: "2 7 2 1 7 2 1 example.com 1 BACK BACK BACK BACK BACK BACK BACK BACK BACK"},
 		{name: "landing management confirmation", choices: "2 7 4 1 2 BACK BACK BACK BACK BACK BACK"},
 		{name: "add landing name", choices: "2 7 3 1 BACK BACK BACK BACK BACK"},
 		{name: "add landing confirmation", choices: "2 7 3 1 new-access BACK BACK BACK BACK BACK"},

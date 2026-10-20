@@ -839,8 +839,9 @@ func (c *commandSet) manageRelayDetails(ctx context.Context, core, name string) 
 			c.printMenuChoice("5", "启用线路")
 		}
 		c.printMenuChoice("6", "删除线路")
+		c.printMenuChoice("7", "访问控制（仅作用于本线路）")
 		c.printMenuChoice("0/q", "返回")
-		choice, err := c.chooseNumber("请选择", 0, 6, 0)
+		choice, err := c.chooseNumber("请选择", 0, 7, 0)
 		if err != nil || choice == 0 {
 			return err
 		}
@@ -885,6 +886,11 @@ func (c *commandSet) manageRelayDetails(ctx context.Context, core, name string) 
 			}
 		case 5:
 			err = c.app.SetRelayLinkEnabled(ctx, core, name, !selected.Enabled)
+		case 7:
+			if err := c.accessPolicyMenu(ctx, core, name); err != nil {
+				return err
+			}
+			continue
 		}
 		if errors.Is(err, errReturnToMenu) {
 			continue

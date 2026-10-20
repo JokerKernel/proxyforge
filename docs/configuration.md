@@ -103,7 +103,9 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 ## 访问控制
 
-“修改配置 → 访问控制”管理访问模式、白名单、黑名单、每条规则的目标端口及独立总开关。策略按内核管理，覆盖普通用户、落地接入和中转线路，不改变 REALITY 回落防护。
+“修改配置 → 访问控制”管理普通用户和落地接入的访问模式、白名单、黑名单、目标端口及总开关。每条中转线路有自己的独立策略，入口为“服务端配置 → 中转与落地配置 → 管理中转线路 → 选择线路 → 7 访问控制”；线路之间以及线路与普通节点之间互不继承，不改变 REALITY 回落防护。
+
+新增中转线路默认关闭访问控制。已有线路缺少独立策略时，读取时复制升级前的节点策略，在下次成功保存状态时写入线路记录，以保留原来的模式、开关和端口范围。此后修改节点或某条线路的策略不会改变其他线路。关闭某条线路的访问控制仍走该线路的落地出站，并保留原有适用拦截规则；落地服务器自己的访问控制仍会执行。
 
 | 模式 | 规则 |
 | --- | --- |
@@ -134,6 +136,12 @@ sudo proxyforge config access enable xray --yes
 sudo proxyforge config access remove xray white example.com --ports 553 --yes
 sudo proxyforge config access remove xray white api.example.com --exact --yes
 sudo proxyforge config access clear xray white --yes
+
+# 加 --relay 只操作指定中转线路；所有 access 子命令均支持
+sudo proxyforge config access add xray white example.com --ports 80,443 --relay nihao --yes
+sudo proxyforge config access enable xray --relay nihao --yes
+sudo proxyforge config access mode xray whitelist --relay nihao --yes
+sudo proxyforge config access list xray --relay nihao
 ```
 
 端口支持 `80,443`、`80.443`、中文逗号、`8000-8100` 和 `all`；自动排序、去重并合并重叠和相邻范围。保存值为空或缺少 `ports` 字段表示全部端口，旧规则保持原有范围。地址和端口须同时匹配。
@@ -155,7 +163,9 @@ sudo proxyforge config access clear xray white --yes
 }
 ```
 
-文件路径见[文件与安全边界](security.md#受管文件)。手动编辑后需重新生成服务端配置才能应用；旧 `blacklist` 模式需改为 `default`，旧受管标签不兼容时需备份后重新生成。名单修改使用访问控制进程锁和事务日志，通过当前原生内核校验后备份、应用、检查运行和监听状态，再保存名单及节点状态；失败回滚，后续访问控制读取或修改会先恢复未完成事务。并发修改导致确认预览过期时拒绝覆盖。访问新放行的私网目标时，还需重新导出原生客户端配置；Mihomo 由服务端执行策略。
+中转策略保存在线路 JSON 记录的 `access_policy` 字段中，使用相同的策略结构；缺少该字段表示待迁移的旧共享策略，显式对象表示独立策略。原生中转客户端的白名单例外使用对应线路的策略。节点状态版本升级为 8，旧程序会拒绝读取新版状态，避免丢弃线路策略。
+
+文件路径见[文件与安全边界](security.md#受管文件)。手动编辑后需重新生成服务端配置才能应用；旧 `blacklist` 模式需改为 `default`，旧受管标签不兼容时需备份后重新生成。名单修改使用访问控制进程锁和事务日志，通过当前原生内核校验后备份、应用、检查运行和监听状态，再保存名单及节点状态；失败回滚，后续访问控制读取、修改或线路修改会先恢复未完成事务。并发修改导致确认预览过期时拒绝覆盖。访问新放行的私网目标时，还需重新导出对应节点的原生客户端配置；Mihomo 由服务端执行策略。
 
 ## 中转与落地
 

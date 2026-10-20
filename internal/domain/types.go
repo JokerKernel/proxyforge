@@ -20,7 +20,7 @@ const (
 	LandingTLSPortMax      = 65000
 	FallbackPortMin        = LandingTLSPortMin
 	FallbackPortMax        = LandingTLSPortMax
-	StateSchemaVersion     = 7
+	StateSchemaVersion     = 8
 )
 
 // LandingPeer is the portable, client-side description of a managed landing
@@ -81,12 +81,13 @@ func RelayOutboundTag(name string) string { return name + "-out" }
 func LandingTLSInboundTag(name string) string { return name + "-in" }
 
 type RelayLink struct {
-	Name      string      `json:"name"`
-	UserName  string      `json:"user_name"`
-	UUID      string      `json:"uuid"`
-	Enabled   bool        `json:"enabled"`
-	Upstream  LandingPeer `json:"upstream"`
-	UpdatedAt time.Time   `json:"updated_at"`
+	AccessPolicy *AccessPolicy `json:"access_policy,omitempty"`
+	Name         string        `json:"name"`
+	UserName     string        `json:"user_name"`
+	UUID         string        `json:"uuid"`
+	Enabled      bool          `json:"enabled"`
+	Upstream     LandingPeer   `json:"upstream"`
+	UpdatedAt    time.Time     `json:"updated_at"`
 }
 
 type NodeSpec struct {

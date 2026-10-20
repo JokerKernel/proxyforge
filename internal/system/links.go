@@ -27,6 +27,16 @@ func (s LinkStore) Save(core string, landings []domain.LandingAccess, relays []d
 }
 
 func (s LinkStore) prepare(core string, landings []domain.LandingAccess, relays []domain.RelayLink) ([]privateJSONFile, error) {
+	relays = append([]domain.RelayLink(nil), relays...)
+	for i := range relays {
+		if relays[i].AccessPolicy != nil {
+			policy, err := relays[i].AccessPolicy.Normalize()
+			if err != nil {
+				return nil, fmt.Errorf("中转线路 %q 访问策略无效: %w", relays[i].Name, err)
+			}
+			relays[i].AccessPolicy = &policy
+		}
+	}
 	landingFile, err := preparePrivateJSON(s.Layout.LandingPath(core), append([]domain.LandingAccess{}, landings...))
 	if err != nil {
 		return nil, err

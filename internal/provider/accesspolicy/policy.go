@@ -50,7 +50,7 @@ func ownedRule(rule map[string]any, core string) bool {
 				return true
 			}
 		}
-		return tag == Prefix+"final" || strings.HasPrefix(tag, Prefix+"white-relay-")
+		return tag == Prefix+"final" || strings.HasPrefix(tag, Prefix+"white-relay-") || strings.HasPrefix(tag, Prefix+"relay-")
 	}
 	for _, tag := range list(rule["rule_set"]) {
 		if str(tag) == scopeSet || str(tag) == whiteSet || str(tag) == blackSet {
@@ -287,13 +287,29 @@ func Apply(root map[string]any, n domain.NodeSpec) error {
 	if err != nil {
 		return err
 	}
+	n.AccessPolicy = policy
+	n.RelayLinks = append([]domain.RelayLink(nil), n.RelayLinks...)
+	for i, link := range n.RelayLinks {
+		if link.AccessPolicy != nil {
+			p, err := link.AccessPolicy.Normalize()
+			if err != nil {
+				return fmt.Errorf("中转线路 %q: %w", link.Name, err)
+			}
+			n.RelayLinks[i].AccessPolicy = &p
+		}
+	}
 	Strip(root, n.Core)
-	if !policy.Active() {
+	if !n.HasActiveAccessPolicy() {
 		return nil
 	}
 	if n.InboundTag == "" {
 		return fmt.Errorf("访问策略需要受管主入站标签")
 	}
+	key := "route"
+	if n.Core == domain.CoreXray {
+		key = "routing"
+	}
+	originalRules := append([]any(nil), list(object(root[key])["rules"])...)
 	if n.Core == domain.CoreXray {
 		scoped := map[string]bool{}
 		for _, tag := range proxyTags(n) {
@@ -310,10 +326,16 @@ func Apply(root map[string]any, n domain.NodeSpec) error {
 				inbound["sniffing"] = sniffing
 			}
 		}
-		return applyXray(root, n, policy)
+		if err := applyXray(root, n, policy); err != nil {
+			return err
+		}
+		return applyRelayPolicies(root, n, originalRules)
 	}
 	if n.Core == domain.CoreSingBox {
-		return applySingBox(root, n, policy)
+		if err := applySingBox(root, n, policy); err != nil {
+			return err
+		}
+		return applyRelayPolicies(root, n, originalRules)
 	}
 	return fmt.Errorf("未知内核 %s", n.Core)
 }
@@ -326,7 +348,7 @@ func applyXray(root map[string]any, n domain.NodeSpec, p domain.AccessPolicy) er
 	tags := proxyTags(n)
 	front := []any{}
 	outbounds := list(root["outbounds"])
-	if len(p.Whitelist) > 0 {
+	if p.Active() && len(p.Whitelist) > 0 {
 		var direct map[string]any
 		for _, item := range outbounds {
 			if object(item)["tag"] == "direct" {
@@ -383,9 +405,9 @@ func applyXray(root map[string]any, n domain.NodeSpec, p domain.AccessPolicy) er
 			}
 		}
 	}
-	if len(p.Whitelist) > 0 {
+	if p.Active() && len(p.Whitelist) > 0 {
 		for _, link := range n.RelayLinks {
-			if link.Enabled {
+			if link.Enabled && link.AccessPolicy == nil {
 				add(white, domain.RelayOutboundTag(link.Name), link.UserName, "white-relay-"+link.Name)
 			}
 		}
@@ -396,7 +418,7 @@ func applyXray(root map[string]any, n domain.NodeSpec, p domain.AccessPolicy) er
 	}
 
 	tail := list(route["rules"])
-	if p.EffectiveMode() == domain.AccessModeWhitelist {
+	if p.Active() && p.EffectiveMode() == domain.AccessModeWhitelist {
 		tail = insertDefaultDeny(tail, map[string]any{"inboundTag": tags, "outboundTag": denyTag, "ruleTag": Prefix + "final"}, n.Core, tags, root)
 	}
 	route["rules"] = append(front, tail...)
@@ -483,9 +505,9 @@ func applySingBox(root map[string]any, n domain.NodeSpec, p domain.AccessPolicy)
 		rule["outbound"] = outbound
 		front = append(front, rule)
 	}
-	if len(p.Whitelist) > 0 {
+	if p.Active() && len(p.Whitelist) > 0 {
 		for _, link := range n.RelayLinks {
-			if link.Enabled {
+			if link.Enabled && link.AccessPolicy == nil {
 				white(domain.RelayOutboundTag(link.Name), link.UserName)
 			}
 		}
@@ -495,7 +517,7 @@ func applySingBox(root map[string]any, n domain.NodeSpec, p domain.AccessPolicy)
 		front = append(front, logical([]any{scope(), map[string]any{"rule_set": []string{blackSet}}}, "reject"))
 	}
 	tail := list(route["rules"])
-	if p.EffectiveMode() == domain.AccessModeWhitelist {
+	if p.Active() && p.EffectiveMode() == domain.AccessModeWhitelist {
 		tail = insertDefaultDeny(tail, logical([]any{scope()}, "reject"), n.Core, tags, root)
 	}
 	route["rules"] = append(front, tail...)
