@@ -61,9 +61,11 @@ func (c *commandSet) printAccessPolicyCard(policy domain.AccessPolicy) {
 		order = append(order, "黑名单拒绝")
 	}
 	order = append(order, "原有拦截")
+	effectiveMode := "默认模式"
 	defaultAction := "放行"
 	finalAction := "其余放行"
 	if !policy.Disabled && policy.EffectiveMode() == domain.AccessModeWhitelist {
+		effectiveMode = "仅白名单模式"
 		defaultAction = "拒绝；白名单为空时全部拒绝。"
 		finalAction = "其余拒绝"
 	}
@@ -71,6 +73,7 @@ func (c *commandSet) printAccessPolicyCard(policy domain.AccessPolicy) {
 	c.printLabeledCard("访问策略", [][2]string{
 		{"访问控制", accessSwitchLabel(policy)},
 		{"访问模式", accessModeLabel(policy.Mode)},
+		{"当前生效模式", effectiveMode},
 		{"规则顺序", strings.Join(order, " → ")},
 		{"默认动作", defaultAction},
 	})
