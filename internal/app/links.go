@@ -63,7 +63,7 @@ func (a *App) AddLandingAccessWithOptions(ctx context.Context, core, name string
 	if err := validateLinkName(name); err != nil {
 		return domain.LandingAccess{}, err
 	}
-	unlock, err := a.lockLinkUpdate(ctx, core)
+	unlock, err := a.lockConfigUpdate(ctx, core)
 	if err != nil {
 		return domain.LandingAccess{}, err
 	}
@@ -174,7 +174,7 @@ func (a *App) PickLandingTLSPort(core string) (int, error) {
 }
 
 func (a *App) SetLandingAccessEnabled(ctx context.Context, core, name string, enabled bool) error {
-	unlock, err := a.lockLinkUpdate(ctx, core)
+	unlock, err := a.lockConfigUpdate(ctx, core)
 	if err != nil {
 		return err
 	}
@@ -194,7 +194,7 @@ func (a *App) SetLandingAccessEnabled(ctx context.Context, core, name string, en
 }
 
 func (a *App) RotateLandingAccess(ctx context.Context, core, name string) (domain.LandingAccess, error) {
-	unlock, err := a.lockLinkUpdate(ctx, core)
+	unlock, err := a.lockConfigUpdate(ctx, core)
 	if err != nil {
 		return domain.LandingAccess{}, err
 	}
@@ -220,7 +220,7 @@ func (a *App) RotateLandingAccess(ctx context.Context, core, name string) (domai
 }
 
 func (a *App) RemoveLandingAccess(ctx context.Context, core, name string) error {
-	unlock, err := a.lockLinkUpdate(ctx, core)
+	unlock, err := a.lockConfigUpdate(ctx, core)
 	if err != nil {
 		return err
 	}
@@ -338,7 +338,7 @@ func (a *App) AddRelayLink(ctx context.Context, core, name string, peer domain.L
 	if err := validateLandingPeer(peer); err != nil {
 		return domain.RelayLink{}, err
 	}
-	unlock, err := a.lockLinkUpdate(ctx, core)
+	unlock, err := a.lockConfigUpdate(ctx, core)
 	if err != nil {
 		return domain.RelayLink{}, err
 	}
@@ -377,7 +377,7 @@ func (a *App) UpdateRelayLink(ctx context.Context, core, name string, peer domai
 	if err := validateLandingPeer(peer); err != nil {
 		return err
 	}
-	unlock, err := a.lockLinkUpdate(ctx, core)
+	unlock, err := a.lockConfigUpdate(ctx, core)
 	if err != nil {
 		return err
 	}
@@ -406,7 +406,7 @@ func (a *App) UpdateRelayLink(ctx context.Context, core, name string, peer domai
 }
 
 func (a *App) SetRelayLinkEnabled(ctx context.Context, core, name string, enabled bool) error {
-	unlock, err := a.lockLinkUpdate(ctx, core)
+	unlock, err := a.lockConfigUpdate(ctx, core)
 	if err != nil {
 		return err
 	}
@@ -426,7 +426,7 @@ func (a *App) SetRelayLinkEnabled(ctx context.Context, core, name string, enable
 }
 
 func (a *App) RotateRelayLink(ctx context.Context, core, name string) (domain.RelayLink, error) {
-	unlock, err := a.lockLinkUpdate(ctx, core)
+	unlock, err := a.lockConfigUpdate(ctx, core)
 	if err != nil {
 		return domain.RelayLink{}, err
 	}
@@ -452,7 +452,7 @@ func (a *App) RotateRelayLink(ctx context.Context, core, name string) (domain.Re
 }
 
 func (a *App) RemoveRelayLink(ctx context.Context, core, name string) error {
-	unlock, err := a.lockLinkUpdate(ctx, core)
+	unlock, err := a.lockConfigUpdate(ctx, core)
 	if err != nil {
 		return err
 	}

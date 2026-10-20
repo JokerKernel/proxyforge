@@ -23,6 +23,11 @@ func (a *App) ResetCredentials(ctx context.Context, core string, opts domain.Res
 	if err != nil {
 		return domain.NodeSpec{}, err
 	}
+	unlock, err := a.lockConfigUpdate(ctx, core)
+	if err != nil {
+		return domain.NodeSpec{}, err
+	}
+	defer unlock()
 	current, err := a.Store.Load(core)
 	if err != nil {
 		return domain.NodeSpec{}, err

@@ -39,9 +39,9 @@ func (a *App) accessTransactionFiles(p provider.CoreProvider, core string) []str
 		a.Layout.LandingPath(core), a.Layout.RelayPath(core), a.Layout.StatePath(core)}
 }
 
-// Link updates write relay policies too, so share their lock and recover any
-// interrupted policy update before loading the links to modify.
-func (a *App) lockLinkUpdate(ctx context.Context, core string) (func(), error) {
+// Managed configuration updates share the access lock and recover interrupted
+// policy transactions before reading config/state, preventing stale writes.
+func (a *App) lockConfigUpdate(ctx context.Context, core string) (func(), error) {
 	if err := a.RootCheck(); err != nil {
 		return nil, err
 	}

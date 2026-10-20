@@ -81,6 +81,11 @@ func (a *App) SetFallbackIPStrategy(ctx context.Context, core, requested string)
 	if err := a.checkCoreInstalled(ctx, p); err != nil {
 		return change, err
 	}
+	unlock, err := a.lockConfigUpdate(ctx, core)
+	if err != nil {
+		return change, err
+	}
+	defer unlock()
 	ipProvider, ok := p.(provider.FallbackIPProvider)
 	if !ok {
 		return change, fmt.Errorf("%s 不支持回落 IP 设置", core)

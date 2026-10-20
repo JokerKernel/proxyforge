@@ -18,7 +18,9 @@ func (*Provider) PatchLinks(config []byte, old, next domain.NodeSpec) ([]byte, e
 		if err := accesspolicy.ValidateRoot(root, next.Core); err != nil {
 			return nil, err
 		}
-		accesspolicy.Strip(root, next.Core)
+		if err := accesspolicy.Strip(root, next.Core); err != nil {
+			return nil, err
+		}
 	}
 	inbound, err := xrayInbound(root, next.InboundTag)
 	if err != nil {

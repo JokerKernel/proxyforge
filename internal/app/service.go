@@ -89,6 +89,11 @@ func (a *App) SetLogLevel(ctx context.Context, core, requested string) (LogLevel
 	if err := a.checkCoreInstalled(ctx, p); err != nil {
 		return change, err
 	}
+	unlock, err := a.lockConfigUpdate(ctx, core)
+	if err != nil {
+		return change, err
+	}
+	defer unlock()
 	logProvider, ok := p.(provider.LogLevelProvider)
 	if !ok {
 		return change, fmt.Errorf("%s 不支持日志级别设置", core)

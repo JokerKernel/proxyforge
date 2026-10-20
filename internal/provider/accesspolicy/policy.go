@@ -11,13 +11,14 @@ import (
 )
 
 const (
-	Prefix    = "access-"
-	scopeSet  = Prefix + "scope"
-	whiteSet  = Prefix + "white"
-	blackSet  = Prefix + "black"
-	directTag = Prefix + "direct"
-	denyTag   = Prefix + "deny"
-	dnsTag    = Prefix + "dns"
+	Prefix           = "access-"
+	scopeSet         = Prefix + "scope"
+	whiteSet         = Prefix + "white"
+	blackSet         = Prefix + "black"
+	directTag        = Prefix + "direct"
+	denyTag          = Prefix + "deny"
+	dnsTag           = Prefix + "dns"
+	relayRoutePrefix = Prefix + "relay-route-"
 )
 
 func object(value any) map[string]any { m, _ := value.(map[string]any); return m }
@@ -53,11 +54,11 @@ func ownedRule(rule map[string]any, core string) bool {
 		return tag == Prefix+"final" || strings.HasPrefix(tag, Prefix+"white-relay-") || strings.HasPrefix(tag, Prefix+"relay-")
 	}
 	for _, tag := range list(rule["rule_set"]) {
-		if str(tag) == scopeSet || str(tag) == whiteSet || str(tag) == blackSet {
+		if policySet(str(tag)) {
 			return true
 		}
 	}
-	if str(rule["rule_set"]) == scopeSet || str(rule["rule_set"]) == whiteSet || str(rule["rule_set"]) == blackSet {
+	if policySet(str(rule["rule_set"])) {
 		return true
 	}
 	for _, child := range list(rule["rules"]) {
@@ -68,6 +69,10 @@ func ownedRule(rule map[string]any, core string) bool {
 	return false
 }
 
+func policySet(tag string) bool {
+	return tag == scopeSet || tag == whiteSet || tag == blackSet || strings.HasPrefix(tag, relayRoutePrefix)
+}
+
 // IsPolicyRule identifies rules that are rebuilt when access settings change.
 // DNS and IP settings must also update a persistent resolve rule so they survive
 // that rebuild or disabling access control.
@@ -76,9 +81,9 @@ func IsPolicyRule(rule map[string]any, core string) bool {
 }
 
 // Strip removes only generated policy components; ordinary routes stay intact.
-func Strip(root map[string]any, core string) {
+func Strip(root map[string]any, core string) error {
 	if root == nil {
-		return
+		return nil
 	}
 	key := "route"
 	if core == domain.CoreXray {
@@ -86,17 +91,15 @@ func Strip(root map[string]any, core string) {
 	}
 	route := object(root[key])
 	if route != nil {
-		rules := []any{}
-		for _, item := range list(route["rules"]) {
-			if !ownedRule(object(item), core) {
-				rules = append(rules, item)
-			}
+		rules, err := restoreRelayRoutes(list(route["rules"]), core)
+		if err != nil {
+			return err
 		}
 		route["rules"] = rules
 		if core == domain.CoreSingBox {
 			sets := []any{}
 			for _, item := range list(route["rule_set"]) {
-				if str(object(item)["tag"]) != scopeSet && str(object(item)["tag"]) != whiteSet && str(object(item)["tag"]) != blackSet {
+				if !policySet(str(object(item)["tag"])) {
 					sets = append(sets, item)
 				}
 			}
@@ -135,6 +138,7 @@ func Strip(root map[string]any, core string) {
 			}
 		}
 	}
+	return nil
 }
 
 func proxyTags(n domain.NodeSpec) []string {
@@ -298,7 +302,36 @@ func Apply(root map[string]any, n domain.NodeSpec) error {
 			n.RelayLinks[i].AccessPolicy = &p
 		}
 	}
-	Strip(root, n.Core)
+	if n.Core == domain.CoreXray && object(root["routing"])["domainStrategy"] != "IPOnDemand" {
+		requiresResolution := func(p domain.AccessPolicy) bool {
+			if !p.Active() {
+				return false
+			}
+			entries := append([]domain.AccessEntry(nil), p.Whitelist...)
+			if p.BlacklistEnabled() {
+				entries = append(entries, p.Blacklist...)
+			}
+			for _, entry := range entries {
+				if entry.Type == domain.AccessEntryIP || entry.Type == domain.AccessEntryCIDR {
+					return true
+				}
+			}
+			return false
+		}
+		needsResolution := requiresResolution(n.AccessPolicy)
+		for _, link := range n.RelayLinks {
+			needsResolution = needsResolution || link.Enabled && requiresResolution(link.EffectiveAccessPolicy(n.AccessPolicy))
+		}
+		if needsResolution {
+			return fmt.Errorf("IP/CIDR 访问策略要求 Xray routing.domainStrategy 为 IPOnDemand，请调整后重试")
+		}
+	}
+	if err := Strip(root, n.Core); err != nil {
+		return err
+	}
+	if err := validateRelayRoutes(root, n); err != nil {
+		return err
+	}
 	if !n.HasActiveAccessPolicy() {
 		return nil
 	}
@@ -458,7 +491,7 @@ func applySingBox(root map[string]any, n domain.NodeSpec, p domain.AccessPolicy)
 	for _, item := range list(route["rules"]) {
 		old := object(item)
 		if old["action"] == "resolve" {
-			for _, key := range []string{"server", "strategy", "disable_cache", "rewrite_ttl", "client_subnet"} {
+			for _, key := range []string{"server", "timeout", "strategy", "disable_cache", "disable_optimistic_cache", "rewrite_ttl", "client_subnet"} {
 				if v, ok := old[key]; ok {
 					resolve[key] = v
 				}
@@ -559,7 +592,7 @@ func insertDefaultDeny(rules []any, deny map[string]any, core string, tags []str
 				break
 			}
 		} else {
-			if rule["action"] == "route" || (rule["outbound"] != nil && rule["action"] == nil) {
+			if rule["action"] == "route" || rule["action"] == "direct" || rule["action"] == "bypass" || (rule["outbound"] != nil && rule["action"] == nil) {
 				index = i
 				break
 			}
@@ -582,7 +615,7 @@ func HasComponents(root map[string]any, core string) bool {
 	}
 	for _, item := range list(object(root[key])["rule_set"]) {
 		tag := str(object(item)["tag"])
-		if tag == scopeSet || tag == whiteSet || tag == blackSet {
+		if policySet(tag) {
 			return true
 		}
 	}

@@ -33,7 +33,10 @@ func TestRealRelayAccessPoliciesAreIndependent(t *testing.T) {
 	ports := []int{origins[0].Listener.Addr().(*net.TCPAddr).Port, origins[1].Listener.Addr().(*net.TCPAddr).Port}
 	for _, p := range []provider.CoreProvider{xray.New(), singbox.New()} {
 		t.Run(p.Name(), func(t *testing.T) {
-			for _, scenario := range []string{"isolated", "relay-only", "private-blocks"} {
+			for _, scenario := range []string{"isolated", "relay-only", "private-blocks", "custom-direct"} {
+				if scenario == "custom-direct" && p.Name() != domain.CoreSingBox {
+					continue
+				}
 				t.Run(scenario, func(t *testing.T) {
 					binary := testBinary(t, p)
 					landing := tlsTestNode(t)
@@ -93,6 +96,9 @@ func TestRealRelayAccessPoliciesAreIndependent(t *testing.T) {
 						original = append(original, rule)
 					}
 					route["rules"] = original
+					if scenario == "custom-direct" {
+						route["rules"] = append([]any{map[string]any{"domain": []string{"outside.test"}, "auth_user": []string{"relay-0"}, "action": "direct", "tcp_keep_alive": "30s", "tcp_keep_alive_interval": "10s"}}, original...)
+					}
 					config, _ = json.Marshal(root)
 					config, err = p.(provider.AccessPolicyProvider).PatchAccessPolicy(config, base, n)
 					if err != nil {

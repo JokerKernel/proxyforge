@@ -12,7 +12,7 @@ func testRoot() map[string]any {
 	return map[string]any{
 		"inbounds":  []any{map[string]any{"tag": "main"}, map[string]any{"tag": "office-in"}},
 		"outbounds": []any{map[string]any{"tag": "direct", "protocol": "freedom", "settings": map[string]any{}}},
-		"routing": map[string]any{"rules": []any{
+		"routing": map[string]any{"domainStrategy": "IPOnDemand", "rules": []any{
 			map[string]any{"ruleTag": "manual", "port": "25", "outboundTag": "custom"},
 		}},
 	}

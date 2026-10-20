@@ -64,6 +64,11 @@ func (a *App) SetDNSProfile(ctx context.Context, core, requested string) (DNSCha
 	if err := a.checkCoreInstalled(ctx, p); err != nil {
 		return change, err
 	}
+	unlock, err := a.lockConfigUpdate(ctx, core)
+	if err != nil {
+		return change, err
+	}
+	defer unlock()
 	dnsProvider, ok := p.(provider.DNSProfileProvider)
 	if !ok {
 		return change, fmt.Errorf("%s 不支持 DNS 设置", core)

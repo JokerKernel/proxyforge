@@ -30,6 +30,11 @@ func (a *App) Generate(ctx context.Context, core string, opts domain.GenerateOpt
 	if err := a.checkCoreInstalled(ctx, p); err != nil {
 		return domain.NodeSpec{}, err
 	}
+	unlock, err := a.lockConfigUpdate(ctx, core)
+	if err != nil {
+		return domain.NodeSpec{}, err
+	}
+	defer unlock()
 	old, loadErr := a.Store.Load(core)
 	hasOld := loadErr == nil
 	if loadErr != nil && !errors.Is(loadErr, system.ErrNoState) {
