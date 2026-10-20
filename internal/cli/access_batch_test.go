@@ -92,7 +92,7 @@ func TestAccessBatchMenuAndCommandsApplyMixedTargetsOnce(t *testing.T) {
 							if exact {
 								match = "2"
 							}
-							c.reader = bufio.NewReader(strings.NewReader(choice + "\n1\n" + input + "\n" + match + "\n1\n0\n0\n"))
+							c.reader = bufio.NewReader(strings.NewReader(choice + "\n1\n" + input + "\n" + match + "\n\n\n\n1\n0\n0\n"))
 							if err := c.accessPolicyMenu(context.Background(), core); err != nil {
 								t.Fatal(err)
 							}
@@ -102,7 +102,7 @@ func TestAccessBatchMenuAndCommandsApplyMixedTargetsOnce(t *testing.T) {
 						want := switchPolicy()
 						want.Mode = domain.AccessModeDefault
 						additions := []domain.AccessEntry{
-							{Type: domain.AccessEntryDomain, Value: "new.example.com", IncludeSubdomains: !exact},
+							{Type: domain.AccessEntryDomain, Value: "new.example.com", IncludeSubdomains: !exact, Ports: domain.DefaultAccessDomainPorts},
 							{Type: domain.AccessEntryIP, Value: "192.168.1.10"},
 							{Type: domain.AccessEntryCIDR, Value: "192.168.1.0/24"},
 						}

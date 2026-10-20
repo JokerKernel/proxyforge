@@ -103,33 +103,44 @@ sudo proxyforge config client sing-box --format clash --output ./clash.yaml
 
 ## 访问控制
 
-“修改配置 → 访问控制”管理两种模式、白名单、黑名单及独立总开关。策略按内核管理，覆盖普通用户、落地接入和中转线路，不改变 REALITY 回落防护。
+“修改配置 → 访问控制”管理访问模式、白名单、黑名单、每条规则的目标端口及独立总开关。策略按内核管理，覆盖普通用户、落地接入和中转线路，不改变 REALITY 回落防护。
 
 | 模式 | 规则 |
 | --- | --- |
-| `default` | 白名单优先放行，再匹配黑名单，最后执行原有私网等拦截规则 |
+| 空值 | 尚未手动选择；仅在首次新增第一条白名单时自动进入 `whitelist` |
+| `default` | 明确选择默认模式，后续增删规则不自动切换；白名单优先放行，再匹配黑名单，最后执行原有私网等拦截规则 |
 | `whitelist` | 仅放行白名单，忽略黑名单；空白名单拒绝全部代理目标 |
 
 白名单可明确放行私网地址，但最终出口仍需能访问该网络。中转用户命中白名单后仍走指定落地，不回退本机出口。
 
-关闭访问控制会保留模式和名单，恢复内核原有拦截；关闭期间修改规则不会自动启用。清空白名单时若处于 `whitelist` 模式，会同时切回 `default`；清空黑名单不改变模式。清空任一名单均保留另一份及总开关。
+关闭访问控制会保留模式和名单，恢复内核原有拦截；关闭期间添加规则不会自动启用。删除或清空名单均保留模式、另一份名单及总开关；`whitelist` 模式清空白名单后仍全部拒绝。`mode auto` 恢复自动选择：已有白名单则设为 `whitelist`，没有白名单则清空保存的模式。已有名单不会因升级或配置规范化自动切换模式。
 
 ```bash
-# 域名默认包含子域名；支持批量输入域名、IP 和 CIDR
+# 新域名默认包含子域名、目标端口 80,443；IP/CIDR 默认全部端口
 sudo proxyforge config access add xray white example.com 192.168.1.0/24 --yes
 sudo proxyforge config access add xray white api.example.com --exact --yes
 sudo proxyforge config access add xray black denied.example.com --yes
+# --ports 对本批所有目标生效；菜单可逐条指定端口
+sudo proxyforge config access add xray white example.com --ports 553 --yes
+sudo proxyforge config access add xray white full.example.com --ports all --yes
 
 sudo proxyforge config access mode xray whitelist --yes
+sudo proxyforge config access mode xray auto --yes
 sudo proxyforge config access list xray
 sudo proxyforge config access disable xray --yes
 sudo proxyforge config access enable xray --yes
 
+# 删除原始记录，端口和匹配方式必须一致；旧的全部端口域名使用 --ports all
+sudo proxyforge config access remove xray white example.com --ports 553 --yes
 sudo proxyforge config access remove xray white api.example.com --exact --yes
 sudo proxyforge config access clear xray white --yes
 ```
 
-批量输入支持空格、英文或中文逗号；`--exact` 仅影响域名。所有目标先校验、标准化并去重，任一无效则整批拒绝。域名不能包含协议、端口、路径或通配符；单 IP 与 CIDR 不等价，IPv6 同样支持。
+端口支持 `80,443`、`80.443`、中文逗号、`8000-8100` 和 `all`；自动排序、去重并合并重叠和相邻范围。保存值为空或缺少 `ports` 字段表示全部端口，旧规则保持原有范围。地址和端口须同时匹配。
+
+批量输入支持空格、英文或中文逗号；`--exact` 仅影响域名。所有地址及端口先校验、标准化并去重，任一无效则整批拒绝。域名不能包含协议、端口、路径或通配符；单 IP 与 CIDR 不等价，IPv6 同样支持。
+
+管理列表保留原始记录；生成配置时先为同一地址和匹配方式合并端口，再把最终端口相同的地址合并。比如 `a.com → 80`、`b.com → 80`、`a.com → 553` 生成 `a.com → 80,553` 与 `b.com → 80`，不会扩大 `b.com` 的范围。完整域名、包含子域名、黑白名单及中转出站分别计算。删除针对原始记录（菜单支持编号删除）；一条 `80,443,553` 不能通过删除 `553` 减去端口，需删整条后重新添加 `80,443`。
 
 域名匹配使用代理请求的实际目标。按 IP 访问需匹配 IP/网段规则，伪造 HTTP Host 或 TLS SNI 不会获得域名放行；域名黑名单也不等于封禁该站所有 IP。
 
@@ -139,12 +150,12 @@ sudo proxyforge config access clear xray white --yes
 {
   "disabled": false,
   "mode": "default",
-  "whitelist": [{ "type": "domain", "value": "example.com", "include_subdomains": true }],
+  "whitelist": [{ "type": "domain", "value": "example.com", "include_subdomains": true, "ports": "80,443" }],
   "blacklist": [{ "type": "cidr", "value": "192.168.1.0/24" }]
 }
 ```
 
-文件路径见[文件与安全边界](security.md#受管文件)。手动编辑后需重新生成服务端配置才能应用；旧 `blacklist` 模式需改为 `default`，旧受管标签不兼容时需备份后重新生成。名单修改会校验、备份并重启和启用当前服务。访问新放行的私网目标时，还需重新导出原生客户端配置；Mihomo 由服务端执行策略。
+文件路径见[文件与安全边界](security.md#受管文件)。手动编辑后需重新生成服务端配置才能应用；旧 `blacklist` 模式需改为 `default`，旧受管标签不兼容时需备份后重新生成。名单修改使用访问控制进程锁和事务日志，通过当前原生内核校验后备份、应用、检查运行和监听状态，再保存名单及节点状态；失败回滚，后续访问控制读取或修改会先恢复未完成事务。并发修改导致确认预览过期时拒绝覆盖。访问新放行的私网目标时，还需重新导出原生客户端配置；Mihomo 由服务端执行策略。
 
 ## 中转与落地
 

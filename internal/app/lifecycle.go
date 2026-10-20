@@ -317,6 +317,8 @@ func (a *App) Cleanup(ctx context.Context, target string) error {
 	}
 	for _, p := range providers {
 		paths := []string{
+			a.accessTransactionPath(p.Name()),
+			a.accessTransactionPath(p.Name()) + ".lock",
 			a.Layout.StatePath(p.Name()),
 			a.Layout.AccessPolicyPath(p.Name()),
 			a.Layout.LandingPath(p.Name()),
@@ -386,6 +388,7 @@ func (a *App) removeEmptyProxyForgeRoot() error {
 	for _, path := range []string{
 		filepath.Join(root, "state"),
 		filepath.Join(root, "access"),
+		filepath.Join(root, "transactions"),
 		filepath.Join(root, "landings"),
 		filepath.Join(root, "relays"),
 		filepath.Join(root, "trust"),

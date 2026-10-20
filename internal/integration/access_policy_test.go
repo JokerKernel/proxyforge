@@ -34,8 +34,8 @@ func TestRealAccessPolicyConfigs(t *testing.T) {
 					t.Run(fmt.Sprintf("%s-empty=%v", mode, empty), func(t *testing.T) {
 						n.AccessPolicy = domain.AccessPolicy{Mode: mode}
 						if !empty {
-							n.AccessPolicy.Whitelist = []domain.AccessEntry{{Type: "domain", Value: "allowed.test", IncludeSubdomains: true}, {Type: "ip", Value: "192.168.1.10"}, {Type: "cidr", Value: "2001:db8::/32"}}
-							n.AccessPolicy.Blacklist = []domain.AccessEntry{{Type: "domain", Value: "denied.test", IncludeSubdomains: true}, {Type: "cidr", Value: "192.168.2.0/24"}}
+							n.AccessPolicy.Whitelist = []domain.AccessEntry{{Type: "domain", Value: "allowed.test", IncludeSubdomains: true, Ports: "80,443,8000-8100"}, {Type: "domain", Value: "allowed.test", IncludeSubdomains: true, Ports: "553"}, {Type: "ip", Value: "192.168.1.10", Ports: "443"}, {Type: "cidr", Value: "2001:db8::/32", Ports: "8000-8100"}}
+							n.AccessPolicy.Blacklist = []domain.AccessEntry{{Type: "domain", Value: "denied.test", IncludeSubdomains: true, Ports: "25"}, {Type: "cidr", Value: "192.168.2.0/24", Ports: "80,8000-8100"}}
 						}
 						for name, render := range map[string]func(domain.NodeSpec) ([]byte, error){"server": p.RenderServer, "client": p.RenderClient} {
 							b, err := render(n)

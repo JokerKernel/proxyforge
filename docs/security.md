@@ -7,6 +7,7 @@
 | 服务端配置 | `/etc/sing-box/config.json` | `/usr/local/etc/xray/config.json` |
 | 状态 | `/var/lib/proxyforge/state/sing-box.json` | `/var/lib/proxyforge/state/xray.json` |
 | 访问控制 | `/var/lib/proxyforge/access/sing-box.json` | `/var/lib/proxyforge/access/xray.json` |
+| 访问控制事务 | `/var/lib/proxyforge/transactions/access-sing-box.json` | `/var/lib/proxyforge/transactions/access-xray.json` |
 | 落地接入 | `/var/lib/proxyforge/landings/sing-box.json` | `/var/lib/proxyforge/landings/xray.json` |
 | 中转线路 | `/var/lib/proxyforge/relays/sing-box.json` | `/var/lib/proxyforge/relays/xray.json` |
 | 安装渠道 | `/var/lib/proxyforge/preferences/sing-box.json` | `/var/lib/proxyforge/preferences/xray.json` |
@@ -24,6 +25,8 @@
 配置变更先生成临时文件，执行 `sing-box check` 或 `xray run -test`，再原子替换目标文件。完整生成会启动并检查目标服务及监听端口；DNS、IP 策略和日志设置仅在服务已运行时重启。
 
 应用失败时尝试恢复原配置和相关状态；恢复失败会报告错误，不能将失败提示视为恢复成功。配置文件恢复失败时不继续重启服务。单文件原子替换不等于多文件更新具有断电恢复保证。
+
+访问控制更新另有按内核隔离的进程锁和事务日志（目录 0700、文件 0600，包含原配置快照）。写入候选配置前记录原配置、名单、线路和节点状态；成功后删除日志，失败则恢复。下次访问控制读取或修改时先恢复未完成事务，恢复失败保留日志供重试；其他配置操作不自动恢复此日志。确认期间名单发生并发变化时，拒绝用过期预览覆盖当前名单。
 
 新证书在配置和状态应用成功后成为受管证书；失败时清理本次生成的文件。主节点证书轮换保留旧文件供备份引用。
 

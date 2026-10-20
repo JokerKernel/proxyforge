@@ -14,6 +14,8 @@ import (
 
 func accessModeLabel(mode string) string {
 	switch mode {
+	case domain.AccessModeAuto:
+		return "恢复自动选择"
 	case domain.AccessModeWhitelist:
 		return "仅允许白名单访问"
 	default:
@@ -29,13 +31,19 @@ func accessSwitchLabel(policy domain.AccessPolicy) string {
 }
 
 func accessEntryLabel(entry domain.AccessEntry) string {
+	label := entry.Value
 	if entry.Type == domain.AccessEntryDomain {
 		if entry.IncludeSubdomains {
-			return entry.Value + "（包括子域名）"
+			label += "（包括子域名）"
+		} else {
+			label += "（精确域名）"
 		}
-		return entry.Value + "（精确域名）"
 	}
-	return entry.Value
+	ports := entry.Ports
+	if ports == "" {
+		ports = "全部"
+	}
+	return label + " · 端口：" + ports
 }
 
 func (c *commandSet) printAccessPolicy(policy domain.AccessPolicy) {
@@ -107,13 +115,13 @@ func (c *commandSet) accessCommand() *cobra.Command {
 		c.printAccessPolicy(policy)
 		return nil
 	}})
-	cmd.AddCommand(&cobra.Command{Use: "mode <sing-box|xray> <default|whitelist>", Short: "切换访问模式，保留名单", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd.AddCommand(&cobra.Command{Use: "mode <sing-box|xray> <auto|default|whitelist>", Short: "切换访问模式，保留名单", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
 		policy, err := c.app.AccessPolicy(args[0])
 		if err != nil {
 			return err
 		}
-		policy.Mode = args[1]
-		policy, err = policy.Normalize()
+		previous := policy
+		policy, err = policy.SelectMode(args[1])
 		if err != nil {
 			return err
 		}
@@ -123,7 +131,7 @@ func (c *commandSet) accessCommand() *cobra.Command {
 			}
 			return err
 		}
-		if err = c.app.SetAccessPolicy(cmd.Context(), args[0], policy); err != nil {
+		if err = c.app.SetAccessPolicy(cmd.Context(), args[0], policy, previous); err != nil {
 			return err
 		}
 		system.WriteDetail(c.out, "更新结果", "%s", "访问模式已更新："+accessModeLabel(policy.EffectiveMode()))
@@ -135,6 +143,7 @@ func (c *commandSet) accessCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			previous := policy
 			policy.Disabled = operation == "disable"
 			if err = c.confirmAccessChange(policy); err != nil {
 				if errors.Is(err, errReturnToMenu) {
@@ -142,7 +151,7 @@ func (c *commandSet) accessCommand() *cobra.Command {
 				}
 				return err
 			}
-			if err = c.app.SetAccessPolicy(cmd.Context(), args[0], policy); err != nil {
+			if err = c.app.SetAccessPolicy(cmd.Context(), args[0], policy, previous); err != nil {
 				return err
 			}
 			system.WriteDetail(c.out, "更新结果", "%s", "访问控制"+accessSwitchLabel(policy)+"。")
@@ -151,6 +160,7 @@ func (c *commandSet) accessCommand() *cobra.Command {
 	}
 	for _, operation := range []string{"add", "remove"} {
 		var exact bool
+		var ports string
 		use := operation + " <sing-box|xray> <white|black> <域名|IP|CIDR>"
 		validateArgs := cobra.ExactArgs(3)
 		if operation == "add" {
@@ -172,17 +182,35 @@ func (c *commandSet) accessCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			ports, err = domain.NormalizeAccessPorts(ports)
+			if err != nil {
+				return err
+			}
+			setPorts := func(entry *domain.AccessEntry) {
+				entry.Ports = ports
+				if !cmd.Flags().Changed("ports") && entry.Type == domain.AccessEntryDomain {
+					entry.Ports = domain.DefaultAccessDomainPorts
+				}
+			}
+			for i := range additions {
+				setPorts(&additions[i])
+			}
+			setPorts(&removal)
 			policy, err := c.app.AccessPolicy(args[0])
 			if err != nil {
 				return err
 			}
+			previous := policy
 			entries := &policy.Whitelist
 			if args[1] == "black" {
 				entries = &policy.Blacklist
 			}
 			if operation == "add" {
 				original := policy
-				*entries = append(*entries, additions...)
+				policy, err = policy.AddEntries(args[1], additions)
+				if err != nil {
+					return err
+				}
 				policy, err = policy.Normalize()
 				if err != nil {
 					return err
@@ -202,7 +230,8 @@ func (c *commandSet) accessCommand() *cobra.Command {
 				if found < 0 {
 					return fmt.Errorf("名单中不存在该规则")
 				}
-				*entries = append((*entries)[:found], (*entries)[found+1:]...)
+				copied := append([]domain.AccessEntry(nil), (*entries)...)
+				*entries = append(copied[:found], copied[found+1:]...)
 			}
 			if err = c.confirmAccessChange(policy); err != nil {
 				if errors.Is(err, errReturnToMenu) {
@@ -210,16 +239,17 @@ func (c *commandSet) accessCommand() *cobra.Command {
 				}
 				return err
 			}
-			if err = c.app.SetAccessPolicy(cmd.Context(), args[0], policy); err != nil {
+			if err = c.app.SetAccessPolicy(cmd.Context(), args[0], policy, previous); err != nil {
 				return err
 			}
 			system.WriteDetail(c.out, "更新结果", "%s", "访问名单已更新。")
 			return nil
 		}}
+		child.Flags().StringVar(&ports, "ports", "", "目标端口，例如 80,443、80.443、8000-8100 或 all；域名默认 80,443，IP/CIDR 默认全部；删除时匹配原始记录")
 		child.Flags().BoolVar(&exact, "exact", false, "仅匹配完整域名（默认包含域名及其子域名）")
 		cmd.AddCommand(child)
 	}
-	cmd.AddCommand(&cobra.Command{Use: "clear <sing-box|xray> <white|black>", Short: "清空指定名单；清空白名单时退出仅允许白名单模式", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd.AddCommand(&cobra.Command{Use: "clear <sing-box|xray> <white|black>", Short: "清空指定名单，保留模式和访问控制开关", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
 		policy, err := c.app.AccessPolicy(args[0])
 		if err != nil {
 			return err
@@ -238,7 +268,7 @@ func (c *commandSet) accessCommand() *cobra.Command {
 			}
 			return err
 		}
-		if err = c.app.SetAccessPolicy(cmd.Context(), args[0], next); err != nil {
+		if err = c.app.SetAccessPolicy(cmd.Context(), args[0], next, policy); err != nil {
 			return err
 		}
 		system.WriteDetail(c.out, "更新结果", "%s", "访问名单已清空。")

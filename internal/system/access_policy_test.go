@@ -11,6 +11,23 @@ import (
 	"proxyforge/internal/domain"
 )
 
+func TestAccessPolicyPreservesModeSelectionAndLegacyPortScope(t *testing.T) {
+	store := AccessPolicyStore{Layout: Layout{Root: t.TempDir()}}
+	for _, mode := range []string{"", domain.AccessModeDefault, domain.AccessModeWhitelist} {
+		policy := domain.AccessPolicy{Mode: mode, Whitelist: []domain.AccessEntry{
+			{Type: "domain", Value: "legacy.example.com", IncludeSubdomains: true},
+			{Type: "domain", Value: "new.example.com", Ports: "443.80"},
+		}}
+		if err := store.Save(domain.CoreXray, policy); err != nil {
+			t.Fatal(err)
+		}
+		got, err := store.Load(domain.CoreXray)
+		if err != nil || got.Mode != mode || got.Whitelist[0].Ports != "" || got.Whitelist[1].Ports != "80,443" {
+			t.Fatalf("mode or port scope changed: %+v, %v", got, err)
+		}
+	}
+}
+
 func TestAccessPolicyStoredSeparatelyAndIsolatedByCore(t *testing.T) {
 	store := StateStore{Layout: Layout{Root: t.TempDir()}}
 	policies := map[string]domain.AccessPolicy{

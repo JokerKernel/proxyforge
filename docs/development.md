@@ -52,7 +52,7 @@ SING_BOX_BIN=/path/to/sing-box XRAY_BIN=/path/to/xray MIHOMO_BIN=/path/to/mihomo
 | 环境变量 | 场景 | 测试筛选 |
 | --- | --- | --- |
 | `PROXYFORGE_TLS_CONNECT_TEST=1` | TLS 客户端连接及错误指纹拒绝 | `TestRealTLSClientsConnectAndRejectWrongPins` |
-| `PROXYFORGE_ACCESS_CONNECT_TEST=1` | 域名、IP/CIDR、名单优先级和空白名单 | `TestRealAccessPolicy` |
+| `PROXYFORGE_ACCESS_CONNECT_TEST=1` | 域名、IP/CIDR、目标端口、名单优先级和空白名单 | `TestRealAccessPolicy` |
 | `PROXYFORGE_FALLBACK_CONNECT_TEST=1` | 回落域名、子域名及 Host/SNI 边界 | `TestRealFallbackDomainBoundaries` |
 
 例如：

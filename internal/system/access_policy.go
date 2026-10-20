@@ -16,7 +16,7 @@ func (s AccessPolicyStore) Load(core string) (domain.AccessPolicy, error) {
 		return domain.AccessPolicy{}, err
 	}
 	if !exists {
-		return domain.AccessPolicy{Mode: domain.AccessModeDefault}, nil
+		return domain.AccessPolicy{}, nil
 	}
 	if policy == nil {
 		return domain.AccessPolicy{}, fmt.Errorf("访问控制配置必须是 JSON 对象: %s", path)
@@ -25,7 +25,6 @@ func (s AccessPolicyStore) Load(core string) (domain.AccessPolicy, error) {
 	if err != nil {
 		return domain.AccessPolicy{}, fmt.Errorf("访问控制配置无效 %s: %w", path, err)
 	}
-	normalized.Mode = normalized.EffectiveMode()
 	return normalized, nil
 }
 
@@ -50,7 +49,7 @@ func (s AccessPolicyStore) prepare(core string, policy domain.AccessPolicy) (pri
 		Blacklist []domain.AccessEntry `json:"blacklist"`
 	}{
 		Disabled:  normalized.Disabled,
-		Mode:      normalized.EffectiveMode(),
+		Mode:      normalized.Mode,
 		Whitelist: append([]domain.AccessEntry{}, normalized.Whitelist...),
 		Blacklist: append([]domain.AccessEntry{}, normalized.Blacklist...),
 	}

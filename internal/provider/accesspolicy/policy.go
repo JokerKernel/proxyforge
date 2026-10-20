@@ -4,6 +4,7 @@ package accesspolicy
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"proxyforge/internal/domain"
@@ -44,11 +45,12 @@ func clone(m map[string]any) map[string]any {
 func ownedRule(rule map[string]any, core string) bool {
 	if core == domain.CoreXray {
 		tag := str(rule["ruleTag"])
-		switch tag {
-		case "white-domain", "white-ip", "black-domain", "black-ip", Prefix + "final":
-			return true
+		for _, base := range []string{"white-domain", "white-ip", "black-domain", "black-ip"} {
+			if tag == base || strings.HasPrefix(tag, base+"-ports-") {
+				return true
+			}
 		}
-		return strings.HasPrefix(tag, Prefix+"white-relay-")
+		return tag == Prefix+"final" || strings.HasPrefix(tag, Prefix+"white-relay-")
 	}
 	for _, tag := range list(rule["rule_set"]) {
 		if str(tag) == scopeSet || str(tag) == whiteSet || str(tag) == blackSet {
@@ -182,6 +184,101 @@ func values(entries []domain.AccessEntry, core string) map[string]any {
 	return result
 }
 
+// Merge ports for each exact destination before grouping destinations by ports.
+// Work on copies so the management list keeps independently removable entries.
+func mergeDestinationPorts(entries []domain.AccessEntry) ([]domain.AccessEntry, error) {
+	var merged []domain.AccessEntry
+	positions := map[domain.AccessEntry]int{}
+	for _, entry := range entries {
+		ports, err := domain.NormalizeAccessPorts(entry.Ports)
+		if err != nil {
+			return nil, err
+		}
+		entry.Ports = ""
+		if index, ok := positions[entry]; ok {
+			previous := &merged[index]
+			if previous.Ports == "" || ports == "" {
+				previous.Ports = ""
+			} else {
+				previous.Ports, err = domain.NormalizeAccessPorts(previous.Ports + "," + ports)
+				if err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			positions[entry] = len(merged)
+			entry.Ports = ports
+			merged = append(merged, entry)
+		}
+	}
+	return merged, nil
+}
+
+// destinationGroups unions ports per destination, then groups equal port sets.
+// Kept separate from persisted records so deleting a record remains exact.
+func destinationGroups(entries []domain.AccessEntry) ([][]domain.AccessEntry, error) {
+	merged, err := mergeDestinationPorts(entries)
+	if err != nil {
+		return nil, err
+	}
+	var groups [][]domain.AccessEntry
+	positions := map[string]int{}
+	for _, entry := range merged {
+		index, ok := positions[entry.Ports]
+		if !ok {
+			index = len(groups)
+			positions[entry.Ports] = index
+			groups = append(groups, nil)
+		}
+		groups[index] = append(groups[index], entry)
+	}
+	return groups, nil
+}
+
+func portMatch(ports, core string) map[string]any {
+	result := map[string]any{}
+	if ports == "" {
+		return result
+	}
+	if core == domain.CoreXray {
+		result["port"] = ports
+		return result
+	}
+	var singles []int
+	var ranges []string
+	for _, part := range strings.Split(ports, ",") {
+		if strings.Contains(part, "-") {
+			ranges = append(ranges, strings.ReplaceAll(part, "-", ":"))
+		} else {
+			port, _ := strconv.Atoi(part)
+			singles = append(singles, port)
+		}
+	}
+	if len(singles) > 0 {
+		result["port"] = singles
+	}
+	if len(ranges) > 0 {
+		result["port_range"] = ranges
+	}
+	return result
+}
+
+func groupedMatches(entries []domain.AccessEntry, core string) ([]map[string]any, error) {
+	groups, err := destinationGroups(entries)
+	if err != nil {
+		return nil, err
+	}
+	var result []map[string]any
+	for _, group := range groups {
+		match := values(group, core)
+		for key, value := range portMatch(group[0].Ports, core) {
+			match[key] = value
+		}
+		result = append(result, match)
+	}
+	return result, nil
+}
+
 func Apply(root map[string]any, n domain.NodeSpec) error {
 	if err := ValidateRoot(root, n.Core); err != nil {
 		return err
@@ -253,35 +350,51 @@ func applyXray(root map[string]any, n domain.NodeSpec, p domain.AccessPolicy) er
 	}
 	outbounds = append(outbounds, map[string]any{"protocol": "blackhole", "settings": map[string]any{}, "tag": denyTag})
 	root["outbounds"] = outbounds
-	add := func(entries []domain.AccessEntry, outbound, user, label string) {
-		match := values(entries, n.Core)
-		// Xray combines domain and IP fields with AND; each kind gets its own rule.
-		for _, field := range []string{"domain", "ip"} {
-			if value, ok := match[field]; ok {
-				tag := Prefix + label + "-" + field
-				if label == "white" || label == "black" {
-					tag = label + "-" + field
+	white, err := groupedMatches(p.Whitelist, n.Core)
+	if err != nil {
+		return err
+	}
+	black, err := groupedMatches(p.Blacklist, n.Core)
+	if err != nil {
+		return err
+	}
+	add := func(matches []map[string]any, outbound, user, label string) {
+		for i, match := range matches {
+			// Xray combines domain and IP with AND; each kind needs its own rule.
+			for _, field := range []string{"domain", "ip"} {
+				if value, ok := match[field]; ok {
+					tag := label + "-" + field
+					if strings.HasPrefix(label, "white-relay-") {
+						tag = Prefix + tag
+					}
+					if match["port"] != nil {
+						tag += "-ports-" + strconv.Itoa(i+1)
+					}
+					rule := map[string]any{"inboundTag": tags, field: value, "outboundTag": outbound, "ruleTag": tag}
+					if match["port"] != nil {
+						rule["port"] = match["port"]
+					}
+					if user != "" {
+						rule["inboundTag"] = []string{n.InboundTag}
+						rule["user"] = []string{user}
+					}
+					front = append(front, rule)
 				}
-				rule := map[string]any{"inboundTag": tags, field: value, "outboundTag": outbound, "ruleTag": tag}
-				if user != "" {
-					rule["inboundTag"] = []string{n.InboundTag}
-					rule["user"] = []string{user}
-				}
-				front = append(front, rule)
 			}
 		}
 	}
 	if len(p.Whitelist) > 0 {
 		for _, link := range n.RelayLinks {
 			if link.Enabled {
-				add(p.Whitelist, domain.RelayOutboundTag(link.Name), link.UserName, "white-relay-"+link.Name)
+				add(white, domain.RelayOutboundTag(link.Name), link.UserName, "white-relay-"+link.Name)
 			}
 		}
-		add(p.Whitelist, directTag, "", "white")
+		add(white, directTag, "", "white")
 	}
 	if p.BlacklistEnabled() {
-		add(p.Blacklist, denyTag, "", "black")
+		add(black, denyTag, "", "black")
 	}
+
 	tail := list(route["rules"])
 	if p.EffectiveMode() == domain.AccessModeWhitelist {
 		tail = insertDefaultDeny(tail, map[string]any{"inboundTag": tags, "outboundTag": denyTag, "ruleTag": Prefix + "final"}, n.Core, tags, root)
@@ -304,7 +417,11 @@ func applySingBox(root map[string]any, n domain.NodeSpec, p domain.AccessPolicy)
 	}{{whiteSet, p.Whitelist}, {blackSet, p.Blacklist}} {
 		tag, entries := set.tag, set.entries
 		if len(entries) > 0 {
-			sets = append(sets, map[string]any{"type": "inline", "tag": tag, "rules": []any{values(entries, n.Core)}})
+			matches, err := groupedMatches(entries, n.Core)
+			if err != nil {
+				return err
+			}
+			sets = append(sets, map[string]any{"type": "inline", "tag": tag, "rules": matches})
 		}
 	}
 	route["rule_set"] = sets
@@ -458,31 +575,45 @@ func HasComponents(root map[string]any, core string) bool {
 
 // Client exceptions let explicitly allowed private targets reach the server,
 // which remains responsible for the complete access policy.
-func AllowClient(root map[string]any, n domain.NodeSpec) {
-	if !n.AccessPolicy.Active() || len(n.AccessPolicy.Whitelist) == 0 {
-		return
+func AllowClient(root map[string]any, n domain.NodeSpec) error {
+	policy, err := n.AccessPolicy.Normalize()
+	if err != nil {
+		return err
 	}
-	match := values(n.AccessPolicy.Whitelist, n.Core)
+	if !policy.Active() || len(policy.Whitelist) == 0 {
+		return nil
+	}
+	matches, err := groupedMatches(policy.Whitelist, n.Core)
+	if err != nil {
+		return err
+	}
+	key := "route"
 	if n.Core == domain.CoreXray {
-		route := object(root["routing"])
-		if route == nil {
-			return
-		}
-		rules := []any{}
-		for _, field := range []string{"domain", "ip"} {
-			if value, ok := match[field]; ok {
-				rules = append(rules, map[string]any{field: value, "outboundTag": "proxy"})
-			}
-		}
-		route["rules"] = append(rules, list(route["rules"])...)
-	} else {
-		route := object(root["route"])
-		if route == nil {
-			return
-		}
-		match["action"], match["outbound"] = "route", "proxy"
-		route["rules"] = append([]any{match}, list(route["rules"])...)
+		key = "routing"
 	}
+	route := object(root[key])
+	if route == nil {
+		return nil
+	}
+	rules := []any{}
+	for _, match := range matches {
+		if n.Core == domain.CoreXray {
+			for _, field := range []string{"domain", "ip"} {
+				if value, ok := match[field]; ok {
+					rule := map[string]any{field: value, "outboundTag": "proxy"}
+					if match["port"] != nil {
+						rule["port"] = match["port"]
+					}
+					rules = append(rules, rule)
+				}
+			}
+		} else {
+			match["action"], match["outbound"] = "route", "proxy"
+			rules = append(rules, match)
+		}
+	}
+	route["rules"] = append(rules, list(route["rules"])...)
+	return nil
 }
 
 // SnapshotSniffing preserves managed Xray inbound settings when enabling a policy.

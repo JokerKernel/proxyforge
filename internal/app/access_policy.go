@@ -16,6 +16,18 @@ func (a *App) AccessPolicy(core string) (domain.AccessPolicy, error) {
 	if err := a.RootCheck(); err != nil {
 		return domain.AccessPolicy{}, err
 	}
+	p, err := a.Registry.Get(core)
+	if err != nil {
+		return domain.AccessPolicy{}, err
+	}
+	unlock, err := a.lockAccessPolicy(context.Background(), core)
+	if err != nil {
+		return domain.AccessPolicy{}, err
+	}
+	defer unlock()
+	if err := a.recoverAccessTransaction(context.Background(), p, core); err != nil {
+		return domain.AccessPolicy{}, err
+	}
 	n, err := a.Store.Load(core)
 	if err != nil {
 		return domain.AccessPolicy{}, err
@@ -23,7 +35,7 @@ func (a *App) AccessPolicy(core string) (domain.AccessPolicy, error) {
 	return n.AccessPolicy.Normalize()
 }
 
-func (a *App) SetAccessPolicy(ctx context.Context, core string, requested domain.AccessPolicy) error {
+func (a *App) SetAccessPolicy(ctx context.Context, core string, requested domain.AccessPolicy, expected ...domain.AccessPolicy) error {
 	if err := a.RootCheck(); err != nil {
 		return err
 	}
@@ -33,6 +45,14 @@ func (a *App) SetAccessPolicy(ctx context.Context, core string, requested domain
 	}
 	p, err := a.Registry.Get(core)
 	if err != nil {
+		return err
+	}
+	unlock, err := a.lockAccessPolicy(ctx, core)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if err := a.recoverAccessTransaction(ctx, p, core); err != nil {
 		return err
 	}
 	if err := a.checkCoreInstalled(ctx, p); err != nil {
@@ -45,6 +65,15 @@ func (a *App) SetAccessPolicy(ctx context.Context, core string, requested domain
 	current, err := old.AccessPolicy.Normalize()
 	if err != nil {
 		return err
+	}
+	if len(expected) > 0 {
+		base, err := expected[0].Normalize()
+		if err != nil {
+			return err
+		}
+		if !reflect.DeepEqual(current, base) {
+			return fmt.Errorf("访问策略已被其他操作修改，请重新查看后重试")
+		}
 	}
 	if reflect.DeepEqual(current, policy) {
 		return nil
@@ -80,6 +109,19 @@ func (a *App) SetAccessPolicy(ctx context.Context, core string, requested domain
 	} else {
 		a.progressf("应用访问策略", "白名单优先，现有拦截规则兜底")
 	}
-	_, err = a.applyServerConfig(ctx, p, core, next, old, true, patched, managed)
+	_, err = a.applyServerConfigTransaction(ctx, p, core, next, old, true, patched, managed, func() error {
+		return a.beginAccessTransaction(ctx, p, core)
+	})
+	if err == nil {
+		err = os.Remove(a.accessTransactionPath(core))
+		if err == nil {
+			return nil
+		}
+	}
+	recoveryCtx, cancel := recoveryContext(ctx)
+	defer cancel()
+	if recoveryErr := a.recoverAccessTransaction(recoveryCtx, p, core); recoveryErr != nil {
+		return recoveryResult(err, "", recoveryErr)
+	}
 	return err
 }

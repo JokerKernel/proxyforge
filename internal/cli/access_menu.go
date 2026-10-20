@@ -50,7 +50,7 @@ func (c *commandSet) accessPolicyMenu(ctx context.Context, core string) error {
 				confirmation = "启用访问控制？按保存的模式和两份名单应用规则。"
 			}
 			success := "访问控制" + accessSwitchLabel(next) + "。"
-			err = c.applyAccessPolicyFromMenu(ctx, core, "访问开关", next, confirmation, success)
+			err = c.applyAccessPolicyFromMenu(ctx, core, "访问开关", next, policy, confirmation, success)
 		}
 		if err != nil {
 			return err
@@ -67,7 +67,7 @@ func (c *commandSet) accessModeMenu(ctx context.Context, core string) error {
 		c.clearScreen()
 		c.printPageHeader(core, "访问控制", "切换访问模式")
 		c.printAccessPolicyCard(policy)
-		modes := []string{domain.AccessModeDefault, domain.AccessModeWhitelist}
+		modes := []string{domain.AccessModeDefault, domain.AccessModeWhitelist, domain.AccessModeAuto}
 		defaultChoice := 1
 		for i, mode := range modes {
 			label := accessModeLabel(mode)
@@ -85,14 +85,16 @@ func (c *commandSet) accessModeMenu(ctx context.Context, core string) error {
 		if choice == 0 {
 			return nil
 		}
-		next := policy
-		next.Mode = modes[choice-1]
+		next, err := policy.SelectMode(modes[choice-1])
+		if err != nil {
+			return err
+		}
 		confirmation := "应用访问模式？白名单优先，原有拦截规则兜底。"
 		success := "访问模式已更新。"
 		if next.Disabled {
 			confirmation += "访问控制保持关闭，本次仅保存模式修改。"
 		}
-		if err := c.applyAccessPolicyFromMenu(ctx, core, "切换访问模式", next, confirmation, success); err != nil {
+		if err := c.applyAccessPolicyFromMenu(ctx, core, "切换访问模式", next, policy, confirmation, success); err != nil {
 			return err
 		}
 	}
@@ -190,7 +192,36 @@ func (c *commandSet) accessListMenu(ctx context.Context, core, list string) erro
 					}
 				}
 			}
-			*entries = append(*entries, additions...)
+			fmt.Fprintln(c.out, "逐条设置目标端口；支持 80,443、80.443、中文逗号、8000-8100；all 表示全部端口，q 返回。")
+			cancelled := false
+			for i := range additions {
+				defaultPorts := "all"
+				if additions[i].Type == domain.AccessEntryDomain {
+					defaultPorts = domain.DefaultAccessDomainPorts
+				}
+				value, askErr := c.askDefaultCancelable(additions[i].Value+" 的目标端口", defaultPorts)
+				if errors.Is(askErr, errReturnToMenu) {
+					cancelled = true
+					break
+				}
+				if askErr != nil {
+					return askErr
+				}
+				additions[i].Ports, err = domain.NormalizeAccessPorts(value)
+				if err != nil {
+					c.printMenuError(err)
+					c.pauseForMenu()
+					cancelled = true
+					break
+				}
+			}
+			if cancelled {
+				continue
+			}
+			next, err = next.AddEntries(list, additions)
+			if err != nil {
+				return err
+			}
 		case 2:
 			c.printPageHeader(core, "访问控制", section, "删除规则")
 			c.printLabeledCard("当前名单", [][2]string{{"名单", name}, {"规则数量", strconv.Itoa(len(*entries)) + " 条"}})
@@ -226,20 +257,20 @@ func (c *commandSet) accessListMenu(ctx context.Context, core, list string) erro
 			}
 			confirmation = "清空" + name + "的全部 " + strconv.Itoa(count) + " 条规则并应用？"
 			if policy.EffectiveMode() == domain.AccessModeWhitelist && list == "white" {
-				confirmation += "将退出仅允许白名单模式，切回默认模式。"
+				confirmation += "仍保持仅允许白名单模式；白名单为空时全部拒绝。"
 			}
 			success = name + "已清空。"
 		}
 		if next.Disabled {
 			confirmation += "访问控制保持关闭，本次仅保存名单修改。"
 		}
-		if err := c.applyAccessPolicyFromMenu(ctx, core, section, next, confirmation, success); err != nil {
+		if err := c.applyAccessPolicyFromMenu(ctx, core, section, next, policy, confirmation, success); err != nil {
 			return err
 		}
 	}
 }
 
-func (c *commandSet) applyAccessPolicyFromMenu(ctx context.Context, core, section string, next domain.AccessPolicy, confirmation, success string) error {
+func (c *commandSet) applyAccessPolicyFromMenu(ctx context.Context, core, section string, next, previous domain.AccessPolicy, confirmation, success string) error {
 	next, err := next.Normalize()
 	if err != nil {
 		c.printMenuError(err)
@@ -257,7 +288,7 @@ func (c *commandSet) applyAccessPolicyFromMenu(ctx context.Context, core, sectio
 		return err
 	}
 	if ok {
-		if err := c.app.SetAccessPolicy(ctx, core, next); err != nil {
+		if err := c.app.SetAccessPolicy(ctx, core, next, previous); err != nil {
 			c.printMenuError(err)
 		} else {
 			system.WriteDetail(c.out, "更新结果", "%s", success)

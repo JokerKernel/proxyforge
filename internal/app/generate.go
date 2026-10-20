@@ -355,6 +355,11 @@ func (a *App) checkCoreInstalled(ctx context.Context, p provider.CoreProvider) e
 }
 
 func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, core string, n, old domain.NodeSpec, hasOld bool, config []byte, managedConfig bool) (domain.NodeSpec, error) {
+	return a.applyServerConfigTransaction(ctx, p, core, n, old, hasOld, config, managedConfig, nil)
+}
+
+// prepare runs after validation and before the first live configuration write.
+func (a *App) applyServerConfigTransaction(ctx context.Context, p provider.CoreProvider, core string, n, old domain.NodeSpec, hasOld bool, config []byte, managedConfig bool, prepare func() error) (domain.NodeSpec, error) {
 	if managedConfig {
 		n.ConfigSHA256 = system.SHA256(config)
 	} else {
@@ -424,6 +429,11 @@ func (a *App) applyServerConfig(ctx context.Context, p provider.CoreProvider, co
 			if err := a.PortFree(port); err != nil {
 				return n, restoreStoppedService(err)
 			}
+		}
+	}
+	if prepare != nil {
+		if err := prepare(); err != nil {
+			return n, restoreStoppedService(err)
 		}
 	}
 	a.progressf("写入服务端配置", "%s（原子写入）", configPath)

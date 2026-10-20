@@ -218,7 +218,9 @@ func (*Provider) RenderClient(n domain.NodeSpec) ([]byte, error) {
 		if err := json.Unmarshal(b, &root); err != nil {
 			return nil, err
 		}
-		accesspolicy.AllowClient(root, n)
+		if err := accesspolicy.AllowClient(root, n); err != nil {
+			return nil, err
+		}
 		return marshalSingBox(root)
 	}
 	return marshalSingBox(v)

@@ -47,8 +47,8 @@ func TestAccessClearPreservesOtherListAndUpdatesModeAndRules(t *testing.T) {
 							if !strings.Contains(out.String(), "清空") || strings.Contains(out.String(), "操作失败") {
 								t.Fatalf("clear did not succeed: %s", out.String())
 							}
-							if mode == domain.AccessModeWhitelist && list == "white" && !strings.Contains(out.String(), "将退出仅允许白名单模式，切回默认模式") {
-								t.Fatal("clear preview omitted mode change")
+							if mode == domain.AccessModeWhitelist && list == "white" && !strings.Contains(out.String(), "仍保持仅允许白名单模式") {
+								t.Fatal("clear preview omitted retained restriction")
 							}
 						} else {
 							cmd := c.accessCommand()
@@ -60,9 +60,6 @@ func TestAccessClearPreservesOtherListAndUpdatesModeAndRules(t *testing.T) {
 						want := before
 						if list == "white" {
 							want.Whitelist = nil
-							if mode == domain.AccessModeWhitelist {
-								want.Mode = domain.AccessModeDefault
-							}
 						} else {
 							want.Blacklist = nil
 						}
@@ -96,20 +93,20 @@ func TestAccessClearPreservesOtherListAndUpdatesModeAndRules(t *testing.T) {
 	}
 }
 
-func TestClearEmptyWhitelistExitsWhitelistMode(t *testing.T) {
+func TestClearEmptyWhitelistPreservesWhitelistMode(t *testing.T) {
 	for _, core := range []string{domain.CoreXray, domain.CoreSingBox} {
 		t.Run(core, func(t *testing.T) {
 			c, _ := accessCLI(t, core)
 			if err := c.app.SetAccessPolicy(context.Background(), core, domain.AccessPolicy{Mode: domain.AccessModeWhitelist}); err != nil {
 				t.Fatal(err)
 			}
-			c.reader = bufio.NewReader(strings.NewReader("2\n3\n1\n0\n0\n"))
+			c.reader = bufio.NewReader(strings.NewReader("2\n3\n0\n0\n"))
 			if err := c.accessPolicyMenu(context.Background(), core); err != nil {
 				t.Fatal(err)
 			}
 			n, err := c.app.Store.Load(core)
-			if err != nil || n.AccessPolicy.EffectiveMode() != domain.AccessModeDefault || n.AccessPolicy.Active() {
-				t.Fatalf("empty whitelist mode not disabled: %#v, err=%v", n.AccessPolicy, err)
+			if err != nil || n.AccessPolicy.EffectiveMode() != domain.AccessModeWhitelist || !n.AccessPolicy.Active() {
+				t.Fatalf("empty whitelist mode was lost: %#v, err=%v", n.AccessPolicy, err)
 			}
 		})
 	}

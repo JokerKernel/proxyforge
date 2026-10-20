@@ -24,7 +24,7 @@ func TestAccessListMenusAddAndDeleteOnlySelectedList(t *testing.T) {
 					choice, name = "3", "黑名单"
 				}
 				// Add an exact domain and a normalized CIDR, then remove only the domain.
-				c.reader = bufio.NewReader(strings.NewReader(choice + "\n1\nadded.example.com\n2\n1\n1\n192.168.3.42/24\n1\n2\n2\n1\n0\n0\n"))
+				c.reader = bufio.NewReader(strings.NewReader(choice + "\n1\nadded.example.com\n2\n\n1\n1\n192.168.3.42/24\n\n1\n2\n2\n1\n0\n0\n"))
 				if err := c.accessPolicyMenu(context.Background(), core); err != nil {
 					t.Fatal(err)
 				}
