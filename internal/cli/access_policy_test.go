@@ -100,7 +100,7 @@ func TestAccessMenuShowsModesAndLists(t *testing.T) {
 	if err := c.accessPolicyMenu(context.Background(), domain.CoreXray); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"默认模式", "切换访问模式", "白名单管理", "黑名单管理", "关闭访问控制", "0 条"} {
+	for _, want := range []string{"自动选择", "切换访问模式", "白名单管理", "黑名单管理", "关闭访问控制", "0 条"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing %q in %s", want, out.String())
 		}
@@ -144,7 +144,7 @@ func TestAccessPolicyCardShowsEffectiveRuleOrder(t *testing.T) {
 
 func TestAccessMenuPreviewsEmptyWhitelistAndCancels(t *testing.T) {
 	c, out := accessCLI(t, domain.CoreXray)
-	c.reader = bufio.NewReader(strings.NewReader("1\n2\nq\n0\n0\n"))
+	c.reader = bufio.NewReader(strings.NewReader("1\n3\nq\n0\n0\n"))
 	if err := c.accessPolicyMenu(context.Background(), domain.CoreXray); err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestAccessMenuReturnsWithoutExtraPause(t *testing.T) {
 				{"delete-black", "3\n2\n", 2},
 				{"clear-white", "2\n3\n", 2},
 				{"clear-black", "3\n3\n", 2},
-				{"confirm", "1\n2\n", 2},
+				{"confirm", "1\n3\n", 2},
 			} {
 				t.Run(core+"/"+step.name+"/"+back, func(t *testing.T) {
 					c, _ := accessCLI(t, core)

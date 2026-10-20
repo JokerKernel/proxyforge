@@ -38,7 +38,7 @@ func TestAccessMenuSwitchPreservesSettingsAndAppliesSavedRules(t *testing.T) {
 				mode     string
 			}{
 				{"4\n1\n0\n", true, domain.AccessModeWhitelist},
-				{"1\n1\n1\n0\n0\n", true, domain.AccessModeDefault},
+				{"1\n2\n1\n0\n0\n", true, domain.AccessModeDefault},
 				{"4\n1\n0\n", false, domain.AccessModeDefault},
 			} {
 				out.Reset()

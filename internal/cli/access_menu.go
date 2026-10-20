@@ -67,12 +67,24 @@ func (c *commandSet) accessModeMenu(ctx context.Context, core string) error {
 		c.clearScreen()
 		c.printPageHeader(core, "访问控制", "切换访问模式")
 		c.printAccessPolicyCard(policy)
-		modes := []string{domain.AccessModeDefault, domain.AccessModeWhitelist, domain.AccessModeAuto}
+		modes := []string{domain.AccessModeAuto, domain.AccessModeDefault, domain.AccessModeWhitelist}
+		currentMode := policy.Mode
+		if currentMode == "" {
+			currentMode = domain.AccessModeAuto
+		}
 		defaultChoice := 1
 		for i, mode := range modes {
 			label := accessModeLabel(mode)
-			if mode == policy.EffectiveMode() {
+			if mode == domain.AccessModeAuto {
+				if currentMode == domain.AccessModeAuto {
+					label += "（已启用）"
+				} else {
+					label += "（已关闭）"
+				}
+			} else if mode == policy.EffectiveMode() {
 				label += "（当前）"
+			}
+			if mode == currentMode {
 				defaultChoice = i + 1
 			}
 			c.printMenuChoice(strconv.Itoa(i+1), label)

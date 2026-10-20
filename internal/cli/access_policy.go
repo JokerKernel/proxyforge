@@ -14,8 +14,8 @@ import (
 
 func accessModeLabel(mode string) string {
 	switch mode {
-	case domain.AccessModeAuto:
-		return "恢复自动选择"
+	case "", domain.AccessModeAuto:
+		return "自动选择"
 	case domain.AccessModeWhitelist:
 		return "仅允许白名单访问"
 	default:
@@ -70,7 +70,7 @@ func (c *commandSet) printAccessPolicyCard(policy domain.AccessPolicy) {
 	order = append(order, finalAction)
 	c.printLabeledCard("访问策略", [][2]string{
 		{"访问控制", accessSwitchLabel(policy)},
-		{"访问模式", accessModeLabel(policy.EffectiveMode())},
+		{"访问模式", accessModeLabel(policy.Mode)},
 		{"规则顺序", strings.Join(order, " → ")},
 		{"默认动作", defaultAction},
 	})
@@ -134,7 +134,7 @@ func (c *commandSet) accessCommand() *cobra.Command {
 		if err = c.app.SetAccessPolicy(cmd.Context(), args[0], policy, previous); err != nil {
 			return err
 		}
-		system.WriteDetail(c.out, "更新结果", "%s", "访问模式已更新："+accessModeLabel(policy.EffectiveMode()))
+		system.WriteDetail(c.out, "更新结果", "%s", "访问模式已更新："+accessModeLabel(policy.Mode))
 		return nil
 	}})
 	for _, operation := range []string{"enable", "disable"} {
