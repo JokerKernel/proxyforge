@@ -26,13 +26,44 @@ func TestAccessPolicyPreservesModeSelectionAndLegacyPortScope(t *testing.T) {
 			t.Fatalf("mode or port scope changed: %+v, %v", got, err)
 		}
 	}
-	policy := domain.AccessPolicy{AutoWhitelist: true}
-	if err := store.Save(domain.CoreXray, policy); err != nil {
-		t.Fatal(err)
-	}
-	got, err := store.Load(domain.CoreXray)
-	if err != nil || got.Mode != "" || !got.AutoWhitelist || got.EffectiveMode() != domain.AccessModeWhitelist || !got.Active() {
-		t.Fatalf("standalone storage lost automatic restriction after clear: %+v, %v", got, err)
+
+}
+
+func TestAccessPolicyIgnoresAndRemovesRetiredAutomaticMarker(t *testing.T) {
+	store := AccessPolicyStore{Layout: Layout{Root: t.TempDir()}}
+	path := store.Layout.AccessPolicyPath(domain.CoreXray)
+	for _, mode := range []string{"", domain.AccessModeDefault, domain.AccessModeWhitelist} {
+		for _, hasWhitelist := range []bool{false, true} {
+			old := map[string]any{"mode": mode, "auto_whitelist": true}
+			if hasWhitelist {
+				old["whitelist"] = []domain.AccessEntry{{Type: "domain", Value: "example.com", Ports: "80,443"}}
+			}
+			data, err := json.Marshal(old)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := AtomicWrite(path, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			policy, err := store.Load(domain.CoreXray)
+			wantMode := mode
+			if mode == "" {
+				wantMode = domain.AccessModeDefault
+				if hasWhitelist {
+					wantMode = domain.AccessModeWhitelist
+				}
+			}
+			if err != nil || policy.Mode != mode || policy.EffectiveMode() != wantMode {
+				t.Fatalf("retired marker overrode the current selection or list: %+v, %v", policy, err)
+			}
+			if err := store.Save(domain.CoreXray, policy); err != nil {
+				t.Fatal(err)
+			}
+			data, err = os.ReadFile(path)
+			if err != nil || bytes.Contains(data, []byte("auto_whitelist")) {
+				t.Fatalf("retired marker was saved again: %s, %v", data, err)
+			}
+		}
 	}
 }
 
@@ -139,7 +170,7 @@ func TestAccessPolicyRejectsInvalidFiles(t *testing.T) {
 	}
 	path := store.Layout.AccessPolicyPath(domain.CoreXray)
 	for _, content := range []string{
-		`null`, `{`, `{"mode":"unknown"}`, `{"mode":"blacklist"}`, `{"mode":"default"} {}`, `{"disabled":"true"}`,
+		`null`, `{`, `{"mode":"unknown"}`, `{"mode":"blacklist"}`, `{"mode":"default"} {}`, `{"disabled":"true"}`, `{"auto_whitelist":"true"}`,
 		`{"whitelist":[{"type":"cidr","value":"192.168.1.0/99"}]}`,
 		`{"mode":"default","whitelst":[]}`,
 	} {

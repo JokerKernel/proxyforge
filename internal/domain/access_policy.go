@@ -27,11 +27,10 @@ type AccessEntry struct {
 }
 
 type AccessPolicy struct {
-	Disabled      bool          `json:"disabled,omitempty"`
-	Mode          string        `json:"mode,omitempty"`
-	AutoWhitelist bool          `json:"auto_whitelist,omitempty"`
-	Whitelist     []AccessEntry `json:"whitelist,omitempty"`
-	Blacklist     []AccessEntry `json:"blacklist,omitempty"`
+	Disabled  bool          `json:"disabled,omitempty"`
+	Mode      string        `json:"mode,omitempty"`
+	Whitelist []AccessEntry `json:"whitelist,omitempty"`
+	Blacklist []AccessEntry `json:"blacklist,omitempty"`
 }
 
 // NormalizeAccessPorts canonicalizes destination ports; empty means all ports.
@@ -96,7 +95,7 @@ func NormalizeAccessPorts(value string) (string, error) {
 
 func (p AccessPolicy) EffectiveMode() string {
 	if p.Mode == "" {
-		if p.AutoWhitelist || len(p.Whitelist) > 0 {
+		if len(p.Whitelist) > 0 {
 			return AccessModeWhitelist
 		}
 		return AccessModeDefault
@@ -115,16 +114,13 @@ func (p AccessPolicy) BlacklistEnabled() bool {
 	return !p.Disabled && p.EffectiveMode() == AccessModeDefault
 }
 
-// Mode records only manual choices. Auto clears that choice and remembers its
-// result separately so clearing a whitelist cannot silently reopen access.
+// Mode records manual choices; an empty mode follows the current whitelist.
 func (p AccessPolicy) SelectMode(mode string) (AccessPolicy, error) {
 	switch mode {
 	case AccessModeAuto:
 		p.Mode = ""
-		p.AutoWhitelist = len(p.Whitelist) > 0
 	case AccessModeDefault, AccessModeWhitelist:
 		p.Mode = mode
-		p.AutoWhitelist = false
 	default:
 		return p, fmt.Errorf("访问模式无效（可选 auto、default 或 whitelist）")
 	}
@@ -134,11 +130,6 @@ func (p AccessPolicy) SelectMode(mode string) (AccessPolicy, error) {
 func (p AccessPolicy) AddEntries(listName string, entries []AccessEntry) (AccessPolicy, error) {
 	switch listName {
 	case "white":
-		// Remember the first automatic restriction without recording a manual
-		// mode. EffectiveMode also checks existing whitelists on read.
-		if p.Mode == "" && len(p.Whitelist) == 0 && len(entries) > 0 {
-			p.AutoWhitelist = true
-		}
 		p.Whitelist = append(p.Whitelist, entries...)
 	case "black":
 		p.Blacklist = append(p.Blacklist, entries...)
@@ -151,9 +142,6 @@ func (p AccessPolicy) AddEntries(listName string, entries []AccessEntry) (Access
 func (p AccessPolicy) ClearList(listName string) (AccessPolicy, error) {
 	switch listName {
 	case "white":
-		if p.Mode == "" && len(p.Whitelist) > 0 {
-			p.AutoWhitelist = true
-		}
 		p.Whitelist = nil
 	case "black":
 		p.Blacklist = nil
@@ -272,8 +260,5 @@ func (p AccessPolicy) Normalize() (AccessPolicy, error) {
 		return p, err
 	}
 	p.Blacklist, err = normalize(p.Blacklist)
-	if err == nil && p.Mode == "" && len(p.Whitelist) > 0 {
-		p.AutoWhitelist = true
-	}
 	return p, err
 }

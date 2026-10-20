@@ -16,7 +16,7 @@ import (
 
 func TestAccessClearPreservesOtherListAndUpdatesModeAndRules(t *testing.T) {
 	for _, core := range []string{domain.CoreXray, domain.CoreSingBox} {
-		for _, mode := range []string{domain.AccessModeDefault, domain.AccessModeWhitelist} {
+		for _, mode := range []string{"", domain.AccessModeDefault, domain.AccessModeWhitelist} {
 			for _, list := range []string{"white", "black"} {
 				for _, source := range []string{"menu", "command"} {
 					t.Run(core+"/"+mode+"/"+list+"/"+source, func(t *testing.T) {

@@ -10,7 +10,12 @@ type AccessPolicyStore struct{ Layout Layout }
 
 func (s AccessPolicyStore) Load(core string) (domain.AccessPolicy, error) {
 	path := s.Layout.AccessPolicyPath(core)
-	var policy *domain.AccessPolicy
+	// Accept the retired marker when reading existing files, then omit it
+	// on save. Only mode and the current whitelist determine behavior.
+	var policy *struct {
+		domain.AccessPolicy
+		LegacyAutoWhitelist bool `json:"auto_whitelist,omitempty"`
+	}
 	exists, err := loadPrivateJSON(path, &policy)
 	if err != nil {
 		return domain.AccessPolicy{}, err
@@ -21,7 +26,7 @@ func (s AccessPolicyStore) Load(core string) (domain.AccessPolicy, error) {
 	if policy == nil {
 		return domain.AccessPolicy{}, fmt.Errorf("访问控制配置必须是 JSON 对象: %s", path)
 	}
-	normalized, err := policy.Normalize()
+	normalized, err := policy.AccessPolicy.Normalize()
 	if err != nil {
 		return domain.AccessPolicy{}, fmt.Errorf("访问控制配置无效 %s: %w", path, err)
 	}
@@ -43,17 +48,15 @@ func (s AccessPolicyStore) prepare(core string, policy domain.AccessPolicy) (pri
 	}
 	// Keep the switch, mode and both lists visible, including empty lists.
 	config := struct {
-		Disabled      bool                 `json:"disabled"`
-		Mode          string               `json:"mode"`
-		AutoWhitelist bool                 `json:"auto_whitelist,omitempty"`
-		Whitelist     []domain.AccessEntry `json:"whitelist"`
-		Blacklist     []domain.AccessEntry `json:"blacklist"`
+		Disabled  bool                 `json:"disabled"`
+		Mode      string               `json:"mode"`
+		Whitelist []domain.AccessEntry `json:"whitelist"`
+		Blacklist []domain.AccessEntry `json:"blacklist"`
 	}{
-		Disabled:      normalized.Disabled,
-		Mode:          normalized.Mode,
-		AutoWhitelist: normalized.AutoWhitelist,
-		Whitelist:     append([]domain.AccessEntry{}, normalized.Whitelist...),
-		Blacklist:     append([]domain.AccessEntry{}, normalized.Blacklist...),
+		Disabled:  normalized.Disabled,
+		Mode:      normalized.Mode,
+		Whitelist: append([]domain.AccessEntry{}, normalized.Whitelist...),
+		Blacklist: append([]domain.AccessEntry{}, normalized.Blacklist...),
 	}
 	return preparePrivateJSON(s.Layout.AccessPolicyPath(core), config)
 }

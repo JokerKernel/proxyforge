@@ -268,8 +268,12 @@ func (c *commandSet) accessListMenu(ctx context.Context, core, list string) erro
 				continue
 			}
 			confirmation = "清空" + name + "的全部 " + strconv.Itoa(count) + " 条规则并应用？"
-			if policy.EffectiveMode() == domain.AccessModeWhitelist && list == "white" {
-				confirmation += "仍保持仅允许白名单模式；白名单为空时全部拒绝。"
+			if list == "white" {
+				if policy.Mode == domain.AccessModeWhitelist {
+					confirmation += "仍保持仅允许白名单模式；白名单为空时全部拒绝。"
+				} else if policy.Mode == "" {
+					confirmation += "自动选择将切回默认模式，继续按黑名单和原有拦截规则处理。"
+				}
 			}
 			success = name + "已清空。"
 		}
