@@ -66,7 +66,10 @@ func (c *commandSet) printAccessPolicyCard(policy domain.AccessPolicy) {
 	finalAction := "其余放行"
 	if !policy.Disabled && policy.EffectiveMode() == domain.AccessModeWhitelist {
 		effectiveMode = "仅白名单模式"
-		defaultAction = "拒绝；白名单为空时全部拒绝。"
+		defaultAction = "未命中白名单则拒绝"
+		if policy.Mode == domain.AccessModeWhitelist {
+			defaultAction += "；白名单为空时全部拒绝"
+		}
 		finalAction = "其余拒绝"
 	}
 	order = append(order, finalAction)
