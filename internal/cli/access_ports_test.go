@@ -35,7 +35,7 @@ func TestAccessPortRecordsDeletionAndModeLifecycle(t *testing.T) {
 				}
 			}
 			policy, err := c.app.AccessPolicy(core)
-			if err != nil || policy.Mode != domain.AccessModeWhitelist || len(policy.Whitelist) != 3 || policy.Whitelist[0].Ports != "80,443" || policy.Whitelist[1].Ports != "553" || policy.Whitelist[2].Ports != "80,443" {
+			if err != nil || policy.Mode != "" || !policy.AutoWhitelist || policy.EffectiveMode() != domain.AccessModeWhitelist || len(policy.Whitelist) != 3 || policy.Whitelist[0].Ports != "80,443" || policy.Whitelist[1].Ports != "553" || policy.Whitelist[2].Ports != "80,443" {
 				t.Fatalf("incorrect raw records: %+v, %v", policy, err)
 			}
 			if err := runAccess(t, c, "remove", core, "white", "a.example.com", "--ports", "80,443,553"); err == nil {
@@ -65,7 +65,7 @@ func TestAccessPortRecordsDeletionAndModeLifecycle(t *testing.T) {
 				}
 			}
 			policy, _ = c.app.AccessPolicy(core)
-			if policy.Mode != domain.AccessModeWhitelist || !policy.Active() {
+			if policy.Mode != "" || !policy.AutoWhitelist || policy.EffectiveMode() != domain.AccessModeWhitelist || !policy.Active() {
 				t.Fatal("clear opened whitelist mode")
 			}
 			for _, args := range [][]string{{"mode", core, "auto"}, {"disable", core}, {"add", core, "white", "new.example.com", "--ports", "all"}} {
@@ -74,7 +74,7 @@ func TestAccessPortRecordsDeletionAndModeLifecycle(t *testing.T) {
 				}
 			}
 			policy, _ = c.app.AccessPolicy(core)
-			if !policy.Disabled || policy.Mode != domain.AccessModeWhitelist || policy.Whitelist[0].Ports != "" {
+			if !policy.Disabled || policy.Mode != "" || !policy.AutoWhitelist || policy.EffectiveMode() != domain.AccessModeWhitelist || policy.Whitelist[0].Ports != "" {
 				t.Fatalf("auto selection or switch lost: %+v", policy)
 			}
 		})

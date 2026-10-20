@@ -101,11 +101,11 @@ func TestClearAccessListPreservesModeAndSwitch(t *testing.T) {
 func TestAccessModeSelectionAndFirstWhitelist(t *testing.T) {
 	entry := AccessEntry{Type: AccessEntryDomain, Value: "example.com", Ports: "80,443"}
 	for _, tc := range []struct {
-		name, mode, list, wantMode string
-		existing, empty, disabled  bool
+		name, mode, list, wantMode           string
+		existing, empty, disabled, autoWhite bool
 	}{
-		{name: "first-white", list: "white", wantMode: AccessModeWhitelist},
-		{name: "first-white-disabled", list: "white", wantMode: AccessModeWhitelist, disabled: true},
+		{name: "first-white", list: "white", autoWhite: true},
+		{name: "first-white-disabled", list: "white", autoWhite: true, disabled: true},
 		{name: "only-black", list: "black"},
 		{name: "empty-batch", list: "white", empty: true},
 		{name: "manual-default", mode: AccessModeDefault, list: "white", wantMode: AccessModeDefault},
@@ -125,7 +125,7 @@ func TestAccessModeSelectionAndFirstWhitelist(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.Mode != tc.wantMode || got.Disabled != tc.disabled {
+			if got.Mode != tc.wantMode || got.Disabled != tc.disabled || got.AutoWhitelist != tc.autoWhite {
 				t.Fatalf("unexpected automatic selection: %+v", got)
 			}
 		})
@@ -143,9 +143,7 @@ func TestAccessModeSelectionAndFirstWhitelist(t *testing.T) {
 				}
 				want := policy
 				want.Mode = ""
-				if hasWhite {
-					want.Mode = AccessModeWhitelist
-				}
+				want.AutoWhitelist = hasWhite
 				if !reflect.DeepEqual(got, want) {
 					t.Fatalf("restoring auto changed the wrong fields: got %+v, want %+v", got, want)
 				}
@@ -164,6 +162,46 @@ func TestAccessModeSelectionAndFirstWhitelist(t *testing.T) {
 		var restored AccessPolicy
 		if err := json.Unmarshal(data, &restored); err != nil || restored.Mode != mode {
 			t.Fatalf("manual mode lost on reload: %s, %v", data, err)
+		}
+	}
+}
+
+func TestAutomaticSelectionKeepsManualChoiceEmptyAndRemembersRestriction(t *testing.T) {
+	entry := AccessEntry{Type: AccessEntryDomain, Value: "example.com", Ports: "80,443"}
+	for _, selectWithExistingWhitelist := range []bool{false, true} {
+		policy := AccessPolicy{}
+		var err error
+		if selectWithExistingWhitelist {
+			policy = AccessPolicy{Mode: AccessModeDefault, Whitelist: []AccessEntry{entry}}
+			policy, err = policy.SelectMode(AccessModeAuto)
+		} else {
+			policy, err = policy.AddEntries("white", []AccessEntry{entry})
+		}
+		if err != nil || policy.Mode != "" || policy.EffectiveMode() != AccessModeWhitelist {
+			t.Fatalf("automatic restriction recorded a manual choice: %+v, %v", policy, err)
+		}
+		policy, err = policy.ClearList("white")
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := json.Marshal(policy)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var reloaded AccessPolicy
+		if err := json.Unmarshal(data, &reloaded); err != nil {
+			t.Fatal(err)
+		}
+		if reloaded.Mode != "" || reloaded.EffectiveMode() != AccessModeWhitelist || !reloaded.Active() {
+			t.Fatalf("reloading a cleared automatic whitelist reopened access: %s", data)
+		}
+		manual, err := reloaded.SelectMode(AccessModeDefault)
+		if err != nil || manual.Mode != AccessModeDefault || manual.AutoWhitelist || manual.EffectiveMode() != AccessModeDefault {
+			t.Fatalf("manual selection did not override automatic result: %+v, %v", manual, err)
+		}
+		auto, err := reloaded.SelectMode(AccessModeAuto)
+		if err != nil || auto.Mode != "" || auto.EffectiveMode() != AccessModeDefault {
+			t.Fatalf("reselecting auto with no whitelist did not reset its result: %+v, %v", auto, err)
 		}
 	}
 }

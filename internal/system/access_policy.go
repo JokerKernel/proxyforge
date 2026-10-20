@@ -43,15 +43,17 @@ func (s AccessPolicyStore) prepare(core string, policy domain.AccessPolicy) (pri
 	}
 	// Keep the switch, mode and both lists visible, including empty lists.
 	config := struct {
-		Disabled  bool                 `json:"disabled"`
-		Mode      string               `json:"mode"`
-		Whitelist []domain.AccessEntry `json:"whitelist"`
-		Blacklist []domain.AccessEntry `json:"blacklist"`
+		Disabled      bool                 `json:"disabled"`
+		Mode          string               `json:"mode"`
+		AutoWhitelist bool                 `json:"auto_whitelist,omitempty"`
+		Whitelist     []domain.AccessEntry `json:"whitelist"`
+		Blacklist     []domain.AccessEntry `json:"blacklist"`
 	}{
-		Disabled:  normalized.Disabled,
-		Mode:      normalized.Mode,
-		Whitelist: append([]domain.AccessEntry{}, normalized.Whitelist...),
-		Blacklist: append([]domain.AccessEntry{}, normalized.Blacklist...),
+		Disabled:      normalized.Disabled,
+		Mode:          normalized.Mode,
+		AutoWhitelist: normalized.AutoWhitelist,
+		Whitelist:     append([]domain.AccessEntry{}, normalized.Whitelist...),
+		Blacklist:     append([]domain.AccessEntry{}, normalized.Blacklist...),
 	}
 	return preparePrivateJSON(s.Layout.AccessPolicyPath(core), config)
 }

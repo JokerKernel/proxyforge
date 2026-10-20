@@ -26,6 +26,14 @@ func TestAccessPolicyPreservesModeSelectionAndLegacyPortScope(t *testing.T) {
 			t.Fatalf("mode or port scope changed: %+v, %v", got, err)
 		}
 	}
+	policy := domain.AccessPolicy{AutoWhitelist: true}
+	if err := store.Save(domain.CoreXray, policy); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.Load(domain.CoreXray)
+	if err != nil || got.Mode != "" || !got.AutoWhitelist || got.EffectiveMode() != domain.AccessModeWhitelist || !got.Active() {
+		t.Fatalf("standalone storage lost automatic restriction after clear: %+v, %v", got, err)
+	}
 }
 
 func TestAccessPolicyStoredSeparatelyAndIsolatedByCore(t *testing.T) {

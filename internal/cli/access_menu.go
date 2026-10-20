@@ -76,7 +76,7 @@ func (c *commandSet) accessModeMenu(ctx context.Context, core string) error {
 		for i, mode := range modes {
 			label := accessModeLabel(mode)
 			if mode == domain.AccessModeAuto {
-				if currentMode == domain.AccessModeAuto {
+				if policy.Mode == "" {
 					label += "（已启用）"
 				} else {
 					label += "（已关闭）"

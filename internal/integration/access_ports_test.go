@@ -49,7 +49,7 @@ func TestRealAccessPolicyPorts(t *testing.T) {
 					first := domain.AccessEntry{Type: entryType, Value: value, Ports: strconv.Itoa(ports[0])}
 					second := first
 					second.Ports = strconv.Itoa(ports[1]) + "-" + strconv.Itoa(ports[1])
-					n.AccessPolicy = domain.AccessPolicy{Mode: domain.AccessModeWhitelist, Whitelist: []domain.AccessEntry{
+					n.AccessPolicy = domain.AccessPolicy{AutoWhitelist: true, Whitelist: []domain.AccessEntry{
 						first, {Type: "domain", Value: other, Ports: strconv.Itoa(ports[0])}, second,
 					}}
 					loopback := kind == "blacklist"
