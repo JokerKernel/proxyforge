@@ -21,7 +21,8 @@ type serviceUserRunner struct {
 	user            string
 	accountExists   bool
 	groupExists     bool
-	invalidAccount  bool
+	accountHome     string
+	accountShell    string
 	failUserCheck   bool
 	failRunuser     bool
 	failIsActive    bool
@@ -78,10 +79,14 @@ func (r *serviceUserRunner) Run(_ context.Context, name string, args ...string) 
 			if !r.accountExists {
 				return nil, errors.New("unknown user")
 			}
-			if r.invalidAccount {
-				return []byte("xray:x:1000:1000:Xray User:/home/xray:/bin/bash\n"), nil
+			home, shell := r.accountHome, r.accountShell
+			if home == "" {
+				home = "/nonexistent"
 			}
-			return []byte("xray:x:999:999:Xray Service:/nonexistent:/usr/sbin/nologin\n"), nil
+			if shell == "" {
+				shell = "/usr/sbin/nologin"
+			}
+			return []byte("xray:x:999:999:Xray Service:" + home + ":" + shell + "\n"), nil
 		}
 		if args[0] == "group" {
 			if !r.groupExists && !r.accountExists {
@@ -358,20 +363,85 @@ func TestServiceUserRecoverySurvivesCanceledOperation(t *testing.T) {
 	}
 }
 
-func TestUseDedicatedXrayServiceUserRejectsExistingLoginAccount(t *testing.T) {
-	a, runner, root := newServiceUserTestApp(t, false)
-	runner.accountExists = true
-	runner.invalidAccount = true
-	_, err := a.UseDedicatedXrayServiceUser(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "不是 ProxyForge 专用服务账号") {
-		t.Fatalf("error=%v", err)
+func TestUseDedicatedXrayServiceUserReusesExistingServiceAccount(t *testing.T) {
+	for _, home := range []string{"/nonexistent", "/var/empty"} {
+		t.Run(home, func(t *testing.T) {
+			a, runner, root := newServiceUserTestApp(t, false)
+			runner.accountExists = true
+			runner.accountHome = home
+			runner.user = "xray"
+			unit := []byte("[Service]\nUser=xray\nGroup=xray\nExecStart=/usr/local/bin/xray run\n")
+			for _, path := range xraySystemdUnits {
+				if err := os.WriteFile(a.Layout.Resolve(path), unit, 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			configPath := filepath.Join(root, "usr/local/etc/xray/config.json")
+			config, err := os.ReadFile(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			change, err := a.UseDedicatedXrayServiceUser(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if change.UserCreated || change.Previous != "xray" || change.Current != "xray" {
+				t.Fatalf("change=%#v", change)
+			}
+			if _, err := os.Stat(a.Layout.XrayServiceAccountMarkerPath()); !os.IsNotExist(err) {
+				t.Fatalf("existing account must not be marked as owned: %v", err)
+			}
+			got, err := os.ReadFile(configPath)
+			if err != nil || string(got) != string(config) {
+				t.Fatalf("config content changed: %q, %v", got, err)
+			}
+			second, err := a.UseDedicatedXrayServiceUser(context.Background())
+			if err != nil || second.Changed || second.Restarted || second.UserCreated {
+				t.Fatalf("repeat migration: change=%#v error=%v", second, err)
+			}
+		})
 	}
-	data, readErr := os.ReadFile(filepath.Join(root, "etc/systemd/system/xray.service"))
-	if readErr != nil {
-		t.Fatal(readErr)
-	}
-	if !strings.Contains(string(data), "User=nobody") {
-		t.Fatalf("unit was not restored: %s", data)
+}
+
+func TestUseDedicatedXrayServiceUserRejectsExistingAccountBeforeWriting(t *testing.T) {
+	for _, tt := range []struct {
+		name, home, shell, wantError string
+	}{
+		{"login account", "/home/xray", "/bin/bash", "不是 ProxyForge 专用服务账号"},
+		{"unexpected home", "/home/xray", "/usr/sbin/nologin", "不是 ProxyForge 专用服务账号"},
+		{"project home with login shell", "/nonexistent", "/bin/bash", "允许登录"},
+		{"official home with login shell", "/var/empty", "/bin/bash", "允许登录"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			a, runner, _ := newServiceUserTestApp(t, false)
+			runner.accountExists = true
+			runner.accountHome, runner.accountShell = tt.home, tt.shell
+			_, err := a.UseDedicatedXrayServiceUser(context.Background())
+			if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+				t.Fatalf("error=%v", err)
+			}
+			for _, path := range xraySystemdUnits {
+				data, err := os.ReadFile(a.Layout.Resolve(path))
+				if err != nil || !strings.Contains(string(data), "User=nobody") {
+					t.Fatalf("unit changed: %s, %v", data, err)
+				}
+			}
+			for _, path := range []string{
+				a.Layout.Resolve(xrayServiceUserDropIn),
+				a.Layout.Resolve(xraySysusersConfig),
+				a.Layout.XrayServiceAccountMarkerPath(),
+			} {
+				if _, err := os.Stat(path); !os.IsNotExist(err) {
+					t.Fatalf("unexpected file after rejection: %s, %v", path, err)
+				}
+			}
+			for _, call := range runner.calls {
+				if !strings.HasPrefix(call, "getent ") && !strings.HasPrefix(call, "systemctl show ") && !strings.HasPrefix(call, "systemctl is-active ") {
+					t.Fatalf("unexpected command after rejection: %s", call)
+				}
+			}
+		})
 	}
 }
 

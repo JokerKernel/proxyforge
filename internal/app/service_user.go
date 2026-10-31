@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -57,6 +58,24 @@ func (a *App) XrayServiceUser(ctx context.Context) (string, error) {
 	return a.Services.UserState(ctx, p.ServiceName())
 }
 
+// XrayServiceAccountExists checks account availability without changing it.
+func (a *App) XrayServiceAccountExists(ctx context.Context) (bool, error) {
+	if err := a.RootCheck(); err != nil {
+		return false, err
+	}
+	_, err := a.Runner.Run(ctx, "getent", "passwd", XrayDedicatedServiceUser)
+	if err == nil {
+		return true, nil
+	}
+	// getent returns 2 when the requested key was not found. Other failures
+	// must not be presented as permission to create a new account.
+	var exitErr interface{ ExitCode() int }
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
+		return false, nil
+	}
+	return false, fmt.Errorf("检查 xray 系统账号是否存在: %w", err)
+}
+
 // UseDedicatedXrayServiceUser replaces the official installer's User=nobody
 // assignment with a dedicated system account. The main unit is updated as well
 // as a drop-in because merely overriding User= does not suppress systemd's
@@ -82,6 +101,13 @@ func (a *App) UseDedicatedXrayServiceUser(ctx context.Context) (ServiceUserChang
 	wasRunning, err := installedServiceRunning(status, statusErr)
 	if err != nil {
 		return change, fmt.Errorf("检查迁移前 %s 运行状态: %w", p.ServiceName(), err)
+	}
+	// Reject incompatible existing accounts before writing files or triggering
+	// recovery. Accounts created below are still validated after sysusers runs.
+	if _, lookupErr := a.Runner.Run(ctx, "getent", "passwd", XrayDedicatedServiceUser); lookupErr == nil {
+		if err := a.validateXrayServiceAccount(ctx); err != nil {
+			return change, err
+		}
 	}
 	snapshots, changedUnits, err := a.prepareXrayServiceUserFiles()
 	if err != nil {
@@ -221,8 +247,8 @@ func (a *App) inspectXrayServiceAccount(ctx context.Context) (xrayServiceAccount
 		return identity, fmt.Errorf("拒绝使用 UID 0 的 %s 用户运行 Xray", XrayDedicatedServiceUser)
 	}
 	home := filepath.Clean(fields[5])
-	if home != "/nonexistent" {
-		return identity, fmt.Errorf("已存在的 %s 用户不是 ProxyForge 专用服务账号：home=%s，要求 /nonexistent", XrayDedicatedServiceUser, fields[5])
+	if home != "/nonexistent" && home != "/var/empty" {
+		return identity, fmt.Errorf("已存在的 %s 用户不是 ProxyForge 专用服务账号：home=%s，要求 /nonexistent 或 /var/empty", XrayDedicatedServiceUser, fields[5])
 	}
 	shellBase := filepath.Base(strings.TrimSpace(fields[6]))
 	if shellBase != "nologin" && shellBase != "false" {
