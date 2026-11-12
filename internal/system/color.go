@@ -17,6 +17,7 @@ const (
 	ansiDim         = "\x1b[2m"
 	ansiYellow      = "\x1b[33m"
 	ansiBlue        = "\x1b[34m"
+	ansiWhite       = "\x1b[37m"
 	ansiMagenta     = "\x1b[35m"
 	ansiBrightBlack = "\x1b[90m"
 )
@@ -180,6 +181,7 @@ func decorateConfigCardLine(value string) string {
 		return value
 	}
 	labels := []string{
+		"当前内核版本", "升级内核版本",
 		"HTTP Host", "DNS 设置", "SNI 防护", "严格模式", "服务状态", "日志级别", "运行用户", "出站 IP", "回落 IP",
 		"客户端用户", "线路名称", "落地地址", "落地协议", "出站 tag", "接入名称", "接入用户", "接入方式",
 		"监听端口", "中转协议", "回落端口", "回落目标", "连接地址", "节点协议", "用户名称", "入站标签",
@@ -206,6 +208,12 @@ func decorateConfigCardLine(value string) string {
 }
 
 func decorateConfigCardValue(label, value string) string {
+	switch label {
+	case "当前内核版本":
+		return wrapANSI(ansiWhite, value)
+	case "升级内核版本":
+		return wrapANSI(ansiOrange, value)
+	}
 	switch value {
 	case "运行中", "已开启", "已启用":
 		return wrapANSI(ansiOrange, value)
