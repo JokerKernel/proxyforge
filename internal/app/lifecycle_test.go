@@ -540,13 +540,15 @@ func TestInstalledServiceRunning(t *testing.T) {
 func TestPrintInstallSuccessDistinguishesInstallAndUpgrade(t *testing.T) {
 	var installed, upgraded, unchanged bytes.Buffer
 	printInstallSuccess(&installed, domain.CoreSingBox, "", "sing-box version 1.13.16", true)
-	printInstallSuccess(&upgraded, domain.CoreXray, "Xray 25.1.1", "Xray 25.2.0", false)
+	previous := "Xray 25.1.1 (Xray, Penetrates Everything.) abc123 (go1.26.1 linux/amd64)"
+	current := "Xray 25.2.0 (Xray, Penetrates Everything.) def456 (go1.26.1 linux/amd64)"
+	printInstallSuccess(&upgraded, domain.CoreXray, previous, current, false)
 	same := "Xray 26.3.27 (Xray, Penetrates Everything.) d2758a0 (go1.26.1 linux/amd64)"
 	printInstallSuccess(&unchanged, domain.CoreXray, same, same, true)
 
 	for _, want := range []string{
 		"╭─ sing-box 安装成功",
-		"│ 内核版本  sing-box version 1.13.16",
+		"│ 内核版本  sing-box 1.13.16",
 		"│ 服务状态  运行中  -- active",
 		system.LabeledCardRule,
 	} {
@@ -559,13 +561,17 @@ func TestPrintInstallSuccessDistinguishesInstallAndUpgrade(t *testing.T) {
 	}
 	for _, want := range []string{
 		"╭─ xray 升级成功",
-		"│ 内核版本  Xray 25.1.1  ->  Xray 25.2.0",
-		"│ 服务状态  未运行  -- inactive",
-		"│ 说明      尚未生成服务端配置时服务不运行，生成配置后会自动启动。",
+		"│ 当前内核版本  " + previous + "\n",
+		"│ 升级内核版本  " + current + "\n",
+		"│ 服务状态      未运行  -- inactive",
+		"│ 说明          尚未生成服务端配置时服务不运行，生成配置后会自动启动。",
 	} {
 		if !strings.Contains(upgraded.String(), want) {
 			t.Fatalf("upgrade result missing %q: %q", want, upgraded.String())
 		}
+	}
+	if strings.Contains(upgraded.String(), "->") {
+		t.Fatalf("upgrade result should use separate version rows: %q", upgraded.String())
 	}
 	for _, want := range []string{"╭─ xray 版本未变化", "│ 内核版本  " + same + "  -- 与安装前相同", "│ 服务状态  运行中  -- active"} {
 		if !strings.Contains(unchanged.String(), want) {

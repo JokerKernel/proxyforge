@@ -37,12 +37,18 @@ func WriteDetail(output io.Writer, label, format string, args ...any) {
 const LabeledCardRule = "╰──────────────────────────────────────────────"
 
 // WriteLabeledCard prints the shared open-edge information card. Labels use a
-// 10-column display width, and the right edge stays open.
+// minimum 10-column display width, expanding for longer labels.
+// The right edge stays open.
 func WriteLabeledCard(output io.Writer, title string, rows [][2]string) {
 	if output == nil {
 		return
 	}
-	const labelWidth = 10
+	labelWidth := 10
+	for _, row := range rows {
+		if width := DisplayWidth(row[0]); width > 10 {
+			labelWidth = max(labelWidth, width+2)
+		}
+	}
 	fmt.Fprintf(output, "╭─ %s\n", title)
 	for _, row := range rows {
 		padding := labelWidth - DisplayWidth(row[0])

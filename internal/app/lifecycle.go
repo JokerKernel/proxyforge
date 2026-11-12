@@ -97,32 +97,40 @@ func (a *App) Install(ctx context.Context, core string, opts install.Options) er
 }
 
 func printInstallSuccess(w io.Writer, core, previousVersion, version string, running bool) {
-	title, versionLine := installResultSummary(previousVersion, version)
+	title, rows := installResultSummary(previousVersion, version)
 	serviceStatus := "未运行  -- inactive"
 	if running {
 		serviceStatus = "运行中  -- active"
 	}
-	rows := [][2]string{
-		{"内核版本", versionLine},
-		{"服务状态", serviceStatus},
-	}
+	rows = append(rows, [2]string{"服务状态", serviceStatus})
 	if !running {
 		rows = append(rows, [2]string{"说明", "尚未生成服务端配置时服务不运行，生成配置后会自动启动。"})
 	}
 	system.WriteLabeledCard(w, core+" "+title, rows)
 }
 
-func installResultSummary(previous, current string) (string, string) {
+func installResultSummary(previous, current string) (string, [][2]string) {
 	previous = strings.TrimSpace(previous)
 	current = strings.TrimSpace(current)
 	switch {
 	case previous == "":
-		return "安装成功", current
+		return "安装成功", [][2]string{{"内核版本", installVersionLabel(current)}}
 	case previous == current:
-		return "版本未变化", current + "  -- 与安装前相同"
+		return "版本未变化", [][2]string{{"内核版本", installVersionLabel(current) + "  -- 与安装前相同"}}
 	default:
-		return "升级成功", previous + "  ->  " + current
+		return "升级成功", [][2]string{
+			{"当前内核版本", installVersionLabel(previous)},
+			{"升级内核版本", installVersionLabel(current)},
+		}
 	}
+}
+
+func installVersionLabel(version string) string {
+	fields := strings.Fields(version)
+	if len(fields) >= 3 && fields[0] == "sing-box" && fields[1] == "version" {
+		return "sing-box " + fields[2]
+	}
+	return version
 }
 
 func (a *App) Uninstall(ctx context.Context, core string, opts install.Options) error {
