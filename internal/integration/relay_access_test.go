@@ -113,9 +113,12 @@ func TestRealRelayAccessPoliciesAreIndependent(t *testing.T) {
 						{{"allowed.test", 0, true}, {"exact.test", 0, false}}, // Ordinary user.
 						{{"exact.test", 0, true}, {"allowed.test", 0, false}, {"outside.test", 1, true}, {"outside.test", 0, false}},
 						{{"allowed.test", 0, false}, {"outside.test", 1, true}, {"allowed.test", 1, true}},
-						{{"exact.test", 0, true}, {"allowed.test", 0, true}}, // Disabled policy still uses relay.
-						{{"allowed.test", 0, false}},                         // Empty manual whitelist.
-						{{"allowed.test", 0, false}},                         // Dead relay cannot fall through to direct.
+						// Disabled policy still uses relay.
+						{{"exact.test", 0, true}, {"allowed.test", 0, true}},
+						// Empty manual whitelist.
+						{{"allowed.test", 0, false}},
+						// Dead relay cannot fall through to direct.
+						{{"allowed.test", 0, false}},
 					}
 					if scenario == "private-blocks" {
 						cases[2][1].allow = false

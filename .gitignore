@@ -1,4 +1,9 @@
+# Build artifacts
 /proxyforge
+/proxyforge.exe
 /dist/
+
+# Go test binaries and profiles
 *.test
+*.test.exe
 *.out

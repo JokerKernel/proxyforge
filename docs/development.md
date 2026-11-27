@@ -1,6 +1,6 @@
 # 构建、测试与发布
 
-需要 Go 1.23 或更高版本。本仓库只管理原生 Xray/sing-box，不依赖 ProxyDock 或 Docker daemon。
+需要 Go 1.27.4 或更高版本。本仓库只管理原生 Xray/sing-box，不依赖 ProxyDock 或 Docker daemon。
 
 ## 构建
 
