@@ -11,14 +11,14 @@ sudo proxyforge
 
 安装脚本自动选择架构、校验 `SHA256SUMS`，将程序原子安装到 `/usr/local/sbin/proxyforge`。已有相同版本时退出，已有版本较新时跳过，避免自动降级。脚本只管理 ProxyForge 程序，不修改代理内核或节点配置。
 
-安装指定版本时设置 `PROXYFORGE_VERSION`，将示例版本替换为所需 Release 标签：
+安装指定版本时，将所需 Release 标签作为脚本的位置参数。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | \
-  sudo PROXYFORGE_VERSION=v0.0.4 bash
+  sudo bash -s -- v0.0.4
 ```
 
-需要先审阅时，下载 `scripts/install.sh`，再运行 `sudo bash scripts/install.sh`。
+下载脚本后也可以运行 `sudo bash scripts/install.sh v0.0.4`。位置参数优先于 `PROXYFORGE_VERSION`，两者都未设置时安装最新正式版。
 
 ## 安装或升级代理内核
 

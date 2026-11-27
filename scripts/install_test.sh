@@ -71,6 +71,33 @@ test_version_comparison_and_classification() (
   [[ "${installation_action}" == "upgrade" ]] || fail "older installation was not classified as upgrade"
 )
 
+test_pinned_version_prefers_positional_argument() (
+  source "${script_dir}/install.sh"
+  require_root() { return; }
+  detect_current_version() { current_version=v1.2.3; }
+  resolve_latest_version() { fail "pinned version tried to resolve latest"; }
+  download() { fail "already installed version tried to download $1"; }
+
+  local output
+  output=$(PROXYFORGE_VERSION=v9.9.9 main --yes v1.2.3)
+  [[ "${output}" == *"当前已是指定版本 v1.2.3"* ]] || fail "positional version was not used: ${output}"
+  output=$(PROXYFORGE_VERSION=v1.2.3 main)
+  [[ "${output}" == *"当前已是指定版本 v1.2.3"* ]] || fail "environment version was not used: ${output}"
+)
+
+test_conflicting_version_arguments_from_stdin() (
+  local output
+  if output=$(bash -s -- v1.2.3 v1.2.4 < "${script_dir}/install.sh" 2>&1); then
+    fail "multiple positional versions were accepted"
+  fi
+  [[ "${output}" == *"只能指定一个版本标签"* ]] || fail "unexpected multiple version error: ${output}"
+
+  if output=$(bash -s -- v1.2.3 uninstall < "${script_dir}/install.sh" 2>&1); then
+    fail "uninstall accepted a positional version"
+  fi
+  [[ "${output}" == *"卸载时不能指定版本标签"* ]] || fail "unexpected uninstall version error: ${output}"
+)
+
 test_update_argument_is_removed() (
   source "${script_dir}/install.sh"
   require_root() { return; }
@@ -186,6 +213,8 @@ test_automatic_mode_skips_when_already_current
 test_color_controls
 test_no_color_is_respected
 test_version_comparison_and_classification
+test_pinned_version_prefers_positional_argument
+test_conflicting_version_arguments_from_stdin
 test_update_argument_is_removed
 test_uninstall_removes_only_proxyforge_binary
 test_uninstall_is_idempotent

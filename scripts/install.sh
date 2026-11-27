@@ -7,6 +7,7 @@ readonly install_path="${install_dir}/proxyforge"
 readonly max_version_size=256
 readonly max_release_api_size=$((1024 * 1024))
 readonly latest_release_api="https://api.github.com/repos/${repository}/releases/latest"
+readonly release_tag_pattern='^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$'
 
 color_enabled=false
 proxyforge_color_mode=${PROXYFORGE_COLOR:-auto}
@@ -55,6 +56,7 @@ fi
 current_version=""
 current_installed=false
 requested_action="install"
+requested_version_arg=""
 
 selected_asset=""
 selected_checksum=""
@@ -203,10 +205,16 @@ parse_arguments() {
         shift
         ;;
       *)
-        die "未知参数：$1"
+        [[ "$1" =~ ${release_tag_pattern} ]] || die "未知参数：$1"
+        [[ -z "${requested_version_arg}" ]] || die "只能指定一个版本标签"
+        requested_version_arg=$1
+        shift
         ;;
     esac
   done
+  if [[ "${requested_action}" == uninstall && -n "${requested_version_arg}" ]]; then
+    die "卸载时不能指定版本标签"
+  fi
 }
 
 detect_current_version() {
@@ -492,7 +500,7 @@ read_api_version() {
     sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${api_file}"
   )
   [[ ${#versions[@]} -eq 1 ]] || return 1
-  [[ "${versions[0]}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || return 1
+  [[ "${versions[0]}" =~ ${release_tag_pattern} ]] || return 1
   resolved_version=${versions[0]}
 }
 
@@ -505,7 +513,7 @@ read_version_file() {
   local version_lines=()
   mapfile -t version_lines < "${version_file}"
   [[ ${#version_lines[@]} -eq 1 ]] || return 1
-  [[ "${version_lines[0]}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || return 1
+  [[ "${version_lines[0]}" =~ ${release_tag_pattern} ]] || return 1
   resolved_version=${version_lines[0]}
 }
 
@@ -569,6 +577,7 @@ select_asset() {
 
 main() {
   requested_action="install"
+  requested_version_arg=""
   download_route=""
   last_printed_route=""
   parse_arguments "$@"
@@ -596,23 +605,17 @@ main() {
 
   local architecture
   architecture=$(detect_architecture)
-  local requested_version=${PROXYFORGE_VERSION:-latest}
+  local requested_version=${requested_version_arg:-${PROXYFORGE_VERSION:-latest}}
   resolved_version=""
   local release_base
-  case "${requested_version}" in
-    latest)
-      release_base="https://github.com/${repository}/releases/latest/download"
-      ;;
-    v[0-9]*.[0-9]*.[0-9]*)
-      [[ "${requested_version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || \
-        die "PROXYFORGE_VERSION 格式无效：${requested_version}"
-      release_base="https://github.com/${repository}/releases/download/${requested_version}"
-      resolved_version=${requested_version}
-      ;;
-    *)
-      die "PROXYFORGE_VERSION 格式无效：${requested_version}"
-      ;;
-  esac
+  if [[ "${requested_version}" == latest ]]; then
+    release_base="https://github.com/${repository}/releases/latest/download"
+  elif [[ "${requested_version}" =~ ${release_tag_pattern} ]]; then
+    release_base="https://github.com/${repository}/releases/download/${requested_version}"
+    resolved_version=${requested_version}
+  else
+    die "PROXYFORGE_VERSION 格式无效：${requested_version}"
+  fi
 
   temporary_dir=$(mktemp -d /tmp/proxyforge-install.XXXXXX)
   trap cleanup EXIT
