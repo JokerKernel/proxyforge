@@ -1,0 +1,288 @@
+package singbox
+
+import (
+	"encoding/json"
+	"fmt"
+	"slices"
+	"strings"
+
+	"proxyforge/internal/domain"
+	"proxyforge/internal/provider"
+	"proxyforge/internal/provider/accesspolicy"
+)
+
+var supportedDNSProfiles = []string{
+	provider.DNSProfileSystem,
+	provider.DNSProfilePublicCloudflare,
+	provider.DNSProfilePublicGoogle,
+	provider.DNSProfileDoHCloudflare,
+	provider.DNSProfileDoHGoogle,
+}
+
+func (*Provider) DNSProfiles() []string {
+	return append([]string(nil), supportedDNSProfiles...)
+}
+
+func (*Provider) CurrentDNSProfile(config []byte) (string, error) {
+	root, err := parseDNSRoot(config)
+	if err != nil {
+		return "", err
+	}
+	dns, ok := root["dns"].(map[string]any)
+	if !ok {
+		if _, exists := root["dns"]; exists {
+			return "", fmt.Errorf("现有 sing-box dns 不是对象")
+		}
+		return "none", nil
+	}
+	servers, ok := dns["servers"].([]any)
+	if !ok {
+		return "custom", nil
+	}
+	profile, expectedTag := singDNSProfile(servers)
+	if profile == "custom" {
+		return "custom", nil
+	}
+	if rawFinal, exists := dns["final"]; exists {
+		final, ok := rawFinal.(string)
+		if !ok || (final != "" && final != expectedTag) {
+			return "custom", nil
+		}
+	}
+	route, ok := root["route"].(map[string]any)
+	if !ok {
+		return "custom", nil
+	}
+	if resolver := domainResolverServer(route["default_domain_resolver"]); resolver != expectedTag {
+		return "custom", nil
+	}
+	rules, ok := route["rules"].([]any)
+	if !ok {
+		return "custom", nil
+	}
+	foundResolve := false
+	for _, rawRule := range rules {
+		rule, ok := rawRule.(map[string]any)
+		if !ok {
+			continue
+		}
+		if action, _ := rule["action"].(string); action == "resolve" {
+			foundResolve = true
+			if resolver, _ := rule["server"].(string); resolver != expectedTag {
+				return "custom", nil
+			}
+		}
+	}
+	if !foundResolve {
+		return "custom", nil
+	}
+	return profile, nil
+}
+
+func (*Provider) CurrentDNSServers(config []byte) ([]string, error) {
+	root, err := parseDNSRoot(config)
+	if err != nil {
+		return nil, err
+	}
+	dns, ok := root["dns"].(map[string]any)
+	if !ok {
+		return nil, nil
+	}
+	servers, ok := dns["servers"].([]any)
+	if !ok {
+		return nil, nil
+	}
+	var addrs []string
+	seen := make(map[string]struct{})
+	for _, raw := range servers {
+		server, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		tag, _ := server["tag"].(string)
+		serverType, _ := server["type"].(string)
+		if serverType == "local" && tag == "bootstrap" {
+			continue
+		}
+		address, _ := server["server"].(string)
+		address = strings.TrimSpace(address)
+		if address == "" {
+			if serverType == "local" {
+				address = "local"
+			} else {
+				continue
+			}
+		}
+		if _, exists := seen[address]; exists {
+			continue
+		}
+		seen[address] = struct{}{}
+		addrs = append(addrs, address)
+	}
+	return addrs, nil
+}
+
+func (*Provider) PatchDNSProfile(config []byte, profile string) ([]byte, error) {
+	profile = strings.ToLower(strings.TrimSpace(profile))
+	if !slices.Contains(supportedDNSProfiles, profile) {
+		return nil, fmt.Errorf("sing-box DNS 配置 %q 无效", profile)
+	}
+	root, err := parseDNSRoot(config)
+	if err != nil {
+		return nil, err
+	}
+	dns, exists := root["dns"].(map[string]any)
+	if !exists {
+		if raw, present := root["dns"]; present && raw != nil {
+			return nil, fmt.Errorf("现有 sing-box dns 不是对象")
+		}
+		dns = make(map[string]any)
+		root["dns"] = dns
+	}
+
+	tag := "local"
+	servers := []any{map[string]any{"type": "local", "tag": tag}}
+	if profile == provider.DNSProfilePublicCloudflare {
+		tag = "cloudflare"
+		servers = []any{map[string]any{"type": "udp", "tag": "cloudflare", "server": "1.1.1.1", "server_port": 53}}
+	} else if profile == provider.DNSProfilePublicGoogle {
+		tag = "google"
+		servers = []any{map[string]any{"type": "udp", "tag": "google", "server": "8.8.8.8", "server_port": 53}}
+	} else if profile == provider.DNSProfileDoHCloudflare {
+		tag = "cloudflare-doh"
+		servers = singDoHServers(false)
+	} else if profile == provider.DNSProfileDoHGoogle {
+		tag = "google-doh"
+		servers = singDoHServers(true)
+	}
+	dns["servers"] = servers
+	dns["final"] = tag
+
+	route, ok := root["route"].(map[string]any)
+	if !ok {
+		if _, exists := root["route"]; exists {
+			return nil, fmt.Errorf("现有 sing-box route 不是对象")
+		}
+		route = make(map[string]any)
+		root["route"] = route
+	}
+	if existing, ok := route["default_domain_resolver"].(map[string]any); ok {
+		existing["server"] = tag
+	} else {
+		route["default_domain_resolver"] = tag
+	}
+	rules, exists := route["rules"].([]any)
+	if !exists {
+		if _, present := route["rules"]; present {
+			return nil, fmt.Errorf("现有 sing-box route.rules 不是数组")
+		}
+		rules = []any{}
+	}
+	updatedResolve := false
+	for _, rawRule := range rules {
+		rule, ok := rawRule.(map[string]any)
+		if !ok {
+			continue
+		}
+		if action, _ := rule["action"].(string); action == "resolve" {
+			rule["server"] = tag
+			if !accesspolicy.IsPolicyRule(rule, domain.CoreSingBox) {
+				updatedResolve = true
+			}
+		}
+	}
+	if !updatedResolve {
+		rules = append([]any{map[string]any{"action": "resolve", "server": tag}}, rules...)
+	}
+	route["rules"] = rules
+	return marshalSingBox(root)
+}
+
+func singDNSProfile(servers []any) (string, string) {
+	if len(servers) == 1 {
+		server, ok := servers[0].(map[string]any)
+		if !ok {
+			return "custom", ""
+		}
+		serverType, _ := server["type"].(string)
+		tag, _ := server["tag"].(string)
+		address, _ := server["server"].(string)
+		switch {
+		case serverType == "local" && tag == "local":
+			return provider.DNSProfileSystem, "local"
+		case serverType == "udp" && tag == "cloudflare" && address == "1.1.1.1":
+			return provider.DNSProfilePublicCloudflare, "cloudflare"
+		case serverType == "udp" && tag == "google" && address == "8.8.8.8":
+			return provider.DNSProfilePublicGoogle, "google"
+		}
+	}
+	if len(servers) == 2 && singLocalDNSServerMatches(servers[0], "bootstrap") {
+		if singDoHServerMatches(servers[1], "cloudflare-doh", "1.1.1.1", "cloudflare-dns.com") ||
+			singDoHServerMatches(servers[1], "cloudflare-doh", "cloudflare-dns.com", "cloudflare-dns.com") {
+			return provider.DNSProfileDoHCloudflare, "cloudflare-doh"
+		}
+		if singDoHServerMatches(servers[1], "google-doh", "8.8.8.8", "dns.google") ||
+			singDoHServerMatches(servers[1], "google-doh", "dns.google", "dns.google") {
+			return provider.DNSProfileDoHGoogle, "google-doh"
+		}
+	}
+	return "custom", ""
+}
+
+func singDoHServers(googleFirst bool) []any {
+	bootstrap := map[string]any{"type": "local", "tag": "bootstrap"}
+	if googleFirst {
+		return []any{bootstrap, singDoHServer("google-doh", "8.8.8.8", "dns.google")}
+	}
+	return []any{bootstrap, singDoHServer("cloudflare-doh", "1.1.1.1", "cloudflare-dns.com")}
+}
+
+func singDoHServer(tag, server, serverName string) map[string]any {
+	return map[string]any{
+		"type": "https", "tag": tag, "server": server, "server_port": 443, "path": "/dns-query",
+		"domain_resolver": "bootstrap",
+		"tls":             map[string]any{"enabled": true, "server_name": serverName},
+	}
+}
+
+func singLocalDNSServerMatches(raw any, tag string) bool {
+	server, ok := raw.(map[string]any)
+	if !ok {
+		return false
+	}
+	serverType, _ := server["type"].(string)
+	serverTag, _ := server["tag"].(string)
+	return serverType == "local" && serverTag == tag
+}
+
+func singDoHServerMatches(raw any, tag, serverAddress, serverName string) bool {
+	server, ok := raw.(map[string]any)
+	if !ok {
+		return false
+	}
+	gotType, _ := server["type"].(string)
+	gotTag, _ := server["tag"].(string)
+	gotServer, _ := server["server"].(string)
+	gotPort, _ := server["server_port"].(float64)
+	gotPath, _ := server["path"].(string)
+	gotResolver, _ := server["domain_resolver"].(string)
+	tls, ok := server["tls"].(map[string]any)
+	if !ok {
+		return false
+	}
+	tlsEnabled, _ := tls["enabled"].(bool)
+	gotServerName, _ := tls["server_name"].(string)
+	return gotType == "https" && gotTag == tag && gotServer == serverAddress && gotPort == 443 &&
+		gotPath == "/dns-query" && gotResolver == "bootstrap" && tlsEnabled && gotServerName == serverName
+}
+
+func parseDNSRoot(config []byte) (map[string]any, error) {
+	var root map[string]any
+	if err := json.Unmarshal(config, &root); err != nil {
+		return nil, fmt.Errorf("解析现有 sing-box 配置: %w", err)
+	}
+	if root == nil {
+		return nil, fmt.Errorf("解析现有 sing-box 配置: 顶层不是 JSON 对象")
+	}
+	return root, nil
+}

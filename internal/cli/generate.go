@@ -1,0 +1,573 @@
+package cli
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"strconv"
+	"strings"
+
+	"github.com/spf13/cobra"
+
+	"proxyforge/internal/app"
+	"proxyforge/internal/domain"
+	"proxyforge/internal/system"
+)
+
+func (c *commandSet) generateCommand() *cobra.Command {
+	var o domain.GenerateOptions
+	cmd := &cobra.Command{
+		Use: "generate <sing-box|xray>", Short: "生成并启用服务端配置", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			interactive := !c.yes && readerInteractive(c.in)
+			o.NonInteractive = !interactive
+			if err := c.confirmServerConfigOverwrite(args[0], interactive); err != nil {
+				if errors.Is(err, errReturnToMenu) {
+					system.WriteDetail(c.out, "取消操作", "%s", "已取消生成服务端配置。")
+					return nil
+				}
+				return err
+			}
+			if interactive {
+				if err := c.fillGenerate(cmd.Context(), args[0], &o); err != nil {
+					if errors.Is(err, errReturnToMenu) {
+						system.WriteDetail(c.out, "取消操作", "%s", "已取消生成服务端配置。")
+						return nil
+					}
+					return err
+				}
+			}
+			err := c.runGenerate(cmd.Context(), args[0], o)
+			if errors.Is(err, errReturnToMenu) {
+				system.WriteDetail(c.out, "取消操作", "%s", "已取消生成服务端配置。")
+				return nil
+			}
+			return err
+		},
+	}
+	cmd.Flags().StringVar(&o.Security, "security", "", "主节点安全协议：reality 或 tls（默认沿用当前协议；切换协议自动更换主节点 UUID）")
+	cmd.Flags().BoolVar(&o.RotateCertificate, "rotate-certificate", false, "TLS 主节点重新生成自签证书，旧客户端需更新")
+	cmd.Flags().StringVar(&o.Server, "server", "", "客户端连接的公网 IP 或域名")
+	cmd.Flags().IntVar(&o.Port, "port", 0, "监听 TCP 端口")
+	cmd.Flags().StringVar(&o.SNI, "sni", "", "REALITY SNI 域名")
+	cmd.Flags().StringVar(&o.Target, "target", "", "REALITY 目标 host:port（默认 SNI:443）")
+	cmd.Flags().StringVar(&o.UserName, "user-name", "", "服务端用户名称（默认 one）")
+	cmd.Flags().StringVar(&o.InboundTag, "inbound-tag", "", "入站标签（默认按内核自动生成）")
+	cmd.Flags().BoolVar(&o.StandardConfig, "standard-config", false, "使用不带本机回落防护的原标准配置")
+	cmd.Flags().BoolVar(&o.SimplifiedConfig, "simplified-config", false, "sing-box 使用简化配置（系统 DNS、较少 DNS 日志，但私网域名拦截较弱）")
+	cmd.Flags().BoolVar(&o.SingBoxFallbackGuard, "sing-box-fallback-guard", false, "sing-box 使用 direct 入站限制 REALITY 未认证回落流量")
+	cmd.Flags().IntVar(&o.SingBoxFallbackPort, "sing-box-fallback-port", 0, "sing-box 防偷跑回落入站端口（默认 30000-65000 随机；已有配置则沿用）")
+	cmd.Flags().BoolVar(&o.SingBoxFallbackHTTPDomain, "sing-box-fallback-http-domain", false, "sing-box HTTP 回落仅放行与 SNI 一致的域名（默认不限制）")
+	cmd.Flags().BoolVar(&o.SingBoxFallbackExactDomain, "sing-box-fallback-exact-domain", false, "sing-box 回落域名使用 domain 完整匹配（默认使用 domain_suffix）")
+	cmd.Flags().BoolVar(&o.XrayFallbackGuard, "xray-fallback-guard", false, "Xray 使用 tunnel 限制 REALITY 未认证回落流量")
+	cmd.Flags().IntVar(&o.XrayFallbackPort, "xray-fallback-port", 0, "Xray 防偷跑回落入站端口（默认 30000-65000 随机；已有配置则沿用）")
+	cmd.Flags().BoolVar(&o.XrayFallbackHTTPDomain, "xray-fallback-http-domain", false, "Xray HTTP 回落仅放行与 SNI 一致的域名（默认不限制）")
+	cmd.Flags().BoolVar(&o.XrayFallbackExactDomain, "xray-fallback-exact-domain", false, "Xray 回落域名使用 full: 精确匹配（默认使用普通匹配）")
+	cmd.Flags().BoolVar(&o.RotateCredentials, "rotate-credentials", false, "轮换 UUID（REALITY 同时轮换密钥和 short ID），使旧客户端失效")
+	cmd.Flags().BoolVar(&o.DropLinks, "drop-links", false, "清除所有受管的中转线路和落地接入")
+	cmd.Flags().Bool("take-over", false, "兼容旧版本；当前始终备份并完整覆盖现有配置")
+	_ = cmd.Flags().MarkDeprecated("take-over", "当前生成流程会自动备份并完整覆盖现有配置，无需此参数")
+	_ = cmd.Flags().MarkHidden("take-over")
+	return cmd
+}
+
+func (c *commandSet) fillGenerate(ctx context.Context, core string, o *domain.GenerateOptions) error {
+	c.clearScreen()
+	c.printPageHeader(core, "生成服务端配置")
+	fmt.Fprintln(c.out, "提示：输入 q 或 0 可取消并返回上级菜单。")
+	if c.app != nil {
+		current, stateErr := c.app.Store.Load(core)
+		if stateErr == nil && !o.DropLinks && (len(current.RelayLinks) > 0 || len(current.LandingAccesses) > 0) {
+			fmt.Fprintf(c.out, "\n检测到 %d 条中转线路和 %d 个落地接入。\n", len(current.RelayLinks), len(current.LandingAccesses))
+			c.printMenuChoice("1", "保留并重新应用这些线路（默认）")
+			c.printMenuChoice("2", "清除全部中转线路和落地接入")
+			choice, err := c.chooseNumberCancelable("请选择线路处理方式", 1, 2, 1)
+			if err != nil {
+				return err
+			}
+			o.DropLinks = choice == 2
+		}
+	}
+	if o.Security == "" {
+		defaultChoice := 1
+		if c.app != nil {
+			if node, err := c.app.Store.Load(core); err == nil && node.IsTLS() {
+				defaultChoice = 2
+			}
+		}
+		fmt.Fprintln(c.out, "\n主节点协议")
+		c.printMenuChoice("1", "VLESS + RAW + REALITY + Vision")
+		c.printMenuChoice("2", "VLESS + RAW + TLS + Vision（自动生成自签证书）")
+		choice, err := c.chooseNumberCancelable("请选择主节点协议", 1, 2, defaultChoice)
+		if err != nil {
+			return err
+		}
+		o.Security = domain.LandingSecurityReality
+		if choice == 2 {
+			o.Security = domain.LandingSecurityTLS
+		}
+	}
+	if c.app != nil {
+		if current, err := c.app.Store.Load(core); err == nil && domain.NormalizeLandingSecurity(current.Security) != domain.NormalizeLandingSecurity(o.Security) {
+			system.WriteDetail(c.out, "操作提示", "%s", "切换协议将自动更换主节点 UUID，需要重新导出客户端配置。")
+		}
+	}
+	tlsMode := domain.NormalizeLandingSecurity(o.Security) == domain.LandingSecurityTLS
+	if tlsMode {
+		o.StandardConfig, o.SimplifiedConfig = false, false
+		o.SingBoxFallbackGuard, o.XrayFallbackGuard = false, false
+		o.SingBoxFallbackPort, o.XrayFallbackPort = 0, 0
+		o.SingBoxFallbackHTTPDomain, o.SingBoxFallbackExactDomain, o.XrayFallbackHTTPDomain, o.XrayFallbackExactDomain = false, false, false, false
+	}
+	if !tlsMode && core == domain.CoreSingBox {
+		fmt.Fprintln(c.out, "\n配置模式")
+		c.printMenuChoice("1", "回落防护（默认；direct 入站仅放行与 SNI 一致的 TLS 流量）")
+		c.printMenuChoice("2", "标准安全（内部 DNS 解析后拦截私网和保留地址）")
+		c.printMenuChoice("3", "简化模式（使用系统 DNS；DNS 日志较少，私网域名可能绕过拦截）")
+		defaultChoice := 1
+		if o.SimplifiedConfig {
+			defaultChoice = 3
+		} else if o.StandardConfig {
+			defaultChoice = 2
+		}
+		choice, err := c.chooseNumberCancelable("请选择配置模式", 1, 3, defaultChoice)
+		if err != nil {
+			return err
+		}
+		o.SingBoxFallbackGuard = choice == 1
+		o.StandardConfig = choice == 2
+		o.SimplifiedConfig = choice == 3
+		if !o.SingBoxFallbackGuard {
+			o.SingBoxFallbackPort = 0
+			o.SingBoxFallbackHTTPDomain = false
+			o.SingBoxFallbackExactDomain = false
+		} else {
+			fmt.Fprintln(c.out, "\n严格匹配回落域名")
+			c.printMenuChoice("1", "允许子域名（默认）")
+			c.printMenuChoice("2", "严格匹配（仅放行完整域名）")
+			defaultDomainChoice := 1
+			if o.SingBoxFallbackExactDomain {
+				defaultDomainChoice = 2
+			}
+			choice, err := c.chooseNumberCancelable("请选择回落域名匹配", 1, 2, defaultDomainChoice)
+			if err != nil {
+				return err
+			}
+			o.SingBoxFallbackExactDomain = choice == 2
+
+			fmt.Fprintln(c.out, "\nHTTP 回落域名限制")
+			c.printMenuChoice("1", "不限制 Host（默认）")
+			c.printMenuChoice("2", "限制 Host（明文 HTTP 仅放行当前 SNI）")
+			defaultHTTPChoice := 1
+			if o.SingBoxFallbackHTTPDomain {
+				defaultHTTPChoice = 2
+			}
+			choice, err = c.chooseNumberCancelable("请选择 HTTP 回落策略", 1, 2, defaultHTTPChoice)
+			if err != nil {
+				return err
+			}
+			o.SingBoxFallbackHTTPDomain = choice == 2
+		}
+	} else if !tlsMode && core == domain.CoreXray {
+		fmt.Fprintln(c.out, "\n配置模式")
+		c.printMenuChoice("1", "回落防护（默认；tunnel 仅放行与 SNI 一致的 TLS 流量）")
+		c.printMenuChoice("2", "标准模式（REALITY 未认证流量直接转发到 target）")
+		defaultChoice := 1
+		if o.StandardConfig {
+			defaultChoice = 2
+		}
+		choice, err := c.chooseNumberCancelable("请选择配置模式", 1, 2, defaultChoice)
+		if err != nil {
+			return err
+		}
+		o.XrayFallbackGuard = choice == 1
+		o.StandardConfig = choice == 2
+		if !o.XrayFallbackGuard {
+			o.XrayFallbackPort = 0
+			o.XrayFallbackHTTPDomain = false
+			o.XrayFallbackExactDomain = false
+		} else {
+			fmt.Fprintln(c.out, "\n严格匹配回落域名")
+			c.printMenuChoice("1", "允许子域名（默认）")
+			c.printMenuChoice("2", "严格匹配（仅放行完整域名）")
+			defaultDomainChoice := 1
+			if o.XrayFallbackExactDomain {
+				defaultDomainChoice = 2
+			}
+			choice, err := c.chooseNumberCancelable("请选择回落域名匹配", 1, 2, defaultDomainChoice)
+			if err != nil {
+				return err
+			}
+			o.XrayFallbackExactDomain = choice == 2
+
+			fmt.Fprintln(c.out, "\nHTTP 回落域名限制")
+			c.printMenuChoice("1", "不限制 Host（默认）")
+			c.printMenuChoice("2", "限制 Host（明文 HTTP 仅放行当前 SNI）")
+			defaultHTTPChoice := 1
+			if o.XrayFallbackHTTPDomain {
+				defaultHTTPChoice = 2
+			}
+			choice, err = c.chooseNumberCancelable("请选择 HTTP 回落策略", 1, 2, defaultHTTPChoice)
+			if err != nil {
+				return err
+			}
+			o.XrayFallbackHTTPDomain = choice == 2
+		}
+	}
+	if o.Server == "" {
+		detected, err := c.selectPublicAddress(ctx)
+		if err != nil {
+			return err
+		}
+		o.Server, err = c.askDefaultCancelable("公网 IP 或域名", detected)
+		if err != nil {
+			return err
+		}
+	}
+	if o.Port == 0 {
+		v, err := c.askDefaultCancelable("监听端口", strconv.Itoa(app.DefaultPort(c.app.Store, core)))
+		if err != nil {
+			return err
+		}
+		port, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("端口无效: %w", err)
+		}
+		o.Port = port
+	}
+	if o.XrayFallbackGuard && o.XrayFallbackPort == 0 {
+		port, err := c.askFallbackPort("本机 tunnel 回落端口", core, o.Port)
+		if err != nil {
+			return err
+		}
+		o.XrayFallbackPort = port
+	}
+	if o.SingBoxFallbackGuard && o.SingBoxFallbackPort == 0 {
+		port, err := c.askFallbackPort("本机 direct 回落端口", core, o.Port)
+		if err != nil {
+			return err
+		}
+		o.SingBoxFallbackPort = port
+	}
+	if o.UserName == "" {
+		defaultUserName := domain.DefaultUserName
+		if c.app != nil {
+			if current, err := c.app.Store.Load(core); err == nil && strings.TrimSpace(current.UserName) != "" {
+				defaultUserName = current.UserName
+			}
+		}
+		var err error
+		o.UserName, err = c.askDefaultCancelable("用户名称", defaultUserName)
+		if err != nil {
+			return err
+		}
+	}
+	if o.InboundTag == "" {
+		defaultInboundTag := domain.DefaultInboundTag(core)
+		if c.app != nil {
+			if current, err := c.app.Store.Load(core); err == nil && strings.TrimSpace(current.InboundTag) != "" {
+				defaultInboundTag = current.InboundTag
+			}
+		}
+		var err error
+		o.InboundTag, err = c.askDefaultCancelable("入站标签", defaultInboundTag)
+		if err != nil {
+			return err
+		}
+	}
+	if tlsMode {
+		if o.SNI != "" || o.Target != "" {
+			return fmt.Errorf("自签 TLS 自动生成证书名称，无需 --sni 或 --target")
+		}
+		c.printConfirmationPanel("配置确认：自签 TLS", []string{"连接地址：" + netJoinHostPort(o.Server, strconv.Itoa(o.Port)), "自动生成证书和 TLS 名称；客户端使用固定指纹验证"})
+		ok, err := c.confirmCancelableDefaultYes("生成并启用 TLS 配置？")
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errReturnToMenu
+		}
+		return nil
+	}
+	o.SNI = strings.TrimSpace(o.SNI)
+	manualSNI := o.SNI != ""
+	if o.SNI == "" {
+		existingSNI, existingTarget := currentSNIAndTarget(c.app, core)
+		if existingSNI != "" {
+			fmt.Fprintf(c.out, "\n当前已配置 REALITY SNI：%s\n", existingSNI)
+			c.printMenuChoice("1", "使用原有 SNI（默认）")
+			c.printMenuChoice("2", "重新输入或自动测速")
+			choice, err := c.chooseNumberCancelable("请选择 SNI", 1, 2, 1)
+			if err != nil {
+				return err
+			}
+			if choice == 1 {
+				o.SNI = existingSNI
+				if o.Target == "" && existingTarget != "" {
+					o.Target = existingTarget
+				}
+			}
+		}
+	}
+	for o.SNI == "" {
+		var err error
+		o.SNI, err = c.askDefaultCancelable("REALITY SNI（输入域名；直接回车自动测速候选）", "")
+		if err != nil {
+			return err
+		}
+		o.SNI = strings.TrimSpace(o.SNI)
+		manualSNI = o.SNI != ""
+		if o.SNI == "" {
+			selected, err := c.selectSNICandidate(ctx, o.Server)
+			if err != nil {
+				if errors.Is(err, errReturnToMenu) {
+					continue
+				}
+				return fmt.Errorf("自动选择 SNI 失败: %w", err)
+			}
+			o.SNI = selected
+			if c.interactiveUI() {
+				c.clearScreen()
+				c.printPageHeader(core, "生成服务端配置")
+				fmt.Fprintf(c.out, "已选择 REALITY SNI：%s\n", o.SNI)
+			}
+		}
+	}
+	if manualSNI {
+		if err := c.confirmManualSNI(ctx, o.SNI, o.Server); err != nil {
+			return err
+		}
+	}
+	if o.Target == "" {
+		o.Target = netJoinHostPort(o.SNI, "443")
+	}
+	c.printConfirmationPanel(
+		"配置确认：REALITY 回落目标",
+		[]string{"SNI：" + o.SNI, "Target：" + o.Target},
+		confirmationSection{title: "请确认", items: []string{
+			"目标站点归属可信",
+			"允许将其用作 REALITY 回落站点",
+		}},
+	)
+	ok, err := c.confirmCancelableDefaultYes("确认 SNI 和 REALITY target？")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("用户取消配置生成")
+	}
+	return nil
+}
+
+func currentSNIAndTarget(a *app.App, core string) (string, string) {
+	if a == nil {
+		return "", ""
+	}
+	current, err := a.Store.Load(core)
+	if err != nil {
+		return "", ""
+	}
+	if current.IsTLS() {
+		return "", ""
+	}
+	return strings.TrimSpace(current.SNI), strings.TrimSpace(current.Target)
+}
+
+func (c *commandSet) askFallbackPort(label, core string, publicPort int) (int, error) {
+	var store system.StateStore
+	if c.app != nil {
+		store = c.app.Store
+	}
+	defaultPort, err := app.PickFallbackPort(store, core, publicPort)
+	if err != nil {
+		return 0, err
+	}
+	v, err := c.askDefaultCancelable(label, strconv.Itoa(defaultPort))
+	if err != nil {
+		return 0, err
+	}
+	port, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, fmt.Errorf("%s无效: %w", label, err)
+	}
+	return port, nil
+}
+
+func (c *commandSet) confirmServerConfigOverwrite(core string, interactive bool) error {
+	exists, err := c.app.ServerConfigExists(core)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	if !interactive {
+		if c.yes {
+			return nil
+		}
+		return fmt.Errorf("检测到已存在的 %s 服务端配置；非交互覆盖必须显式提供 --yes", core)
+	}
+	c.printConfirmationPanel(
+		"操作确认：覆盖服务端配置",
+		[]string{"目标内核：" + core},
+		confirmationSection{title: "检测结果", items: []string{
+			"检测到已存在的服务端配置",
+		}},
+		confirmationSection{title: "继续后", items: []string{
+			"先备份当前配置文件",
+			"使用 ProxyForge 标准模板完整覆盖",
+			"原有自定义内容不会合并",
+		}},
+	)
+	ok, err := c.confirmCancelable("覆盖现有服务端配置？")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errReturnToMenu
+	}
+	return nil
+}
+
+func (c *commandSet) selectPublicAddress(ctx context.Context) (string, error) {
+	physicalIPs := c.physicalIPs
+	if physicalIPs == nil {
+		physicalIPs = app.PhysicalInterfaceAddresses
+	}
+	externalIP := c.externalIP
+	if externalIP == nil {
+		externalIP = app.PublicAddress
+	}
+	for {
+		fmt.Fprintln(c.out, "公网地址获取方式")
+		c.printMenuChoice("1", "物理网卡（默认）")
+		c.printMenuChoice("2", "在线探测（api.ipify.org HTTPS）")
+		c.printMenuChoice("3", "手动输入（自行填写公网地址）")
+		choice, err := c.chooseNumberCancelable("请选择", 1, 3, 1)
+		if err != nil {
+			return "", err
+		}
+		if choice == 3 {
+			return "", nil
+		}
+		var address string
+		if choice == 1 {
+			var addresses []app.PublicInterfaceAddress
+			addresses, err = physicalIPs()
+			if err == nil {
+				address, err = c.selectPhysicalPublicAddress(addresses)
+			}
+		} else {
+			address, err = externalIP(ctx)
+		}
+		if err == nil {
+			return address, nil
+		}
+		if errors.Is(err, errReturnToMenu) {
+			continue
+		}
+		system.WriteDetail(c.out, "获取公网地址失败", "%v，请重新选择。", err)
+		fmt.Fprintln(c.out)
+	}
+}
+
+func (c *commandSet) selectPhysicalPublicAddress(addresses []app.PublicInterfaceAddress) (string, error) {
+	if len(addresses) == 0 {
+		return "", fmt.Errorf("物理网卡没有可用公网地址")
+	}
+	public := make([]app.PublicInterfaceAddress, 0, len(addresses))
+	private := make([]app.PublicInterfaceAddress, 0, len(addresses))
+	for _, item := range addresses {
+		if item.Private {
+			private = append(private, item)
+		} else {
+			public = append(public, item)
+		}
+	}
+	ordered := append(public, private...)
+	fmt.Fprintln(c.out, "检测到多个物理网卡地址（公网地址优先）：")
+	for index, item := range ordered {
+		family := "IPv4"
+		if strings.Contains(item.Address, ":") {
+			family = "IPv6"
+		}
+		scope := "公网"
+		if item.Private {
+			scope = "内网"
+		}
+		c.printMenuChoice(strconv.Itoa(index+1), fmt.Sprintf("%s  %s（%s） %s", item.Interface, item.Address, family, scope))
+	}
+	if len(ordered) == 1 {
+		return ordered[0].Address, nil
+	}
+	choice, err := c.chooseNumberCancelable("请选择网卡地址", 1, len(ordered), 1)
+	if err != nil {
+		return "", err
+	}
+	return ordered[choice-1].Address, nil
+}
+
+func (c *commandSet) runGenerate(ctx context.Context, core string, o domain.GenerateOptions) error {
+	n, err := c.app.Generate(ctx, core, o)
+	if err != nil {
+		return err
+	}
+	printGenerateSuccess(c.out, n)
+	return nil
+}
+
+func printGenerateSuccess(w io.Writer, n domain.NodeSpec) {
+	rows := [][2]string{
+		{"服务状态", "运行中  -- active"},
+		{"开机启动", "已启用  -- enabled"},
+		{"连接地址", netJoinHostPort(n.Server, strconv.Itoa(n.Port))},
+		{"节点协议", landingProtocolLabel(n.Security)},
+	}
+	if n.IsTLS() {
+		rows = append(rows, [2]string{"TLS 名称", n.SNI}, [2]string{"证书验证", "固定指纹"})
+	} else {
+		rows = append(rows, [2]string{"SNI", n.SNI}, [2]string{"回落目标", n.Target})
+	}
+	rows = append(rows, [2]string{"用户名称", n.UserName}, [2]string{"入站标签", n.InboundTag})
+	rows = append(rows, generateModeRows(n)...)
+	rows = append(rows, [2]string{"内核版本", n.CoreVersion})
+	(&commandSet{out: w}).printLabeledCard(n.Core+" 服务端配置生成成功", rows)
+}
+
+func generateModeRows(n domain.NodeSpec) [][2]string {
+	switch n.Core {
+	case domain.CoreSingBox:
+		if n.SingBoxFallbackGuard {
+			return fallbackModeRows("direct", n.SingBoxFallbackPort, n.SingBoxFallbackHTTPDomain, n.SingBoxFallbackExactDomain)
+		}
+		if n.SimplifiedConfig {
+			return [][2]string{{"配置模式", "简化配置  -- 系统 DNS"}}
+		}
+		return [][2]string{{"配置模式", "标准安全"}}
+	case domain.CoreXray:
+		if n.XrayFallbackGuard {
+			return fallbackModeRows("tunnel", n.XrayFallbackPort, n.XrayFallbackHTTPDomain, n.XrayFallbackExactDomain)
+		}
+		return [][2]string{{"配置模式", "标准配置"}}
+	default:
+		return nil
+	}
+}
+
+func fallbackModeRows(kind string, port int, httpDomain, exact bool) [][2]string {
+	httpHost := "不限制"
+	if httpDomain {
+		httpHost = "已开启  -- 仅限当前 SNI"
+	}
+	strict := "未开启  -- 允许子域名"
+	if exact {
+		strict = "已开启  -- 仅放行完整域名"
+	}
+	return [][2]string{
+		{"配置模式", "回落防护"},
+		{"回落端口", fmt.Sprintf("%s 127.0.0.1:%d", kind, port)},
+		{"严格模式", strict},
+		{"HTTP Host", httpHost},
+	}
+}

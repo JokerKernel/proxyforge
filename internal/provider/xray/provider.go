@@ -1,0 +1,426 @@
+package xray
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net"
+	"strconv"
+	"strings"
+
+	"proxyforge/internal/domain"
+	"proxyforge/internal/provider"
+	"proxyforge/internal/provider/accesspolicy"
+)
+
+type Provider struct{}
+
+type xrayConfig struct {
+	Log       map[string]any  `json:"log"`
+	DNS       dnsSettings     `json:"dns"`
+	Inbounds  []any           `json:"inbounds"`
+	Outbounds []xrayOutbound  `json:"outbounds"`
+	Routing   routingSettings `json:"routing"`
+}
+
+type dnsSettings struct {
+	Servers       []any  `json:"servers"`
+	QueryStrategy string `json:"queryStrategy"`
+}
+
+type tunnelInbound struct {
+	Listen   string           `json:"listen"`
+	Port     int              `json:"port"`
+	Protocol string           `json:"protocol"`
+	Settings tunnelSettings   `json:"settings"`
+	Tag      string           `json:"tag"`
+	Sniffing sniffingSettings `json:"sniffing"`
+}
+
+type tunnelSettings struct {
+	Address string `json:"address"`
+	Port    int    `json:"port"`
+	Network string `json:"network"`
+}
+
+type orderedInbound struct {
+	Listen         string            `json:"listen"`
+	Port           int               `json:"port"`
+	Protocol       string            `json:"protocol"`
+	Settings       any               `json:"settings"`
+	StreamSettings *streamSettings   `json:"streamSettings,omitempty"`
+	Tag            string            `json:"tag,omitempty"`
+	Sniffing       *sniffingSettings `json:"sniffing,omitempty"`
+}
+
+type vlessInboundSettings struct {
+	Clients    []vlessInboundUser `json:"clients"`
+	Decryption string             `json:"decryption"`
+}
+
+type vlessInboundUser struct {
+	ID    string `json:"id"`
+	Email string `json:"email"`
+	Flow  string `json:"flow"`
+}
+
+type sniffingSettings struct {
+	Enabled      bool     `json:"enabled"`
+	DestOverride []string `json:"destOverride"`
+	RouteOnly    bool     `json:"routeOnly"`
+}
+
+type streamSettings struct {
+	Network         string `json:"network"`
+	Security        string `json:"security"`
+	RealitySettings any    `json:"realitySettings,omitempty"`
+	TLSSettings     any    `json:"tlsSettings,omitempty"`
+}
+
+type serverRealitySettings struct {
+	Show        bool     `json:"show"`
+	Target      string   `json:"target"`
+	Xver        int      `json:"xver"`
+	ServerNames []string `json:"serverNames"`
+	PrivateKey  string   `json:"privateKey"`
+	ShortIDs    []string `json:"shortIds"`
+}
+
+type clientRealitySettings struct {
+	ServerName  string `json:"serverName"`
+	Fingerprint string `json:"fingerprint"`
+	Password    string `json:"password"`
+	ShortID     string `json:"shortId"`
+	SpiderX     string `json:"spiderX"`
+}
+
+type xrayOutbound struct {
+	Protocol       string `json:"protocol"`
+	Settings       any    `json:"settings"`
+	Tag            string `json:"tag"`
+	StreamSettings any    `json:"streamSettings,omitempty"`
+}
+
+type vlessOutboundSettings struct {
+	VNext []vlessServer `json:"vnext"`
+}
+
+type vlessServer struct {
+	Address string              `json:"address"`
+	Port    int                 `json:"port"`
+	Users   []vlessOutboundUser `json:"users"`
+}
+
+type vlessOutboundUser struct {
+	ID         string `json:"id"`
+	Encryption string `json:"encryption"`
+	Flow       string `json:"flow"`
+}
+
+type routingSettings struct {
+	DomainStrategy string        `json:"domainStrategy"`
+	Rules          []routingRule `json:"rules"`
+}
+
+type routingRule struct {
+	InboundTag  []string `json:"inboundTag,omitempty"`
+	Protocol    []string `json:"protocol,omitempty"`
+	Domain      []string `json:"domain,omitempty"`
+	IP          []string `json:"ip,omitempty"`
+	OutboundTag string   `json:"outboundTag"`
+}
+
+func New() *Provider                  { return &Provider{} }
+func (*Provider) Name() string        { return domain.CoreXray }
+func (*Provider) Binary() string      { return "xray" }
+func (*Provider) ServiceName() string { return "xray.service" }
+func (*Provider) ConfigPath() string  { return "/usr/local/etc/xray/config.json" }
+func (*Provider) OfficialScriptURL() string {
+	return "https://github.com/XTLS/Xray-install/raw/main/install-release.sh"
+}
+func (*Provider) ScriptHosts() []string {
+	return []string{"github.com", "raw.githubusercontent.com", "objects.githubusercontent.com"}
+}
+func (*Provider) InstallArgs(version string, beta bool) []string {
+	args := []string{"install"}
+	if beta {
+		return append(args, "--beta")
+	}
+	if version != "" {
+		return append(args, "--version", version)
+	}
+	return args
+}
+func (*Provider) ScriptProxyArgs(proxyURL string) []string {
+	if proxyURL == "" {
+		return nil
+	}
+	return []string{"--proxy", proxyURL}
+}
+func (*Provider) PackageName() string     { return "" }
+func (*Provider) UninstallArgs() []string { return []string{"remove", "--purge"} }
+func (*Provider) CleanupPaths() []string {
+	return []string{
+		"/usr/local/bin/xray",
+		"/usr/local/etc/xray",
+		"/usr/local/share/xray",
+		"/var/log/xray",
+		"/etc/logrotate.d/xray",
+		"/etc/systemd/system/xray.service",
+		"/etc/systemd/system/xray@.service",
+		"/etc/systemd/system/xray.service.d",
+		"/etc/systemd/system/xray@.service.d",
+		"/usr/lib/sysusers.d/proxyforge-xray.conf",
+	}
+}
+
+func (*Provider) Version(ctx context.Context, r provider.Runner) (string, error) {
+	b, err := r.Run(ctx, "xray", "version")
+	if err != nil {
+		return "", fmt.Errorf("读取 Xray 版本: %w", err)
+	}
+	line := strings.Split(strings.TrimSpace(string(b)), "\n")[0]
+	if line == "" {
+		return "", fmt.Errorf("Xray 返回了空版本")
+	}
+	return line, nil
+}
+
+func (*Provider) GenerateKeyPair(ctx context.Context, r provider.Runner) (domain.KeyPair, error) {
+	b, err := r.Run(ctx, "xray", "x25519")
+	if err != nil {
+		return domain.KeyPair{}, fmt.Errorf("生成 Xray REALITY 密钥: %w", err)
+	}
+	var pair domain.KeyPair
+	for _, line := range strings.Split(string(b), "\n") {
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		values := strings.Fields(parts[1])
+		if len(values) == 0 {
+			continue
+		}
+		label := strings.ToLower(strings.TrimSpace(parts[0]))
+		label = strings.NewReplacer(" ", "", "_", "", "-", "").Replace(label)
+		switch label {
+		case "private", "privatekey":
+			pair.Private = values[0]
+		case "public", "publickey", "password", "password(publickey)":
+			pair.Public = values[0]
+		}
+	}
+	if pair.Private == "" || pair.Public == "" {
+		return pair, fmt.Errorf("无法解析 Xray REALITY 密钥输出（缺少 PrivateKey 或 Password/PublicKey 字段）")
+	}
+	return pair, nil
+}
+
+func renderServer(n domain.NodeSpec) ([]byte, error) {
+	if n.IsTLS() {
+		return renderTLSServer(n)
+	}
+	if n.XrayFallbackGuard {
+		b, err := renderFallbackGuardServer(n)
+		if err != nil || (len(n.RelayLinks) == 0 && len(n.LandingAccesses) == 0) {
+			return b, err
+		}
+		return (&Provider{}).PatchLinks(b, domain.NodeSpec{}, n)
+	}
+	stream := streamSettings{Network: "raw", Security: "reality", RealitySettings: serverRealitySettings{
+		Show: false, Target: n.Target, Xver: 0, ServerNames: []string{n.SNI}, PrivateKey: n.PrivateKey, ShortIDs: []string{n.ShortID},
+	}}
+	v := xrayConfig{
+		Log: map[string]any{"loglevel": "warning"},
+		DNS: systemDNS(),
+		Inbounds: []any{orderedInbound{
+			Listen: "0.0.0.0", Port: n.Port, Protocol: "vless",
+			Settings:       vlessInboundSettings{Clients: []vlessInboundUser{{ID: n.UUID, Email: n.UserName, Flow: domain.VisionFlow}}, Decryption: "none"},
+			StreamSettings: &stream, Tag: n.InboundTag,
+		}},
+		Outbounds: []xrayOutbound{directOutbound(), blockedOutbound()},
+		Routing:   privateNetworkRouting(),
+	}
+	b, err := marshalXray(v)
+	if err != nil || (len(n.RelayLinks) == 0 && len(n.LandingAccesses) == 0) {
+		return b, err
+	}
+	return (&Provider{}).PatchLinks(b, domain.NodeSpec{}, n)
+}
+
+const (
+	fallbackGuardInboundTag   = "fallback-in"
+	fallbackDirectOutboundTag = "fallback-out"
+)
+
+func renderFallbackGuardServer(n domain.NodeSpec) ([]byte, error) {
+	host, rawPort, err := net.SplitHostPort(n.Target)
+	if err != nil {
+		return nil, fmt.Errorf("解析 REALITY target %s: %w", n.Target, err)
+	}
+	targetPort, err := strconv.Atoi(rawPort)
+	if err != nil {
+		return nil, fmt.Errorf("解析 REALITY target 端口 %s: %w", rawPort, err)
+	}
+	destOverride := []string{"tls"}
+	if n.XrayFallbackHTTPDomain {
+		destOverride = []string{"http", "tls"}
+	}
+	tunnel := tunnelInbound{
+		Listen: "127.0.0.1", Tag: fallbackGuardInboundTag, Port: n.XrayFallbackPort, Protocol: "tunnel",
+		Settings: tunnelSettings{Address: host, Port: targetPort, Network: "tcp"},
+		Sniffing: sniffingSettings{Enabled: true, DestOverride: destOverride, RouteOnly: true},
+	}
+	stream := streamSettings{Network: "raw", Security: "reality", RealitySettings: serverRealitySettings{
+		Show: false, Target: net.JoinHostPort("127.0.0.1", strconv.Itoa(n.XrayFallbackPort)), Xver: 0,
+		ServerNames: []string{n.SNI}, PrivateKey: n.PrivateKey, ShortIDs: []string{n.ShortID},
+	}}
+	sniffing := sniffingSettings{Enabled: true, DestOverride: []string{"http", "tls", "quic"}, RouteOnly: true}
+	vless := orderedInbound{
+		Listen: "0.0.0.0", Port: n.Port, Protocol: "vless",
+		Settings:       vlessInboundSettings{Clients: []vlessInboundUser{{ID: n.UUID, Email: n.UserName, Flow: domain.VisionFlow}}, Decryption: "none"},
+		StreamSettings: &stream, Tag: n.InboundTag, Sniffing: &sniffing,
+	}
+	routing := privateNetworkRouting()
+	fallbackDomain := xraySubdomain(n.SNI)
+	if n.XrayFallbackExactDomain {
+		fallbackDomain = xrayFullDomain(n.SNI)
+	}
+	fallbackRules := []routingRule{
+		// Without HTTP sniffing, routing uses the configured tunnel
+		// destination and does not restrict the plaintext HTTP Host header.
+		{InboundTag: []string{fallbackGuardInboundTag}, Domain: []string{fallbackDomain}, OutboundTag: fallbackDirectOutboundTag},
+	}
+	if n.XrayFallbackHTTPDomain {
+		fallbackRules = []routingRule{
+			{InboundTag: []string{fallbackGuardInboundTag}, Protocol: []string{"tls"}, Domain: []string{fallbackDomain}, OutboundTag: fallbackDirectOutboundTag},
+			{InboundTag: []string{fallbackGuardInboundTag}, Protocol: []string{"http"}, Domain: []string{fallbackDomain}, OutboundTag: fallbackDirectOutboundTag},
+		}
+	}
+	fallbackRules = append(fallbackRules, routingRule{InboundTag: []string{fallbackGuardInboundTag}, OutboundTag: "private-block"})
+	routing.Rules = append(fallbackRules, routing.Rules...)
+	v := xrayConfig{
+		Log:       map[string]any{"loglevel": "warning"},
+		DNS:       systemDNS(),
+		Inbounds:  []any{tunnel, vless},
+		Outbounds: []xrayOutbound{directOutbound(), fallbackDirectOutbound(), blockedOutbound()},
+		Routing:   routing,
+	}
+	return marshalXray(v)
+}
+func xrayFullDomain(name string) string {
+	return "full:" + name
+}
+
+func xraySubdomain(name string) string {
+	return "domain:" + name
+}
+
+func (*Provider) RenderClient(n domain.NodeSpec) ([]byte, error) {
+	n.Core = domain.CoreXray
+	stream := streamSettings{Network: "raw", Security: "reality", RealitySettings: clientRealitySettings{
+		ServerName: n.SNI, Fingerprint: "chrome", Password: n.PublicKey, ShortID: n.ShortID, SpiderX: "/",
+	}}
+	if n.IsTLS() {
+		if n.TLSCertificate == nil || !domain.ValidCertificateSHA256(n.TLSCertificate.CertificateSHA256) {
+			return nil, fmt.Errorf("TLS 节点缺少合法证书指纹")
+		}
+		stream.Security, stream.RealitySettings = "tls", nil
+		stream.TLSSettings = map[string]any{"serverName": n.SNI, "fingerprint": "chrome", "minVersion": "1.3", "allowInsecure": false, "pinnedPeerCertSha256": n.TLSCertificate.CertificateSHA256}
+	}
+	v := xrayConfig{
+		Log: map[string]any{"loglevel": "warning"},
+		DNS: systemDNS(),
+		Inbounds: []any{
+			orderedInbound{Listen: "127.0.0.1", Port: 10808, Protocol: "socks", Settings: map[string]any{"udp": true}},
+			orderedInbound{Listen: "127.0.0.1", Port: 10809, Protocol: "http", Settings: map[string]any{}},
+		},
+		Outbounds: []xrayOutbound{{
+			Protocol: "vless",
+			Settings: vlessOutboundSettings{VNext: []vlessServer{{
+				Address: n.Server, Port: n.Port, Users: []vlessOutboundUser{{ID: n.UUID, Encryption: "none", Flow: domain.VisionFlow}},
+			}}},
+			Tag: "proxy", StreamSettings: &stream,
+		}, blockedOutbound()},
+		Routing: privateNetworkRouting(),
+	}
+	if len(n.AccessPolicy.Whitelist) > 0 {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		var root map[string]any
+		if err := json.Unmarshal(b, &root); err != nil {
+			return nil, err
+		}
+		if err := accesspolicy.AllowClient(root, n); err != nil {
+			return nil, err
+		}
+		return marshalXray(root)
+	}
+	return marshalXray(v)
+}
+
+func systemDNS() dnsSettings {
+	return dnsSettings{Servers: []any{"localhost"}, QueryStrategy: "UseIP"}
+}
+
+func privateNetworkRouting() routingSettings {
+	return routingSettings{
+		DomainStrategy: "IPOnDemand",
+		Rules: []routingRule{{
+			IP: xrayBlockedDestinations(), OutboundTag: "private-block",
+		}},
+	}
+}
+
+func xrayBlockedDestinations() []string {
+	return append([]string{"geoip:private"}, domain.BlockedDestinationCIDRs()...)
+}
+
+func blockedOutbound() xrayOutbound {
+	return xrayOutbound{Protocol: "blackhole", Settings: map[string]any{}, Tag: "private-block"}
+}
+
+func directOutbound() xrayOutbound {
+	return xrayOutbound{
+		Protocol:       "freedom",
+		Settings:       freedomDirectSettings(),
+		Tag:            "direct",
+		StreamSettings: freedomHappyEyeballsStream(),
+	}
+}
+
+func fallbackDirectOutbound() xrayOutbound {
+	return xrayOutbound{
+		Protocol:       "freedom",
+		Settings:       map[string]any{"domainStrategy": "AsIs"},
+		Tag:            fallbackDirectOutboundTag,
+		StreamSettings: freedomHappyEyeballsStream(),
+	}
+}
+
+func (*Provider) ValidateConfig(ctx context.Context, r provider.Runner, path string) error {
+	if _, err := r.Run(ctx, "xray", "run", "-test", "-config", path); err != nil {
+		return fmt.Errorf("Xray 配置校验失败: %w", err)
+	}
+	return nil
+}
+
+func renderTLSServer(n domain.NodeSpec) ([]byte, error) {
+	if n.TLSCertificate == nil {
+		return nil, fmt.Errorf("TLS 节点缺少证书")
+	}
+	stream := streamSettings{Network: "raw", Security: "tls", TLSSettings: map[string]any{
+		"minVersion": "1.3", "certificates": []any{map[string]any{"certificateFile": n.TLSCertificate.CertificateFile, "keyFile": n.TLSCertificate.KeyFile}},
+	}}
+	v := xrayConfig{Log: map[string]any{"loglevel": "warning"}, DNS: systemDNS(),
+		Inbounds: []any{orderedInbound{Listen: "0.0.0.0", Port: n.Port, Protocol: "vless", Tag: n.InboundTag,
+			Settings: vlessInboundSettings{Clients: []vlessInboundUser{{ID: n.UUID, Email: n.UserName, Flow: domain.VisionFlow}}, Decryption: "none"}, StreamSettings: &stream}},
+		Outbounds: []xrayOutbound{directOutbound(), blockedOutbound()}, Routing: privateNetworkRouting()}
+	b, err := marshalXray(v)
+	if err != nil || (len(n.RelayLinks) == 0 && len(n.LandingAccesses) == 0) {
+		return b, err
+	}
+	return (&Provider{}).PatchLinks(b, domain.NodeSpec{}, n)
+}

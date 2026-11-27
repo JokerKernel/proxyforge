@@ -1,0 +1,176 @@
+package cli
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strconv"
+
+	"proxyforge/internal/domain"
+	"proxyforge/internal/provider"
+	"proxyforge/internal/system"
+)
+
+func (c *commandSet) outboundIPMenu(ctx context.Context, core string) error {
+	for {
+		settings, err := c.app.OutboundIPSettings(ctx, core)
+		if err != nil {
+			return err
+		}
+		c.clearScreen()
+		c.printPageHeader(core, "出站 IP")
+		fmt.Fprintf(c.out, "当前生效：%s\n\n", outboundIPDisplay(settings.Current))
+		defaultChoice := -1
+		for index, strategy := range settings.Strategies {
+			key := strconv.Itoa(index + 1)
+			label := outboundIPChoiceLabel(core, strategy)
+			if strategy == settings.Current {
+				label = "[当前] " + label
+				defaultChoice = index + 1
+			}
+			c.printMenuChoice(key, label)
+		}
+		c.printMenuChoice("0/q", "返回")
+		choice, err := c.chooseNumber("请选择出站 IP", 0, len(settings.Strategies), defaultChoice)
+		if err != nil {
+			return err
+		}
+		if choice == 0 {
+			return errReturnToMenu
+		}
+		selected := settings.Strategies[choice-1]
+		if selected == settings.Current {
+			system.WriteDetail(c.out, "操作提示", "出站 IP 已经是 %s，无需修改。", outboundIPDisplay(selected))
+			c.pauseForMenu()
+			continue
+		}
+
+		sections := []confirmationSection{{title: "将执行", items: []string{
+			"按 " + core + " 出站访问域名时的地址族策略更新配置",
+			"只影响用户代理流量，REALITY 回落仍保持双栈",
+			"不修改 DNS 服务器列表和系统全局 DNS",
+			"使用内核原生命令校验候选配置",
+			"备份并原子更新当前服务端配置",
+			"服务正在运行时自动重启使设置立即生效",
+		}}}
+		switch selected {
+		case provider.OutboundIPPreferIPv4, provider.OutboundIPPreferIPv6:
+			items := []string{
+				"优先解析所选地址族；解析不到时再尝试另一族",
+			}
+			if core == domain.CoreXray {
+				items = append(items, "Xray 在已经解析出优先地址族后，连接失败不会改走另一族")
+			} else {
+				items = append(items, "sing-box 会在短延迟后尝试另一族地址（连接回退）")
+			}
+			sections = append(sections, confirmationSection{title: "优先策略", items: items})
+		case provider.OutboundIPUnset:
+			items := []string{"恢复为生成配置时的双栈行为"}
+			if core == domain.CoreXray {
+				items = append(items, "Xray 先连 IPv4，约 300ms 后竞速 IPv6")
+			} else {
+				items = append(items, "不偏科某一地址族；双栈时先 IPv4，约 300ms 后竞速 IPv6")
+			}
+			sections = append(sections, confirmationSection{title: "恢复默认", items: items})
+		default:
+			items := []string{"对端只有另一地址族时将无法访问"}
+			if core == domain.CoreXray {
+				items = append(items, "Xray Freedom 的 UDP 出站默认仍偏向 IPv4")
+			}
+			sections = append(sections, confirmationSection{title: "仅单族", items: items})
+		}
+		c.printConfirmationPanel(
+			"操作确认：设置出站 IP",
+			[]string{
+				"目标内核：" + core,
+				"当前生效：" + outboundIPDisplay(settings.Current),
+				"新的配置：" + outboundIPDisplay(selected),
+			},
+			sections...,
+		)
+		confirmed, err := c.confirmCancelable("应用新的出站 IP 设置？")
+		if errors.Is(err, errReturnToMenu) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			system.WriteDetail(c.out, "取消操作", "%s", "已取消出站 IP 修改。")
+			continue
+		}
+		change, err := c.app.SetOutboundIPStrategy(ctx, core, selected)
+		if err != nil {
+			return err
+		}
+		if !change.Changed {
+			system.WriteDetail(c.out, "操作提示", "出站 IP 已经是 %s，无需修改。", outboundIPDisplay(change.Current))
+			c.pauseForMenu()
+			continue
+		}
+		effect := "服务当前未运行，将在下次启动时生效"
+		if change.Restarted {
+			effect = "服务已重启，设置已生效"
+		}
+		system.WriteDetail(c.out, "操作结果", "%s 出站 IP 已从 %s 修改为 %s；%s。",
+			core, outboundIPDisplay(change.Previous), outboundIPDisplay(change.Current), effect)
+		c.pauseForMenu()
+	}
+}
+
+func outboundIPChoiceTitle(strategy string) string {
+	if strategy == provider.OutboundIPUnset {
+		return "默认"
+	}
+	return outboundIPDisplay(strategy)
+}
+
+func outboundIPChoiceLabel(core, strategy string) string {
+	hint := outboundIPChoiceHint(core, strategy)
+	if hint == "" {
+		return outboundIPChoiceTitle(strategy)
+	}
+	return outboundIPChoiceTitle(strategy) + "（" + hint + "）"
+}
+
+func outboundIPChoiceHint(core, strategy string) string {
+	switch strategy {
+	case provider.OutboundIPPreferIPv4:
+		if core == domain.CoreXray {
+			return "有 IPv4 后连不上也不改走 IPv6"
+		}
+		return "先 IPv4，短延迟后可回退 IPv6"
+	case provider.OutboundIPPreferIPv6:
+		if core == domain.CoreXray {
+			return "有 IPv6 后连不上也不改走 IPv4"
+		}
+		return "先 IPv6，短延迟后可回退 IPv4"
+	case provider.OutboundIPIPv4Only:
+		return "只使用 IPv4"
+	case provider.OutboundIPIPv6Only:
+		return "只使用 IPv6"
+	case provider.OutboundIPUnset:
+		return "先 IPv4，300ms 后竞速 IPv6"
+	default:
+		return ""
+	}
+}
+
+func outboundIPDisplay(strategy string) string {
+	switch strategy {
+	case provider.OutboundIPPreferIPv4:
+		return "优先 IPv4"
+	case provider.OutboundIPPreferIPv6:
+		return "优先 IPv6"
+	case provider.OutboundIPIPv4Only:
+		return "仅 IPv4"
+	case provider.OutboundIPIPv6Only:
+		return "仅 IPv6"
+	case provider.OutboundIPUnset:
+		return "未设置（双栈）"
+	case "custom":
+		return "自定义出站 IP 策略"
+	default:
+		return strategy
+	}
+}

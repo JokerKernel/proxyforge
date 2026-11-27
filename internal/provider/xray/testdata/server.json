@@ -1,0 +1,46 @@
+{
+  "dns": {
+    "queryStrategy": "UseIP",
+    "servers": ["localhost"]
+  },
+  "inbounds": [{
+    "listen": "0.0.0.0",
+    "port": 443,
+    "protocol": "vless",
+    "tag": "xray-one",
+    "settings": {"clients": [{"email": "one", "flow": "xtls-rprx-vision", "id": "123e4567-e89b-42d3-a456-426614174000"}], "decryption": "none"},
+    "streamSettings": {
+      "network": "raw",
+      "security": "reality",
+      "realitySettings": {"privateKey": "private-key", "serverNames": ["example.com"], "shortIds": ["0123456789abcdef"], "show": false, "target": "example.com:443", "xver": 0}
+    }
+  }],
+  "log": {"loglevel": "warning"},
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "settings": {"domainStrategy": "AsIs", "finalRules": [{"action": "allow"}]},
+      "tag": "direct",
+      "streamSettings": {
+        "sockopt": {
+          "domainStrategy": "UseIP",
+          "happyEyeballs": {"tryDelayMs": 300, "prioritizeIPv6": false}
+        }
+      }
+    },
+    {"protocol": "blackhole", "settings": {}, "tag": "private-block"}
+  ],
+  "routing": {
+    "domainStrategy": "IPOnDemand",
+    "rules": [{
+      "ip": [
+        "geoip:private", "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8",
+        "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24",
+        "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24",
+        "224.0.0.0/4", "240.0.0.0/4", "::/128", "::1/128", "64:ff9b:1::/48",
+        "100::/64", "2001:db8::/32", "fc00::/7", "fe80::/10", "ff00::/8"
+      ],
+      "outboundTag": "private-block"
+    }]
+  }
+}

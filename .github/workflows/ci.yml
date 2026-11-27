@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test and vet
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Check Go formatting
+        run: |
+          unformatted=$(gofmt -l $(git ls-files '*.go'))
+          if [[ -n "$unformatted" ]]; then
+            printf 'Go files need formatting:\n%s\n' "$unformatted"
+            exit 1
+          fi
+
+      - name: Run tests with race detector
+        run: go test -race ./...
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Validate shell scripts and installer behavior
+        run: |
+          bash -n scripts/install.sh scripts/install_test.sh scripts/test-reality-sni.sh scripts/test-reality-sni_test.sh
+          bash scripts/install_test.sh
+          bash scripts/test-reality-sni_test.sh
+
+          bash_path=$(command -v bash)
+          set +e
+          installer_output=$(PATH=/nonexistent "${bash_path}" < scripts/install.sh 2>&1)
+          installer_status=$?
+          set -e
+
+          [[ ${installer_status} -ne 0 ]]
+          grep -Fq "该安装脚本仅支持 Linux" <<< "${installer_output}"
+
+  build:
+    name: Build linux/${{ matrix.arch }}
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - amd64
+          - arm64
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Build binary
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+          OUTPUT: dist/proxyforge-linux-${{ matrix.arch }}
+        run: |
+          mkdir -p dist
+          ./scripts/build.sh
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: proxyforge-linux-${{ matrix.arch }}
+          path: dist/proxyforge-linux-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 14

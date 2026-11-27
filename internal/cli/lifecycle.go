@@ -1,0 +1,342 @@
+package cli
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"regexp"
+	"strings"
+
+	"github.com/spf13/cobra"
+
+	"proxyforge/internal/app"
+	"proxyforge/internal/install"
+	"proxyforge/internal/selfupdate"
+	"proxyforge/internal/system"
+)
+
+var specifiedCoreVersionPattern = regexp.MustCompile(`^v?[0-9][0-9A-Za-z._+-]*$`)
+
+func (c *commandSet) updateCommand() *cobra.Command {
+	return &cobra.Command{
+		Use: "update", Short: "升级 ProxyForge 自身到最新正式版本", Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if c.selfUpdate == nil {
+				return fmt.Errorf("自升级功能未初始化")
+			}
+			return c.selfUpdate(cmd.Context(), selfupdate.Options{
+				AssumeYes: c.yes,
+			})
+		},
+	}
+}
+
+func (c *commandSet) uninstallCommand() *cobra.Command {
+	var trust, scriptURL string
+	cmd := &cobra.Command{
+		Use: "uninstall [sing-box|xray]", Short: "卸载 ProxyForge 自身，或卸载指定内核并清理数据", Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				if trust != "" || scriptURL != "" {
+					return fmt.Errorf("--script-url 和 --trust-script-sha256 仅用于卸载代理内核")
+				}
+				if c.selfUpdate == nil {
+					return fmt.Errorf("自身卸载功能未初始化")
+				}
+				return c.selfUpdate(cmd.Context(), selfupdate.Options{AssumeYes: c.yes, Uninstall: true})
+			}
+			interactive := !c.yes && readerInteractive(c.in)
+			if !c.yes {
+				if !interactive {
+					return fmt.Errorf("非交互模式卸载必须显式提供 --yes")
+				}
+				confirmed, err := c.confirmUninstall(args[0])
+				if err != nil {
+					return err
+				}
+				if !confirmed {
+					return fmt.Errorf("用户取消卸载")
+				}
+			}
+			return c.app.Uninstall(cmd.Context(), args[0], install.Options{
+				URL: scriptURL, NonInteractive: !interactive, TrustScriptSHA256: trust, Confirm: c.confirm,
+			})
+		},
+	}
+	cmd.Flags().StringVar(&trust, "trust-script-sha256", "", "非交互卸载 Xray 时固定的官方脚本 SHA-256")
+	cmd.Flags().StringVar(&scriptURL, "script-url", "", "Xray 官方管理脚本地址（高级选项，仍受主机白名单限制）")
+	return cmd
+}
+
+func (c *commandSet) cleanupCommand() *cobra.Command {
+	return &cobra.Command{
+		Use: "cleanup <sing-box|xray|all>", Short: "直接删除卸载残留", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !c.yes {
+				if !readerInteractive(c.in) {
+					return fmt.Errorf("非交互模式清理必须显式提供 --yes")
+				}
+				confirmed, err := c.confirmCleanup(args[0])
+				if err != nil {
+					return err
+				}
+				if !confirmed {
+					return fmt.Errorf("用户取消清理")
+				}
+			}
+			return c.app.Cleanup(cmd.Context(), args[0])
+		},
+	}
+}
+
+func (c *commandSet) installCommand() *cobra.Command {
+	var version, trust, scriptURL string
+	var beta bool
+	cmd := &cobra.Command{
+		Use: "install <sing-box|xray>", Aliases: []string{"upgrade"}, Short: "安装或升级内核", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateInstallVersionFlags(version, beta); err != nil {
+				return err
+			}
+			nonInteractive := c.yes || !readerInteractive(c.in)
+			opts := install.Options{URL: scriptURL, Version: version, Beta: beta, NonInteractive: nonInteractive, TrustScriptSHA256: trust, Confirm: c.confirm}
+			if !nonInteractive && !cmd.Flags().Changed("version") && !cmd.Flags().Changed("beta") {
+				chosen, err := c.chooseInstallOptions(cmd.Context(), args[0], opts)
+				if err != nil {
+					if errors.Is(err, errReturnToMenu) {
+						system.WriteDetail(c.out, "取消操作", "%s", "已取消安装/升级。")
+						return nil
+					}
+					return err
+				}
+				opts = chosen
+			}
+			return c.app.Install(cmd.Context(), args[0], opts)
+		},
+	}
+	cmd.Flags().StringVar(&version, "version", "", "指定内核版本（默认最新稳定版；与 --beta 互斥）")
+	cmd.Flags().BoolVar(&beta, "beta", false, "安装官方最新预发布（与 --version 互斥）")
+	cmd.Flags().StringVar(&trust, "trust-script-sha256", "", "非交互模式固定的官方脚本 SHA-256")
+	cmd.Flags().StringVar(&scriptURL, "script-url", "", "官方安装脚本地址（高级选项，仍受主机白名单限制）")
+	return cmd
+}
+
+func validateInstallVersionFlags(version string, beta bool) error {
+	if beta && strings.TrimSpace(version) != "" {
+		return fmt.Errorf("--beta 与 --version 不能同时使用")
+	}
+	return nil
+}
+
+// installMenu owns the installation page; command-line installation still uses
+// chooseInstallOptions once and exits after completing the requested command.
+func (c *commandSet) installMenu(ctx context.Context, core string) error {
+	opts := install.Options{Confirm: c.confirm}
+	for {
+		var err error
+		opts, err = c.chooseInstallOptions(ctx, core, opts)
+		if errors.Is(err, errReturnToMenu) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if err := c.app.Install(ctx, core, opts); err != nil {
+			c.printMenuError(err)
+		}
+		c.pauseForMenu()
+	}
+}
+
+func (c *commandSet) chooseInstallOptions(ctx context.Context, core string, opts install.Options) (install.Options, error) {
+	if opts.Version == "" && !opts.Beta {
+		channel, err := c.app.PreferredInstallChannel(core)
+		if err != nil {
+			return opts, err
+		}
+		opts.Beta = channel == system.InstallChannelBeta
+	}
+	status := c.app.CoreInstallStatus(ctx, core)
+	for {
+		c.clearScreen()
+		c.printPageHeader(core, "安装/更新内核")
+		c.printInstallStatusCard(core, status, opts)
+		c.printMenuChoice("1", "安装/更新")
+		c.printMenuChoice("2", "选择版本")
+		c.printMenuChoice("3", "指定版本")
+		c.printMenuChoice("0/q", "返回")
+		choice, err := c.chooseNumber("请选择", 0, 3, -1)
+		if err != nil {
+			return opts, err
+		}
+		switch choice {
+		case 0:
+			return opts, errReturnToMenu
+		case 1:
+			confirmed, err := c.confirmInstall(core, opts)
+			if errors.Is(err, errReturnToMenu) {
+				continue
+			}
+			if err != nil {
+				return opts, err
+			}
+			if confirmed {
+				return opts, nil
+			}
+		case 2:
+			c.clearScreen()
+			c.printPageHeader(core, "安装/更新内核", "选择版本")
+			c.printMenuChoice("1", "稳定版")
+			c.printMenuChoice("2", "开发版（最新预发布）")
+			c.printMenuChoice("0/q", "返回")
+			def := 1
+			if opts.Beta {
+				def = 2
+			}
+			channel, err := c.chooseNumberCancelable("请选择版本渠道", 1, 2, def)
+			if errors.Is(err, errReturnToMenu) {
+				continue
+			}
+			if err != nil {
+				return opts, err
+			}
+			opts.Beta, opts.Version = channel == 2, ""
+		case 3:
+			c.clearScreen()
+			c.printPageHeader(core, "安装/更新内核", "指定版本")
+			version, err := c.askInstallVersion()
+			if errors.Is(err, errReturnToMenu) {
+				continue
+			}
+			if err != nil {
+				return opts, err
+			}
+			opts.Version, opts.Beta = version, false
+		}
+	}
+}
+
+func (c *commandSet) printInstallStatusCard(core string, status app.CoreInstallStatus, opts install.Options) {
+	version := status.Version
+	if !status.Installed {
+		version = "尚未安装"
+	} else if version == "" {
+		version = "无法读取"
+	}
+	target := "稳定版（最新正式版）"
+	if opts.Beta {
+		target = "开发版（最新预发布）"
+	} else if opts.Version != "" {
+		target = "指定版本 " + opts.Version
+	}
+	c.printLabeledCard("当前内核", [][2]string{
+		{"内核", coreDisplayName(core)},
+		{"版本号", version},
+		{"安装渠道", target},
+	})
+}
+
+func (c *commandSet) askInstallVersion() (string, error) {
+	for {
+		fmt.Fprintln(c.out)
+		value, err := c.askDefaultCancelable("版本号", "")
+		if err != nil {
+			return "", err
+		}
+		version, err := parseSpecifiedCoreVersion(value)
+		if err != nil {
+			fmt.Fprintf(c.out, "%v。\n", err)
+			continue
+		}
+		return version, nil
+	}
+}
+
+func parseSpecifiedCoreVersion(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", fmt.Errorf("版本号不能为空")
+	}
+	if !specifiedCoreVersionPattern.MatchString(value) {
+		return "", fmt.Errorf("版本号无效，请输入类似 v26.9.9 的官方版本")
+	}
+	return value, nil
+}
+
+func installVersionLabel(opts install.Options) string {
+	if opts.Beta {
+		return "最新预发布"
+	}
+	if version := strings.TrimSpace(opts.Version); version != "" {
+		return "指定版本 " + version
+	}
+	return "最新稳定版"
+}
+
+func (c *commandSet) confirmUninstall(core string) (bool, error) {
+	permanentDeletes := []string{
+		"服务端配置、运行数据和文件日志",
+		"ProxyForge 状态、信任记录、安装偏好和历史备份",
+	}
+	if core == "xray" {
+		permanentDeletes = append(permanentDeletes, "ProxyForge 创建且身份未变化的 xray 专用系统用户和组")
+	}
+	c.printConfirmationPanel(
+		"危险操作确认：卸载内核并清理数据",
+		[]string{"目标内核：" + core},
+		confirmationSection{title: "将执行", items: []string{
+			"停止并禁用 systemd 服务",
+			"卸载内核并核验卸载结果",
+			"卸载成功后自动清理全部残留",
+		}},
+		confirmationSection{title: "永久删除", items: permanentDeletes},
+		confirmationSection{title: "重要影响", items: []string{
+			"现有客户端将立即失效",
+			"卸载或核验失败时不会执行自动清理",
+		}},
+	)
+	return c.confirm("卸载并清理 " + core + "？")
+}
+
+func (c *commandSet) confirmInstall(core string, opts install.Options) (bool, error) {
+	c.printConfirmationPanel(
+		"操作确认：安装/升级内核",
+		[]string{"目标内核：" + core, "安装版本：" + installVersionLabel(opts)},
+		confirmationSection{title: "将执行", items: []string{
+			"下载并执行官方管理脚本",
+			"安装或升级 " + core + " 内核二进制",
+			"可能更新软件包文件和 systemd unit",
+		}},
+		confirmationSection{title: "配置保护", items: []string{
+			"检测到现有配置时，现有配置会先备份",
+		}},
+		confirmationSection{title: "安全确认", items: []string{
+			"执行前还会展示脚本来源、大小和 SHA-256",
+			"首次或脚本变更时需要再次确认信任",
+		}},
+	)
+	return c.confirm("安装或升级 " + core + "？")
+}
+
+func (c *commandSet) confirmCleanup(target string) (bool, error) {
+	permanentDeletes := []string{
+		"配置目录、运行数据和文件日志",
+		"ProxyForge 节点状态、访问控制、落地与中转记录",
+		"安装偏好、信任记录、证书和历史备份",
+	}
+	prerequisite := "目标内核的二进制、服务及开机启动必须已清除"
+	if target == "all" {
+		permanentDeletes = append(permanentDeletes, "整个 /var/lib/proxyforge/ 目录，包括其中的自定义文件和目录")
+		prerequisite = "Xray 和 sing-box 两个内核均须已卸载；任一仍存在时拒绝清理"
+	}
+	c.printConfirmationPanel(
+		"危险操作确认：清理卸载残留",
+		[]string{"清理目标：" + target},
+		confirmationSection{title: "执行条件", items: []string{prerequisite}},
+		confirmationSection{title: "永久删除", items: permanentDeletes},
+		confirmationSection{title: "数据保护", items: []string{
+			"此操作不会创建新备份",
+		}},
+	)
+	return c.confirm("永久清理 " + target + " 的卸载残留？")
+}

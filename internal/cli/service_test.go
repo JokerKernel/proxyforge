@@ -1,0 +1,97 @@
+package cli
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"fmt"
+	"reflect"
+	"strings"
+	"testing"
+
+	"proxyforge/internal/app"
+	"proxyforge/internal/domain"
+	"proxyforge/internal/provider"
+	"proxyforge/internal/provider/singbox"
+	"proxyforge/internal/provider/xray"
+	"proxyforge/internal/system"
+)
+
+func TestServiceMenuLiveLogsReturnsAfterInterrupt(t *testing.T) {
+	runner := &liveLogRunner{}
+	a := &app.App{
+		Registry:  provider.NewRegistry(singbox.New(), xray.New()),
+		Services:  system.ServiceManager{Runner: runner},
+		RootCheck: func() error { return nil },
+	}
+	var out, errOut bytes.Buffer
+	c := &commandSet{
+		app: a, reader: bufio.NewReader(strings.NewReader("6\n0\n")), out: &out, errOut: &errOut,
+		interruptContext: func(parent context.Context) (context.Context, context.CancelFunc) {
+			child, cancel := context.WithCancel(parent)
+			cancel()
+			return child, func() {}
+		},
+	}
+	if err := c.serviceMenu(context.Background(), domain.CoreXray); err != nil {
+		t.Fatal(err)
+	}
+	wantArgs := []string{"-u", "xray.service", "-n", "100", "-f", "--no-pager"}
+	if runner.name != "journalctl" || !reflect.DeepEqual(runner.args, wantArgs) {
+		t.Fatalf("command=%s args=%v, want journalctl %v", runner.name, runner.args, wantArgs)
+	}
+	for _, want := range []string{"实时日志", "live entry", "已停止实时日志", "ProxyForge  ›  xray  ›  服务端配置  ›  服务管理"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("output missing %q: %q", want, out.String())
+		}
+	}
+	if strings.Contains(errOut.String(), "操作失败") {
+		t.Fatalf("interrupt was reported as an error: %q", errOut.String())
+	}
+}
+
+func TestServiceMenuOffersLogLevelSettings(t *testing.T) {
+	var out bytes.Buffer
+	c := &commandSet{reader: bufio.NewReader(strings.NewReader("0\n")), out: &out}
+	if err := c.serviceMenu(context.Background(), domain.CoreSingBox); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "日志级别") {
+		t.Fatalf("service menu still offers log level: %q", out.String())
+	}
+	if got := logLevelDisplay(domain.CoreSingBox, "info"); got != "info（常规运行信息（默认））" {
+		t.Fatalf("sing-box info display=%q", got)
+	}
+	if got := logLevelDisplay(domain.CoreXray, "warning"); got != "warning（警告及错误（默认））" {
+		t.Fatalf("xray warning display=%q", got)
+	}
+	if got := logLevelCardDisplay(domain.CoreXray, "warning"); got != "warning  -- 警告及错误（默认）" {
+		t.Fatalf("xray warning card display=%q", got)
+	}
+	if got := logLevelCardDisplay(domain.CoreSingBox, "info"); got != "info  -- 常规运行信息（默认）" {
+		t.Fatalf("sing-box info card display=%q", got)
+	}
+	if got := logLevelDisplay(domain.CoreXray, "info"); got != "info（常规运行信息）" {
+		t.Fatalf("xray info display=%q", got)
+	}
+	if got := logLevelDisplay(domain.CoreSingBox, "warn"); got != "warn（警告及错误）" {
+		t.Fatalf("sing-box warn display=%q", got)
+	}
+	if got := logLevelDisplay(domain.CoreXray, "off"); got != "off（关闭访问日志和错误日志）" {
+		t.Fatalf("xray off display=%q", got)
+	}
+	if got := logLevelCardDisplay(domain.CoreXray, "off"); got != "off  -- 关闭访问日志和错误日志" {
+		t.Fatalf("xray off card display=%q", got)
+	}
+	if got := logLevelDisplay(domain.CoreSingBox, "off"); got != "off（关闭全部日志输出）" {
+		t.Fatalf("sing-box off display=%q", got)
+	}
+	if got := logLevelCardDisplay(domain.CoreSingBox, "off"); got != "off  -- 关闭全部日志输出" {
+		t.Fatalf("sing-box off card display=%q", got)
+	}
+	var colored bytes.Buffer
+	fmt.Fprintln(system.NewColorWriter(&colored, true), "当前级别："+logLevelCardDisplay(domain.CoreSingBox, "info"))
+	if !strings.Contains(colored.String(), "当前级别：info") || !strings.Contains(colored.String(), "\x1b[90m-- 常规运行信息（默认）\x1b[0m") {
+		t.Fatalf("current level description is not gray: %q", colored.String())
+	}
+}

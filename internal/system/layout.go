@@ -1,0 +1,49 @@
+package system
+
+import (
+	"path/filepath"
+	"strings"
+)
+
+type Layout struct{ Root string }
+
+func (l Layout) Resolve(path string) string {
+	if l.Root == "" || l.Root == "/" {
+		return path
+	}
+	return filepath.Join(l.Root, strings.TrimPrefix(path, "/"))
+}
+
+func (l Layout) StatePath(core string) string {
+	return l.Resolve("/var/lib/proxyforge/state/" + core + ".json")
+}
+func (l Layout) AccessPolicyPath(core string) string {
+	return l.Resolve("/var/lib/proxyforge/access/" + core + ".json")
+}
+func (l Layout) LandingPath(core string) string {
+	return l.Resolve("/var/lib/proxyforge/landings/" + core + ".json")
+}
+func (l Layout) RelayPath(core string) string {
+	return l.Resolve("/var/lib/proxyforge/relays/" + core + ".json")
+}
+func (l Layout) TrustPath(core string) string {
+	return l.Resolve("/var/lib/proxyforge/trust/" + core + ".sha256")
+}
+func (l Layout) InstallPreferencesPath(core string) string {
+	return l.Resolve("/var/lib/proxyforge/preferences/" + core + ".json")
+}
+func (l Layout) BackupRoot(core string) string {
+	return l.Resolve("/var/lib/proxyforge/backups/" + core)
+}
+
+func (l Layout) TLSRoot(core string) string {
+	return l.Resolve("/var/lib/proxyforge/tls/" + core)
+}
+
+func (l Layout) TLSAccessDir(core, name string) string {
+	return filepath.Join(l.TLSRoot(core), name)
+}
+
+func (l Layout) XrayServiceAccountMarkerPath() string {
+	return l.Resolve("/var/lib/proxyforge/state/xray-service-account.json")
+}

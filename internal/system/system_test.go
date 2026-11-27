@@ -1,0 +1,656 @@
+package system
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"reflect"
+	"regexp"
+	"strings"
+	"testing"
+	"time"
+
+	"proxyforge/internal/domain"
+)
+
+type recordingRunner struct {
+	name string
+	args []string
+}
+
+func (r *recordingRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
+	r.name = name
+	r.args = append([]string(nil), args...)
+	return nil, nil
+}
+
+type outputRunner struct{ output []byte }
+
+func (r outputRunner) Run(context.Context, string, ...string) ([]byte, error) {
+	return r.output, nil
+}
+
+type streamingRecordingRunner struct {
+	name string
+	args []string
+}
+
+func (r *streamingRecordingRunner) Run(context.Context, string, ...string) ([]byte, error) {
+	return nil, nil
+}
+
+func (r *streamingRecordingRunner) RunStreaming(_ context.Context, stdout, _ io.Writer, name string, args ...string) error {
+	r.name = name
+	r.args = append([]string(nil), args...)
+	_, _ = io.WriteString(stdout, "live log line\n")
+	return nil
+}
+
+type canceledStreamingRunner struct{}
+
+func (canceledStreamingRunner) Run(context.Context, string, ...string) ([]byte, error) {
+	return nil, context.Canceled
+}
+
+func (canceledStreamingRunner) RunStreaming(context.Context, io.Writer, io.Writer, string, ...string) error {
+	return context.Canceled
+}
+
+func TestServiceManagerEnable(t *testing.T) {
+	runner := &recordingRunner{}
+	if err := (ServiceManager{Runner: runner}).Enable(context.Background(), "sing-box.service"); err != nil {
+		t.Fatal(err)
+	}
+	if runner.name != "systemctl" || !reflect.DeepEqual(runner.args, []string{"enable", "sing-box.service"}) {
+		t.Fatalf("command=%s args=%v", runner.name, runner.args)
+	}
+}
+
+func TestServiceManagerUserState(t *testing.T) {
+	user, err := (ServiceManager{Runner: outputRunner{output: []byte("xray\n")}}).UserState(context.Background(), "xray.service")
+	if err != nil || user != "xray" {
+		t.Fatalf("user=%q error=%v", user, err)
+	}
+	user, err = (ServiceManager{Runner: outputRunner{output: []byte("\n")}}).UserState(context.Background(), "xray.service")
+	if err != nil || user != "root" {
+		t.Fatalf("empty systemd user should mean root: user=%q error=%v", user, err)
+	}
+}
+
+func TestServiceManagerUninstallActions(t *testing.T) {
+	runner := &recordingRunner{}
+	manager := ServiceManager{Runner: runner}
+	if err := manager.DisableNow(context.Background(), "sing-box.service"); err != nil {
+		t.Fatal(err)
+	}
+	if runner.name != "systemctl" || !reflect.DeepEqual(runner.args, []string{"disable", "--now", "sing-box.service"}) {
+		t.Fatalf("disable command=%s args=%v", runner.name, runner.args)
+	}
+	if err := manager.DaemonReload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if runner.name != "systemctl" || !reflect.DeepEqual(runner.args, []string{"daemon-reload"}) {
+		t.Fatalf("reload command=%s args=%v", runner.name, runner.args)
+	}
+}
+
+func TestServiceManagerFollowsJournalLogs(t *testing.T) {
+	runner := &streamingRecordingRunner{}
+	var output bytes.Buffer
+	err := (ServiceManager{Runner: runner}).FollowLogs(context.Background(), "xray.service", &output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantArgs := []string{"-u", "xray.service", "-n", "100", "-f", "--no-pager"}
+	if runner.name != "journalctl" || !reflect.DeepEqual(runner.args, wantArgs) {
+		t.Fatalf("command=%s args=%v, want journalctl %v", runner.name, runner.args, wantArgs)
+	}
+	if output.String() != DetailLine("服务日志 xray", "live log line") {
+		t.Fatalf("output=%q", output.String())
+	}
+}
+
+func TestServiceManagerLabelsBufferedOutput(t *testing.T) {
+	runner := outputRunner{output: []byte("line one\nline two\n")}
+	manager := ServiceManager{Runner: runner}
+	logs, err := manager.Action(context.Background(), "sing-box.service", "logs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(logs), DetailLine("服务日志 sing-box", "line one")+DetailLine("服务日志 sing-box", "line two"); got != want {
+		t.Fatalf("logs=%q, want %q", got, want)
+	}
+	status, err := manager.Action(context.Background(), "sing-box.service", "status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(status), DetailLine("服务命令输出", "line one")+DetailLine("服务命令输出", "line two"); got != want {
+		t.Fatalf("status=%q, want %q", got, want)
+	}
+}
+
+func TestLinePrefixWriterHandlesFragmentedLines(t *testing.T) {
+	var output bytes.Buffer
+	w := NewLinePrefixWriter(&output, "[来源] ")
+	if _, err := io.WriteString(w, "first\npart"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(w, "ial\nlast"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := output.String(), "[来源] first\n[来源] partial\n[来源] last"; got != want {
+		t.Fatalf("output=%q, want %q", got, want)
+	}
+}
+
+func TestColorWriterUsesSemanticTerminalColors(t *testing.T) {
+	var output bytes.Buffer
+	w := NewColorWriter(&output, true)
+	previousVersion := "Xray 25.1.1 (Xray, Penetrates Everything.) abc123 (go1.26.1 linux/amd64)"
+	upgradedVersion := "Xray 25.2.0 (Xray, Penetrates Everything.) def456 (go1.26.1 linux/amd64)"
+	for _, line := range []string{
+		"╭─ ProxyForge\n",
+		DetailLine("应用访问策略", "白名单优先"),
+		DetailLine("风险提示", "谨慎操作"),
+		DetailLine("操作结果", "成功"),
+		DetailLine("操作失败", "配置无效"),
+		DetailLine("命令结果", "校验配置：执行失败"),
+		DetailLine("命令结果", "查看日志：已停止"),
+		DetailLine("服务日志 xray", "accepted connection"),
+		"│ 服务管理：xray  [版本 v1.2.3]\n",
+		"╰──────────────────────────────────────────────\n",
+		"========================================\n",
+		"1 安装/升级内核\n",
+		"5 卸载内核并清理数据\n",
+		"0 返回内核选择\n",
+		"0 退出\n",
+		"  0/q 退出\n",
+		"  1    生成配置  -- 完整覆盖\n",
+		"  1   Xray-core           [已安装]\n",
+		"  2   sing-box            [未安装]\n",
+		"  3   Xray（Docker）      [待配置]\n",
+		"  3   Xray（Docker）      [运行中]\n",
+		"  3   Xray（Docker）      [已停止]\n",
+		"  3   Xray（Docker）      [已移除·数据保留]\n",
+		"  5   恢复默认            [当前]\n",
+		" 1) example.com  [默认]\n",
+		"请选择 [1]: ",
+		"请输入 yes/y 确认；其他输入取消： ",
+		"│ 运行用户  xray\n",
+		"│ 运行用户  sing-box\n",
+		"│ 运行用户  nobody\n",
+		"│ 日志级别  info  -- 常规运行信息（默认）\n",
+		"│ 服务状态  运行中\n",
+		"│ 当前内核版本  " + previousVersion + "\n",
+		"│ 升级内核版本  " + upgradedVersion + "\n",
+		"│ 开机启动  已启用  -- enabled\n",
+		"│ 连接地址  192.168.213.128:443\n",
+		"│ 回落目标  se-edge.itunes.apple.com:443\n",
+		"│ SNI 防护  已开启\n",
+		"│ HTTP Host 不限制\n",
+		"│ 严格模式  未开启\n",
+		"│ 端口      443\n",
+		"│ SNI       is1-ssl.mzstatic.com\n",
+		"│ 监听端口  443\n",
+		"│ 中转      已开启  -- 1 条规则\n",
+		"│ 中转协议  VLESS + RAW + REALITY + Vision\n",
+		"│ 落地      未开启  -- 0 条规则\n",
+		"│ 落地协议  未使用\n",
+		"│ 线路名称  us-exit\n",
+		"│ 客户端用户  relay-user\n",
+		"│ 出站 tag  us-exit-out\n",
+		"│ 落地地址  192.168.1.20:8443\n",
+		"│ 接入名称  relay-1\n",
+		"│ 接入用户  relay-1\n",
+		"│ 接入方式  复用当前 REALITY 入站\n",
+		"│ 状态      已启用\n",
+		"│ 状态      已停用\n",
+	} {
+		if _, err := io.WriteString(w, line); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got := output.String()
+	for _, want := range []string{
+		"\x1b[1;38;5;208m╭─ ProxyForge\x1b[0m",
+		"\x1b[34m应用访问策略\x1b[0m",
+		"\x1b[1;33m风险提示\x1b[0m",
+		"\x1b[1;32m操作结果\x1b[0m",
+		"\x1b[1;31m操作失败\x1b[0m",
+		"\x1b[1;31m命令结果\x1b[0m",
+		"\x1b[1;33m命令结果\x1b[0m",
+		"\x1b[35m服务日志 xray\x1b[0m",
+		"\x1b[38;5;208m│ 服务管理：xray  \x1b[0m\x1b[1;32m[版本 v1.2.3]\x1b[0m",
+		"\x1b[1;38;5;208m╰──────────────────────────────────────────────\x1b[0m",
+		"\x1b[1;38;5;208m========================================\x1b[0m",
+		"\x1b[34m1\x1b[0m 安装/升级内核",
+		"\x1b[33m5\x1b[0m 卸载内核并清理数据",
+		"\x1b[1;33m0\x1b[0m \x1b[2m返回内核选择\x1b[0m",
+		"\x1b[1;33m0\x1b[0m \x1b[2m退出\x1b[0m",
+		"  \x1b[1;33m0/q\x1b[0m \x1b[2m退出\x1b[0m",
+		"  \x1b[34m1\x1b[0m    生成配置  \x1b[90m-- 完整覆盖\x1b[0m",
+		"  \x1b[34m1\x1b[0m   Xray-core           \x1b[38;5;208m[已安装]\x1b[0m",
+		"  \x1b[34m2\x1b[0m   sing-box            \x1b[90m[未安装]\x1b[0m",
+		"  \x1b[34m3\x1b[0m   Xray（Docker）      \x1b[90m[待配置]\x1b[0m",
+		"  \x1b[34m3\x1b[0m   Xray（Docker）      \x1b[38;5;208m[运行中]\x1b[0m",
+		"  \x1b[34m3\x1b[0m   Xray（Docker）      \x1b[38;5;208m[已停止]\x1b[0m",
+		"  \x1b[34m3\x1b[0m   Xray（Docker）      \x1b[38;5;208m[已移除·数据保留]\x1b[0m",
+		"  \x1b[34m5\x1b[0m   恢复默认            \x1b[38;5;208m[当前]\x1b[0m",
+		"\x1b[34m1\x1b[0m \x1b[1;38;5;208mexample.com\x1b[0m  \x1b[1;33m[默认]\x1b[0m",
+		"\x1b[34m请选择 [1]: \x1b[0m",
+		"\x1b[1;33m请输入 yes/y 确认；其他输入取消： \x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 运行用户  \x1b[38;5;208mxray\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 运行用户  \x1b[38;5;208msing-box\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 运行用户  nobody",
+		"\x1b[38;5;208m│\x1b[0m 日志级别  info  \x1b[90m-- 常规运行信息（默认）\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 服务状态  \x1b[38;5;208m运行中\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 当前内核版本  \x1b[37m" + previousVersion + "\x1b[0m\n",
+		"\x1b[38;5;208m│\x1b[0m 升级内核版本  \x1b[38;5;208m" + upgradedVersion + "\x1b[0m\n",
+		"\x1b[38;5;208m│\x1b[0m 开机启动  \x1b[38;5;208m已启用\x1b[0m  \x1b[90m-- enabled\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 连接地址  \x1b[1;38;5;208m192.168.213.128:443\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 回落目标  \x1b[1;38;5;208mse-edge.itunes.apple.com:443\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m SNI 防护  \x1b[38;5;208m已开启\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m HTTP Host \x1b[90m不限制\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 严格模式  \x1b[90m未开启\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 端口      \x1b[1;38;5;208m443\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m SNI       \x1b[1;38;5;208mis1-ssl.mzstatic.com\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 监听端口  \x1b[1;38;5;208m443\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 中转      \x1b[38;5;208m已开启\x1b[0m  \x1b[90m-- 1 条规则\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 中转协议  VLESS + RAW + REALITY + Vision",
+		"\x1b[38;5;208m│\x1b[0m 落地      \x1b[90m未开启\x1b[0m  \x1b[90m-- 0 条规则\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 落地协议  \x1b[90m未使用\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 线路名称  us-exit",
+		"\x1b[38;5;208m│\x1b[0m 客户端用户  relay-user",
+		"\x1b[38;5;208m│\x1b[0m 出站 tag  us-exit-out",
+		"\x1b[38;5;208m│\x1b[0m 落地地址  \x1b[1;38;5;208m192.168.1.20:8443\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 接入名称  relay-1",
+		"\x1b[38;5;208m│\x1b[0m 接入用户  relay-1",
+		"\x1b[38;5;208m│\x1b[0m 接入方式  复用当前 REALITY 入站",
+		"\x1b[38;5;208m│\x1b[0m 状态      \x1b[38;5;208m已启用\x1b[0m",
+		"\x1b[38;5;208m│\x1b[0m 状态      \x1b[90m已停用\x1b[0m",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("colored output missing %q: %q", want, got)
+		}
+	}
+}
+
+func TestColorWriterDisabledKeepsPlainOutput(t *testing.T) {
+	var output bytes.Buffer
+	w := NewColorWriter(&output, false)
+	want := DetailLine("操作失败", "失败原因") + "1) 返回\n"
+	if _, err := io.WriteString(w, want); err != nil {
+		t.Fatal(err)
+	}
+	if got := output.String(); got != want {
+		t.Fatalf("plain output=%q, want %q", got, want)
+	}
+	if strings.Contains(output.String(), "\x1b[") {
+		t.Fatalf("disabled output contains ANSI controls: %q", output.String())
+	}
+}
+
+func TestTerminalColorWriterHonorsColorModeOverride(t *testing.T) {
+	t.Run("always", func(t *testing.T) {
+		t.Setenv("PROXYFORGE_COLOR", "always")
+		var output bytes.Buffer
+		if _, err := io.WriteString(NewTerminalColorWriter(&output), DetailLine("操作结果", "完成")); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(output.String(), "\x1b[1;32m操作结果\x1b[0m") {
+			t.Fatalf("forced color output=%q", output.String())
+		}
+	})
+
+	t.Run("never", func(t *testing.T) {
+		t.Setenv("PROXYFORGE_COLOR", "never")
+		var output bytes.Buffer
+		want := DetailLine("操作结果", "完成")
+		if _, err := io.WriteString(NewTerminalColorWriter(&output), want); err != nil {
+			t.Fatal(err)
+		}
+		if got := output.String(); got != want {
+			t.Fatalf("disabled terminal color output=%q, want %q", got, want)
+		}
+	})
+}
+
+func TestExecRunnerStreamsStdoutAndStderr(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := (ExecRunner{}).RunStreaming(
+		context.Background(),
+		&stdout,
+		&stderr,
+		"bash",
+		"-c",
+		"printf stdout-data; printf stderr-data >&2",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stdout.String() != "stdout-data" {
+		t.Fatalf("stdout=%q", stdout.String())
+	}
+	if stderr.String() != "stderr-data" {
+		t.Fatalf("stderr=%q", stderr.String())
+	}
+}
+
+func TestExecRunnerForwardsStdin(t *testing.T) {
+	var stdout bytes.Buffer
+	err := (ExecRunner{Stdin: strings.NewReader("confirmed\n")}).RunStreaming(
+		context.Background(),
+		&stdout,
+		io.Discard,
+		"bash",
+		"-c",
+		"IFS= read -r answer; printf '%s' \"$answer\"",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stdout.String() != "confirmed" {
+		t.Fatalf("stdout=%q", stdout.String())
+	}
+}
+
+func TestLoggingRunnerReportsCommandWithoutLeakingBufferedOutput(t *testing.T) {
+	var log bytes.Buffer
+	runner := &LoggingRunner{Runner: outputRunner{output: []byte("private-key-output")}, Out: &log}
+	b, err := runner.Run(context.Background(), "sing-box", "generate", "reality-keypair")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "private-key-output" {
+		t.Fatalf("output=%q", b)
+	}
+	for _, want := range []string{DetailLine("生成 REALITY 密钥", "sing-box generate reality-keypair"), DetailLine("命令结果", "生成 REALITY 密钥：执行成功")} {
+		if !strings.Contains(log.String(), want) {
+			t.Fatalf("log missing %q: %s", want, log.String())
+		}
+	}
+	if strings.Contains(log.String(), "private-key-output") {
+		t.Fatalf("buffered command output leaked into log: %s", log.String())
+	}
+}
+
+func TestLoggingRunnerReportsCanceledStreamingCommandAsStopped(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var log bytes.Buffer
+	runner := &LoggingRunner{Runner: canceledStreamingRunner{}, Out: &log}
+	if err := runner.RunStreaming(ctx, io.Discard, io.Discard, "journalctl", "-f"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("error=%v, want context cancellation", err)
+	}
+	if !strings.Contains(log.String(), DetailLine("命令结果", "查看服务日志：已停止")) || strings.Contains(log.String(), "执行失败") {
+		t.Fatalf("unexpected cancellation log: %s", log.String())
+	}
+}
+
+func TestLoggingRunnerDisplaysProxyAddressWithoutCredentials(t *testing.T) {
+	var log bytes.Buffer
+	runner := &LoggingRunner{Runner: outputRunner{}, Out: &log}
+	proxyURL := "http://user:secret@127.0.0.1:7890"
+	if _, err := runner.Run(context.Background(), "bash", "/tmp/install.sh", "install", "--proxy", proxyURL); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(log.String(), proxyURL) || strings.Contains(log.String(), "secret") {
+		t.Fatalf("proxy URL leaked into log: %s", log.String())
+	}
+	if !strings.Contains(log.String(), "--proxy http://127.0.0.1:7890") {
+		t.Fatalf("proxy address missing: %s", log.String())
+	}
+
+	log.Reset()
+	if _, err := runner.Run(context.Background(), "bash", "/tmp/install.sh", "install", "--proxy=https://proxy.example.com:8443/path?token=hidden"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(log.String(), "--proxy=https://proxy.example.com:8443") || strings.Contains(log.String(), "token") || strings.Contains(log.String(), "hidden") {
+		t.Fatalf("proxy equals argument was not sanitized: %s", log.String())
+	}
+
+	log.Reset()
+	if _, err := runner.Run(context.Background(), "bash", "--proxy", "not a proxy URL"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(log.String(), "--proxy [REDACTED]") {
+		t.Fatalf("invalid proxy URL was not redacted: %s", log.String())
+	}
+
+	log.Reset()
+	if _, err := runner.Run(context.Background(), "systemctl", "show", "xray.service", "-p", "LoadState", "--value"); err != nil {
+		t.Fatal(err)
+	}
+	if log.Len() != 0 {
+		t.Fatalf("systemctl show was logged: %s", log.String())
+	}
+	log.Reset()
+	if _, err := runner.Run(context.Background(), "systemctl", "is-active", "xray.service"); err != nil {
+		t.Fatal(err)
+	}
+	if log.Len() != 0 {
+		t.Fatalf("systemctl is-active was logged: %s", log.String())
+	}
+	log.Reset()
+	if _, err := runner.Run(context.Background(), "systemctl", "is-enabled", "xray.service"); err != nil {
+		t.Fatal(err)
+	}
+	if log.Len() != 0 {
+		t.Fatalf("systemctl is-enabled was logged: %s", log.String())
+	}
+	if got := strings.Join(redactCommandArgs([]string{"show", "xray.service", "-p", "LoadState", "--value"}), " "); got != "show xray.service -p LoadState --value" {
+		t.Fatalf("systemctl -p was redacted: %q", got)
+	}
+}
+
+func TestRandomCredentialFormats(t *testing.T) {
+	seen := map[string]bool{}
+	for i := 0; i < 64; i++ {
+		u, err := UUID()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`).MatchString(u) {
+			t.Fatalf("bad UUID %q", u)
+		}
+		s, err := ShortID()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !regexp.MustCompile(`^[0-9a-f]{16}$`).MatchString(s) {
+			t.Fatalf("bad short ID %q", s)
+		}
+		if seen[s] {
+			t.Fatalf("duplicate short ID %q", s)
+		}
+		seen[s] = true
+	}
+}
+
+func TestValidation(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"port zero", ValidatePort(0), true}, {"port max", ValidatePort(65535), false},
+		{"sni ip", ValidateSNI("1.1.1.1"), true}, {"sni domain", ValidateSNI("www.example.com"), false},
+		{"target missing port", ValidateTarget("example.com"), true}, {"target good", ValidateTarget("example.com:443"), false},
+		{"user name", ValidateUserName("phone"), false}, {"empty user name", ValidateUserName(""), true},
+		{"user name control", ValidateUserName("phone\nadmin"), true},
+		{"tag", ValidateTag("home-in"), false}, {"empty tag", ValidateTag(""), true},
+		{"tag control", ValidateTag("home\nin"), true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if (tt.err != nil) != tt.want {
+				t.Fatalf("error=%v wantErr=%v", tt.err, tt.want)
+			}
+		})
+	}
+}
+
+func TestStatePermissionsAndIsolation(t *testing.T) {
+	root := t.TempDir()
+	store := StateStore{Layout: Layout{Root: root}}
+	n := domain.NodeSpec{ManagedBy: "proxyforge", Core: "sing-box", Server: "example.com", UpdatedAt: time.Now()}
+	if err := store.Save(n); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(store.Layout.StatePath("sing-box"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("state mode=%o", info.Mode().Perm())
+	}
+	if _, err := store.Load("xray"); err != ErrNoState {
+		t.Fatalf("xray state leaked: %v", err)
+	}
+	got, err := store.Load("sing-box")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Server != n.Server {
+		t.Fatalf("got %#v", got)
+	}
+}
+
+func TestStateRejectsUnsafePermissions(t *testing.T) {
+	root := t.TempDir()
+	store := StateStore{Layout: Layout{Root: root}}
+	n := domain.NodeSpec{ManagedBy: "proxyforge", Core: "sing-box"}
+	if err := store.Save(n); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(store.Layout.StatePath("sing-box"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Load("sing-box"); err == nil {
+		t.Fatal("expected unsafe permission error")
+	}
+}
+
+func TestAtomicWriteAndBackupPermissions(t *testing.T) {
+	root := t.TempDir()
+	path := root + "/config/config.json"
+	if err := AtomicWrite(path, []byte("old"), 0640); err != nil {
+		t.Fatal(err)
+	}
+	backup, err := BackupFile(path, root+"/backups", time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(backup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "old" {
+		t.Fatalf("backup=%q", b)
+	}
+	info, _ := os.Stat(backup)
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("backup mode=%o", info.Mode().Perm())
+	}
+	if err := AtomicWrite(path, []byte("new"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(path)
+	if string(b) != "new" {
+		t.Fatalf("atomic result=%q", b)
+	}
+}
+
+func TestBackupFileKeepsNewestThreeBackups(t *testing.T) {
+	root := t.TempDir()
+	path := root + "/config/config.json"
+	backupRoot := root + "/backups"
+	if err := os.MkdirAll(backupRoot+"/manual-notes", 0700); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 5; i++ {
+		content := []byte(fmt.Sprintf("version-%d", i))
+		if err := AtomicWrite(path, content, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := BackupFile(path, backupRoot, time.Unix(int64(i), 0)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	entries, err := os.ReadDir(backupRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var backups []string
+	for _, entry := range entries {
+		if _, err := time.Parse(backupTimestampLayout, entry.Name()); err == nil {
+			backups = append(backups, entry.Name())
+		}
+	}
+	if len(backups) != 3 {
+		t.Fatalf("backup directories=%v, want newest three", backups)
+	}
+	for i, name := range backups {
+		b, err := os.ReadFile(filepath.Join(backupRoot, name, "config.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := fmt.Sprintf("version-%d", i+3)
+		if string(b) != want {
+			t.Fatalf("backup %s=%q, want %q", name, b, want)
+		}
+	}
+	if _, err := os.Stat(backupRoot + "/manual-notes"); err != nil {
+		t.Fatalf("unrecognized directory was removed: %v", err)
+	}
+}
+
+func TestRemovePackageUsesDistributionNativeDatabase(t *testing.T) {
+	for _, tt := range []struct {
+		name, osRelease, command string
+		args                     []string
+	}{
+		{name: "debian", osRelease: "ID=ubuntu\nID_LIKE=debian\n", command: "dpkg", args: []string{"--purge", "sing-box"}},
+		{name: "rhel", osRelease: "ID=rocky\nID_LIKE=\"rhel centos fedora\"\n", command: "rpm", args: []string{"-e", "sing-box"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.MkdirAll(root+"/etc", 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(root+"/etc/os-release", []byte(tt.osRelease), 0644); err != nil {
+				t.Fatal(err)
+			}
+			runner := &recordingRunner{}
+			if err := RemovePackage(context.Background(), runner, Layout{Root: root}, "sing-box", io.Discard); err != nil {
+				t.Fatal(err)
+			}
+			if runner.name != tt.command || strings.Join(runner.args, " ") != strings.Join(tt.args, " ") {
+				t.Fatalf("command=%q args=%v, want %q %v", runner.name, runner.args, tt.command, tt.args)
+			}
+		})
+	}
+}
+
+func TestRemovePackageLabelsStreamingCommandOutput(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(root+"/etc", 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(root+"/etc/os-release", []byte("ID=debian\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runner := &streamingRecordingRunner{}
+	var output bytes.Buffer
+	if err := RemovePackage(context.Background(), runner, Layout{Root: root}, "sing-box", &output); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := output.String(), DetailLine("软件包输出", "live log line"); got != want {
+		t.Fatalf("output=%q, want %q", got, want)
+	}
+}
