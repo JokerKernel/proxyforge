@@ -35,10 +35,10 @@ Docker 代理管理已分离为独立项目 **ProxyDock**，使用 `proxydock` �
 curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | sudo bash
 ```
 
-一键安装指定版本，将 `v0.0.4` 替换为目标 Release 标签。
+一键安装指定版本，将 `v0.0.1` 替换为目标 Release 标签。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | sudo bash -s -- v0.0.4
+curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | sudo bash -s -- v0.0.1
 ```
 
 安装脚本自动识别架构，校验 Release 的 `SHA256SUMS`，并将程序原子安装到 `/usr/local/sbin/proxyforge`。安装与更新需要能够访问下载来源。
