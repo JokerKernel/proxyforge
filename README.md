@@ -29,10 +29,16 @@ Docker 代理管理已分离为独立项目 **ProxyDock**，使用 `proxydock` �
 
 ## 快速开始
 
-安装程序：
+一键安装最新正式版
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | sudo bash
+```
+
+一键安装指定版本，将 `v0.0.4` 替换为目标 Release 标签。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/JokerKernel/proxyforge/main/scripts/install.sh | sudo bash -s -- v0.0.4
 ```
 
 安装脚本自动识别架构，校验 Release 的 `SHA256SUMS`，并将程序原子安装到 `/usr/local/sbin/proxyforge`。安装与更新需要能够访问下载来源。
@@ -50,7 +56,7 @@ sudo proxyforge
 3. 进入「服务端配置 → 生成/更新配置」，设置公网地址、监听端口和节点协议；REALITY 模式还需选择 SNI。
 4. 进入「客户端配置」，导出原生 JSON 或 Mihomo/Clash Meta YAML 配置。
 
-ProxyForge 会提示需要放行的 TCP 端口，防火墙和云安全组需自行配置。固定版本安装和其他安装方式见[安装指南](docs/installation.md)。
+ProxyForge 会提示需要放行的 TCP 端口，防火墙和云安全组需自行配置。其他安装方式见[安装指南](docs/installation.md)。
 
 ## 版本与更新
 
